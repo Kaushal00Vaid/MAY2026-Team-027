@@ -171,3 +171,9 @@
 /* ── Utility: hide scrollbar ─────────────────────────────────── */
 .no-scrollbar::-webkit-scrollbar { display: none; }
 .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+
+/* Custom Scanner Animation */
+@keyframes scan {
+  0% { transform: translateY(0); }
+  100% { transform: translateY(180px); }
+}

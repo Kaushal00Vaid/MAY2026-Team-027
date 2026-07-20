@@ -1,6 +1,6 @@
 import { useState } from "react";
-import { Link } from "react-router-dom";
-import { Phone } from "lucide-react";
+import { Link, useNavigate } from "react-router-dom";
+import { Mail, Lock } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import BrandPanel from "./components/BrandPanel";
 import DividerOr from "./components/DividerOr";
@@ -17,11 +17,24 @@ import {
 } from "./components/AuthDecorations";
 
 export default function SignInPage() {
-  const [phone, setPhone] = useState("");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [error, setError] = useState("");
+  const navigate = useNavigate();
 
   const handleSubmit = (e) => {
     e.preventDefault();
-    console.log("OTP requested for:", phone);
+    setError("");
+    
+    if (email === "admin@gmail.com" && password === "admin") {
+      navigate("/admin");
+    } else if (email === "resident@gmail.com" && password === "resident") {
+      navigate("/resident");
+    } else if (email === "security@gmail.com" && password === "security") {
+      navigate("/gate");
+    } else {
+      setError("Invalid credentials. Try admin@gmail.com / admin");
+    }
   };
 
   return (
@@ -146,39 +159,68 @@ export default function SignInPage() {
               </p>
             </div>
 
-            <form onSubmit={handleSubmit} className="space-y-5">
-              {/* Phone number */}
+            <form onSubmit={handleSubmit} className="space-y-4">
+              {error && (
+                <div className="text-sm font-medium text-red-600 bg-red-50 p-2 rounded-md">
+                  {error}
+                </div>
+              )}
+              {/* Email */}
               <div className="space-y-1.5">
                 <label
-                  htmlFor="phone"
+                  htmlFor="email"
                   className="text-xs font-semibold uppercase tracking-widest text-muted-foreground"
                 >
-                  Phone Number
+                  Email Address
                 </label>
                 <div className="relative flex items-center">
                   <div className="absolute left-3 top-1/2 -translate-y-1/2 flex items-center gap-1.5 pointer-events-none">
-                    <Phone size={14} className="text-muted-foreground/60" />
-                    <span className="text-sm text-muted-foreground/70 font-medium">+91</span>
+                    <Mail size={16} className="text-muted-foreground/60" />
                     <span className="w-px h-4 bg-border/70 ml-0.5" />
                   </div>
                   <input
-                    id="phone"
-                    type="tel"
-                    placeholder="98765 43210"
-                    value={phone}
-                    onChange={(e) => setPhone(e.target.value)}
+                    id="email"
+                    type="email"
+                    placeholder="name@example.com"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
                     required
-                    className="w-full h-11 pl-[74px] pr-4 rounded-lg border border-border/60 bg-muted/40 text-sm placeholder:text-muted-foreground/50 focus:outline-none focus:ring-2 focus:ring-primary/25 focus:border-primary/60 transition-all duration-200"
+                    className="w-full h-11 pl-[42px] pr-4 rounded-lg border border-border/60 bg-muted/40 text-sm placeholder:text-muted-foreground/50 focus:outline-none focus:ring-2 focus:ring-primary/25 focus:border-primary/60 transition-all duration-200"
                   />
                 </div>
               </div>
 
-              {/* Send OTP */}
+              {/* Password */}
+              <div className="space-y-1.5">
+                <label
+                  htmlFor="password"
+                  className="text-xs font-semibold uppercase tracking-widest text-muted-foreground"
+                >
+                  Password
+                </label>
+                <div className="relative flex items-center">
+                  <div className="absolute left-3 top-1/2 -translate-y-1/2 flex items-center gap-1.5 pointer-events-none">
+                    <Lock size={16} className="text-muted-foreground/60" />
+                    <span className="w-px h-4 bg-border/70 ml-0.5" />
+                  </div>
+                  <input
+                    id="password"
+                    type="password"
+                    placeholder="Enter password"
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    required
+                    className="w-full h-11 pl-[42px] pr-4 rounded-lg border border-border/60 bg-muted/40 text-sm placeholder:text-muted-foreground/50 focus:outline-none focus:ring-2 focus:ring-primary/25 focus:border-primary/60 transition-all duration-200"
+                  />
+                </div>
+              </div>
+
+              {/* Sign In Button */}
               <Button
                 type="submit"
-                className="w-full h-11 font-semibold text-sm tracking-wide rounded-xl shadow-md hover:shadow-lg transition-all duration-200 gap-2"
+                className="w-full h-11 mt-2 font-semibold text-sm tracking-wide rounded-xl shadow-md hover:shadow-lg transition-all duration-200 gap-2"
               >
-                Send OTP
+                Sign In
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5} className="w-4 h-4">
                   <path d="M5 12h14M12 5l7 7-7 7" strokeLinecap="round" strokeLinejoin="round" />
                 </svg>
