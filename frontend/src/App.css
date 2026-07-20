@@ -3,7 +3,7 @@
 @import "shadcn/tailwind.css";
 @import "@fontsource-variable/inter";
 
-@custom-variant dark (&:is(.dark *));
+
 
 :root {
   --background: #ffffff;
@@ -48,6 +48,7 @@
   --shadow-spread: 0px;
   --shadow-opacity: 0.05;
   --shadow-color: #000000;
+  --dot-grid: rgba(0,0,0,0.12);
   --shadow-2xs: 0px 1px 4px 0px hsl(0 0% 0% / 0.03);
   --shadow-xs: 0px 1px 4px 0px hsl(0 0% 0% / 0.03);
   --shadow-sm: 0px 1px 4px 0px hsl(0 0% 0% / 0.05), 0px 1px 2px -1px hsl(0 0% 0% / 0.05);
@@ -60,58 +61,6 @@
   --spacing: 0.25rem;
 }
 
-.dark {
-  --background: #121113;
-  --foreground: #c1c1c1;
-  --card: #121212;
-  --card-foreground: #c1c1c1;
-  --popover: #121113;
-  --popover-foreground: #c1c1c1;
-  --primary: #e78a53;
-  --primary-foreground: #121113;
-  --secondary: #5f8787;
-  --secondary-foreground: #121113;
-  --muted: #222222;
-  --muted-foreground: #888888;
-  --accent: #333333;
-  --accent-foreground: #c1c1c1;
-  --destructive: #5f8787;
-  --destructive-foreground: #121113;
-  --border: #222222;
-  --input: #222222;
-  --ring: #e78a53;
-  --chart-1: #5f8787;
-  --chart-2: #e78a53;
-  --chart-3: #fbcb97;
-  --chart-4: #888888;
-  --chart-5: #999999;
-  --sidebar: #121212;
-  --sidebar-foreground: #c1c1c1;
-  --sidebar-primary: #e78a53;
-  --sidebar-primary-foreground: #121113;
-  --sidebar-accent: #333333;
-  --sidebar-accent-foreground: #c1c1c1;
-  --sidebar-border: #222222;
-  --sidebar-ring: #e78a53;
-  --font-sans: Inter, ui-sans-serif, sans-serif, system-ui;
-  --font-serif: Lora, ui-serif, serif;
-  --font-mono: Inconsolata, ui-monospace, monospace;
-  --radius: 0.75rem;
-  --shadow-x: 0px;
-  --shadow-y: 1px;
-  --shadow-blur: 4px;
-  --shadow-spread: 0px;
-  --shadow-opacity: 0.05;
-  --shadow-color: #000000;
-  --shadow-2xs: 0px 1px 4px 0px hsl(0 0% 0% / 0.03);
-  --shadow-xs: 0px 1px 4px 0px hsl(0 0% 0% / 0.03);
-  --shadow-sm: 0px 1px 4px 0px hsl(0 0% 0% / 0.05), 0px 1px 2px -1px hsl(0 0% 0% / 0.05);
-  --shadow: 0px 1px 4px 0px hsl(0 0% 0% / 0.05), 0px 1px 2px -1px hsl(0 0% 0% / 0.05);
-  --shadow-md: 0px 1px 4px 0px hsl(0 0% 0% / 0.05), 0px 2px 4px -1px hsl(0 0% 0% / 0.05);
-  --shadow-lg: 0px 1px 4px 0px hsl(0 0% 0% / 0.05), 0px 4px 6px -1px hsl(0 0% 0% / 0.05);
-  --shadow-xl: 0px 1px 4px 0px hsl(0 0% 0% / 0.05), 0px 8px 10px -1px hsl(0 0% 0% / 0.05);
-  --shadow-2xl: 0px 1px 4px 0px hsl(0 0% 0% / 0.13);
-}
 
 @theme inline {
   --color-background: var(--background);
@@ -218,3 +167,7 @@
 .auth-chip-1   { animation: authChipFloat 5s ease-in-out infinite; }
 .auth-chip-2   { animation: authChipFloat 6.5s ease-in-out infinite 0.8s; }
 .auth-chip-3   { animation: authChipFloat 4.5s ease-in-out infinite 1.6s; }
+
+/* ── Utility: hide scrollbar ─────────────────────────────────── */
+.no-scrollbar::-webkit-scrollbar { display: none; }
+.no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }

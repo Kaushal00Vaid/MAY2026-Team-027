@@ -1,16 +1,16 @@
-import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
+import { BrowserRouter, Routes, Route } from "react-router-dom";
 import "./App.css";
-import SignUpPage from "@/components/auth/SignUpPage";
-import SignInPage from "@/components/auth/SignInPage";
+import LandingPage from "@/pages/LandingPage";
+import SignInPage from "@/pages/SignInPage";
+import SignUpPage from "@/pages/SignUpPage";
 
 function App() {
   return (
     <BrowserRouter>
       <Routes>
-        <Route path="/signup" element={<SignUpPage />} />
+        <Route path="/" element={<LandingPage />} />
         <Route path="/signin" element={<SignInPage />} />
-        {/* Default redirect */}
-        <Route path="*" element={<Navigate to="/signin" replace />} />
+        <Route path="/signup" element={<SignUpPage />} />
       </Routes>
     </BrowserRouter>
   );
