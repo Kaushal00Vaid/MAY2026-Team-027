@@ -1,0 +1,244 @@
+import { useState } from "react";
+import {
+  LayoutDashboard,
+  WalletCards,
+  Headset,
+  ShieldCheck,
+  CalendarCheck,
+  Users,
+  BarChart3,
+  ChevronDown
+} from "lucide-react";
+import { 
+  BarChart, 
+  Bar, 
+  XAxis, 
+  YAxis, 
+  CartesianGrid, 
+  Tooltip, 
+  ResponsiveContainer,
+  RadialBarChart,
+  RadialBar,
+  PolarAngleAxis,
+  Cell
+} from 'recharts';
+import DashboardLayout from "@/components/layout/DashboardLayout";
+
+const sidebarItems = [
+  { label: "Dashboard", icon: LayoutDashboard, active: false, href: "/admin" },
+  { label: "Finance", icon: WalletCards, active: false, href: "/admin/finance" },
+  { label: "Helpdesk", icon: Headset, active: false, href: "/admin/helpdesk" },
+  { label: "Security", icon: ShieldCheck, active: false, href: "/admin/security" },
+  { label: "Amenities", icon: CalendarCheck, active: false, href: "/admin/amenities" },
+  { label: "Community", icon: Users, active: false, href: "/admin/community" },
+  { label: "Analytics", icon: BarChart3, active: true, href: "/admin/analytics" },
+];
+
+const paretoData = [
+  { name: 'Lift Elect.', value: 85 },
+  { name: 'Plumbing Leaks', value: 65 },
+  { name: 'HVAC', value: 45 },
+  { name: 'Pumps', value: 25 },
+  { name: 'Other', value: 10 },
+];
+
+const vendorData = [
+  { id: 1, name: "ElevateTech Inc.", type: "Elevator Maint.", res: "4.2", sla: "Within SLA" },
+  { id: 2, name: "AquaFlow Plumbers", type: "Plumbing", res: "12.5", sla: "Warning (L1)" },
+  { id: 3, name: "CleanSweep Sec.", type: "Housekeeping", res: "2.1", sla: "Within SLA" },
+  { id: 4, name: "VoltMasters", type: "Electrical", res: "24.0+", sla: "Escalated (L3)" },
+];
+
+export default function AdminAnalytics() {
+  return (
+    <DashboardLayout sidebarItems={sidebarItems} userRole="Residential Admin">
+      <div className="p-6 md:p-8 max-w-[1400px] mx-auto space-y-6 animate-in fade-in duration-500">
+        
+        {/* Header Section */}
+        <div className="mb-8">
+          <h1 className="text-3xl font-extrabold text-[#0f2336] tracking-tight">Resource Optimization</h1>
+          <p className="text-sm text-gray-500 mt-1">Analyze facility utilization and operational efficiency metrics.</p>
+        </div>
+
+        {/* Main Grid */}
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          
+          {/* Heatmap */}
+          <div className="lg:col-span-2 bg-white p-6 md:p-8 rounded-3xl border border-gray-100 shadow-sm flex flex-col">
+            <div className="flex items-center justify-between mb-8">
+              <h3 className="text-lg font-bold text-[#0f2336]">Amenity Utilization Heatmap</h3>
+              <div className="flex items-center gap-2 bg-gray-50 border border-gray-200 rounded-lg px-3 py-1.5 cursor-pointer hover:bg-gray-100 transition-colors">
+                <span className="text-sm font-medium text-gray-700">Gymnasium</span>
+                <ChevronDown size={14} className="text-gray-500" />
+              </div>
+            </div>
+            
+            <div className="flex-1 flex flex-col justify-center">
+              <div className="flex gap-4 mb-4">
+                <div className="w-8 flex items-center justify-end text-xs font-bold text-gray-400">Mon</div>
+                <div className="flex-1 grid grid-cols-7 gap-2">
+                  <div className="h-8 rounded-sm bg-[#5f8787]/10"></div>
+                  <div className="h-8 rounded-sm bg-[#5f8787]/20"></div>
+                  <div className="h-8 rounded-sm bg-[#5f8787]"></div>
+                  <div className="h-8 rounded-sm bg-[#0f2336]"></div>
+                  <div className="h-8 rounded-sm bg-[#5f8787]"></div>
+                  <div className="h-8 rounded-sm bg-[#5f8787]/20"></div>
+                  <div className="h-8 rounded-sm bg-[#5f8787]/10"></div>
+                </div>
+              </div>
+              <div className="flex gap-4 mb-4">
+                <div className="w-8 flex items-center justify-end text-xs font-bold text-gray-400">Tue</div>
+                <div className="flex-1 grid grid-cols-7 gap-2">
+                  <div className="h-8 rounded-sm bg-[#5f8787]/10"></div>
+                  <div className="h-8 rounded-sm bg-[#5f8787]/30"></div>
+                  <div className="h-8 rounded-sm bg-[#0f2336]"></div>
+                  <div className="h-8 rounded-sm bg-[#0f2336]"></div>
+                  <div className="h-8 rounded-sm bg-[#0f2336]"></div>
+                  <div className="h-8 rounded-sm bg-[#5f8787]/20"></div>
+                  <div className="h-8 rounded-sm bg-[#5f8787]/10"></div>
+                </div>
+              </div>
+              <div className="flex gap-4">
+                <div className="w-8 flex items-center justify-end text-xs font-bold text-gray-400">Wed</div>
+                <div className="flex-1 grid grid-cols-7 gap-2">
+                  <div className="h-8 rounded-sm bg-[#5f8787]/10"></div>
+                  <div className="h-8 rounded-sm bg-[#5f8787]/20"></div>
+                  <div className="h-8 rounded-sm bg-[#5f8787]"></div>
+                  <div className="h-8 rounded-sm bg-[#0f2336]"></div>
+                  <div className="h-8 rounded-sm bg-[#5f8787]"></div>
+                  <div className="h-8 rounded-sm bg-[#5f8787]/10"></div>
+                  <div className="h-8 rounded-sm bg-[#5f8787]/10"></div>
+                </div>
+              </div>
+            </div>
+            
+            <div className="flex justify-end items-center gap-2 mt-8">
+              <span className="text-xs font-bold text-gray-400 uppercase tracking-wider">Low</span>
+              <div className="w-4 h-4 rounded-sm bg-[#5f8787]/10"></div>
+              <div className="w-4 h-4 rounded-sm bg-[#5f8787]/30"></div>
+              <div className="w-4 h-4 rounded-sm bg-[#5f8787]"></div>
+              <div className="w-4 h-4 rounded-sm bg-[#0f2336]"></div>
+              <span className="text-xs font-bold text-gray-400 uppercase tracking-wider ml-1">High</span>
+            </div>
+          </div>
+
+          {/* Financial Efficiency */}
+          <div className="lg:col-span-1 bg-white p-6 md:p-8 rounded-3xl border border-gray-100 shadow-sm flex flex-col justify-between items-center text-center">
+            <h3 className="text-lg font-bold text-[#0f2336] self-start w-full text-left mb-4">Financial Efficiency</h3>
+            
+            <div className="w-full h-[220px] relative">
+              <ResponsiveContainer width="100%" height="100%">
+                <RadialBarChart 
+                  cx="50%" 
+                  cy="50%" 
+                  innerRadius="70%" 
+                  outerRadius="100%" 
+                  barSize={16} 
+                  data={[{ name: 'ratio', value: 82, fill: '#0f2336' }]}
+                  startAngle={90}
+                  endAngle={-270}
+                >
+                  <PolarAngleAxis type="number" domain={[0, 100]} angleAxisId={0} tick={false} />
+                  <RadialBar 
+                    minAngle={15} 
+                    background={{ fill: '#f3f4f6' }} 
+                    clockWise 
+                    dataKey="value" 
+                    cornerRadius={10}
+                  />
+                </RadialBarChart>
+              </ResponsiveContainer>
+              <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
+                <div className="text-4xl font-extrabold text-[#0f2336]">82%</div>
+                <div className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mt-1">Collection Ratio</div>
+              </div>
+            </div>
+            
+            <div className="flex justify-around w-full mt-4">
+              <div>
+                <div className="flex items-center justify-center gap-1.5 mb-1">
+                  <div className="w-2 h-2 rounded-full bg-[#0f2336]"></div>
+                  <span className="text-xs font-bold text-gray-500">Collections</span>
+                </div>
+                <div className="font-bold text-sm text-[#0f2336]">$1.2M</div>
+              </div>
+              <div>
+                <div className="flex items-center justify-center gap-1.5 mb-1">
+                  <div className="w-2 h-2 rounded-full bg-[#5f8787]/30"></div>
+                  <span className="text-xs font-bold text-gray-500">OpEx</span>
+                </div>
+                <div className="font-bold text-sm text-[#0f2336]">$280K</div>
+              </div>
+            </div>
+          </div>
+
+          {/* Predictive Maintenance */}
+          <div className="lg:col-span-1 bg-white p-6 rounded-3xl border border-gray-100 shadow-sm flex flex-col">
+            <h3 className="text-lg font-bold text-[#0f2336] mb-6">Predictive Maintenance (Pareto)</h3>
+            <div className="flex-1 w-full h-[250px]">
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={paretoData} margin={{ top: 10, right: 0, left: -20, bottom: 0 }}>
+                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f3f4f6" />
+                  <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: '#6b7280' }} dy={10} interval={0} />
+                  <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: '#6b7280' }} />
+                  <Tooltip cursor={{ fill: '#f9fafb' }} contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 4px 20px rgba(0,0,0,0.08)' }} />
+                  <Bar dataKey="value" radius={[4, 4, 0, 0]}>
+                    {paretoData.map((entry, index) => (
+                      <Cell key={`cell-${index}`} fill={index === 0 ? '#0f2336' : index === 1 ? '#4a6572' : index === 2 ? '#5f8787' : index === 3 ? '#a8c0c0' : '#e5e7eb'} />
+                    ))}
+                  </Bar>
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          </div>
+
+          {/* Vendor Performance */}
+          <div className="lg:col-span-2 bg-white rounded-3xl border border-gray-100 shadow-sm flex flex-col overflow-hidden">
+            <div className="p-6 md:p-8 flex items-center justify-between">
+              <h3 className="text-lg font-bold text-[#0f2336]">Vendor Performance</h3>
+              <button className="text-xs font-bold text-blue-600 hover:text-blue-700 transition-colors">View All</button>
+            </div>
+            
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm text-left whitespace-nowrap">
+                <thead className="text-[11px] font-bold text-gray-500 uppercase tracking-wider bg-gray-50/50">
+                  <tr>
+                    <th className="px-6 md:px-8 py-4">Vendor Name</th>
+                    <th className="px-6 md:px-8 py-4">Service Type</th>
+                    <th className="px-6 md:px-8 py-4">Avg Resolution (hrs)</th>
+                    <th className="px-6 md:px-8 py-4">SLA Status</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-50">
+                  {vendorData.map((v) => (
+                    <tr key={v.id} className={`transition-colors ${
+                      v.sla.includes('Warning') ? 'bg-orange-50/30' :
+                      v.sla.includes('Escalated') ? 'bg-red-50/30' : 'hover:bg-gray-50/50'
+                    }`}>
+                      <td className="px-6 md:px-8 py-5 font-semibold text-[#0f2336]">{v.name}</td>
+                      <td className="px-6 md:px-8 py-5 text-gray-500">{v.type}</td>
+                      <td className={`px-6 md:px-8 py-5 font-medium ${
+                        v.res === '12.5' ? 'text-red-500' :
+                        v.res === '24.0+' ? 'text-red-600 font-bold' : 'text-gray-700'
+                      }`}>{v.res}</td>
+                      <td className="px-6 md:px-8 py-5">
+                        <span className={`px-2.5 py-1 rounded-md text-[10px] font-bold uppercase tracking-wider ${
+                          v.sla === 'Within SLA' ? 'bg-blue-50 text-blue-600' :
+                          v.sla.includes('Warning') ? 'bg-orange-500 text-white shadow-md shadow-orange-500/20' :
+                          'bg-red-500 text-white shadow-md shadow-red-500/20'
+                        }`}>
+                          {v.sla}
+                        </span>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+        </div>
+      </div>
+    </DashboardLayout>
+  );
+}
