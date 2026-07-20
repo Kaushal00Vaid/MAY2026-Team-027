@@ -21,12 +21,12 @@ import DashboardLayout from "@/components/layout/DashboardLayout";
 
 const sidebarItems = [
   { label: "Dashboard", icon: LayoutDashboard, active: true, href: "/admin" },
-  { label: "Finance", icon: WalletCards, active: false },
-  { label: "Helpdesk", icon: Headset, active: false },
-  { label: "Security", icon: ShieldCheck, active: false },
-  { label: "Amenities", icon: CalendarCheck, active: false },
-  { label: "Community", icon: Users, active: false },
-  { label: "Analytics", icon: BarChart3, active: false },
+  { label: "Finance", icon: WalletCards, active: false, href: "/admin/finance" },
+  { label: "Helpdesk", icon: Headset, active: false, href: "/admin/helpdesk" },
+  { label: "Security", icon: ShieldCheck, active: false, href: "/admin/security" },
+  { label: "Amenities", icon: CalendarCheck, active: false, href: "/admin/amenities" },
+  { label: "Community", icon: Users, active: false, href: "/admin/community" },
+  { label: "Analytics", icon: BarChart3, active: false, href: "/admin/analytics" },
 ];
 
 const revenueData = [
