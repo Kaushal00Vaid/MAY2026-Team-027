@@ -95,10 +95,12 @@ export default function AdminSecurity() {
                         }`}
                         onClick={() => row.highlight && setShowModal(true)}
                       >
-                        {row.highlight && (
-                          <td className="absolute left-0 top-0 bottom-0 w-1 bg-orange-500"></td>
-                        )}
-                        <td className="px-6 py-5 font-semibold text-gray-900">{row.name}</td>
+                        <td className="px-6 py-5 font-semibold text-gray-900 relative">
+                          {row.highlight && (
+                            <div className="absolute left-0 top-0 bottom-0 w-1 bg-orange-500"></div>
+                          )}
+                          {row.name}
+                        </td>
                         <td className="px-6 py-5 text-gray-500">{row.purpose}</td>
                         <td className="px-6 py-5 font-medium text-gray-700">{row.unit}</td>
                         <td className="px-6 py-5 font-mono text-gray-400 text-xs">{row.vehicle}</td>
