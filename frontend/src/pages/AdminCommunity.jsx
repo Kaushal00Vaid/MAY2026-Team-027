@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import {
   LayoutDashboard,
   WalletCards,
@@ -12,7 +12,9 @@ import {
   Megaphone,
   Heart,
   MoreHorizontal,
-  Plus
+  Plus,
+  CheckCircle2,
+  X
 } from "lucide-react";
 import DashboardLayout from "@/components/layout/DashboardLayout";
 
@@ -40,10 +42,38 @@ const residents = [
 ];
 
 export default function AdminCommunity() {
+  const [showToast, setShowToast] = useState(false);
+
+  useEffect(() => {
+    let timer;
+    if (showToast) {
+      timer = setTimeout(() => setShowToast(false), 3000);
+    }
+    return () => clearTimeout(timer);
+  }, [showToast]);
+
+  const handleBroadcast = () => {
+    setShowToast(true);
+  };
+
   return (
     <DashboardLayout sidebarItems={sidebarItems} userRole="Residential Admin">
       <div className="p-6 md:p-8 max-w-[1400px] mx-auto space-y-8 animate-in fade-in duration-500 relative">
-        
+
+        {/* Toast Notification */}
+        {showToast && (
+          <div className="fixed bottom-6 right-6 bg-[#d87943] text-white px-6 py-4 rounded-xl shadow-2xl flex items-center gap-3 animate-in slide-in-from-bottom-5 z-50">
+            <CheckCircle2 className="text-white" size={20} />
+            <div className="flex flex-col">
+              <span className="font-bold text-sm">Notice Broadcasted</span>
+              <span className="text-xs text-orange-100">Notice has been sent to all residents.</span>
+            </div>
+            <button onClick={() => setShowToast(false)} className="ml-4 text-orange-200 hover:text-white transition-colors">
+              <X size={16} />
+            </button>
+          </div>
+        )}
+
         {/* Header Section */}
         <div className="flex flex-col md:flex-row md:items-end justify-between gap-4">
           <div>
@@ -51,7 +81,7 @@ export default function AdminCommunity() {
             <p className="text-sm text-gray-500 mt-1">Manage resident directory, notices, and community forums.</p>
           </div>
           <div className="flex gap-3">
-            <button className="inline-flex items-center gap-2 px-5 py-2.5 bg-white border border-gray-200 hover:border-gray-300 hover:bg-gray-50 text-gray-700 text-sm font-semibold rounded-xl transition-all shadow-sm active:scale-95">
+            <button onClick={handleBroadcast} className="inline-flex items-center gap-2 px-5 py-2.5 bg-white border border-gray-200 hover:border-gray-300 hover:bg-gray-50 text-gray-700 text-sm font-semibold rounded-xl transition-all shadow-sm active:scale-95">
               <Megaphone size={16} />
               Broadcast Notice
             </button>
@@ -64,35 +94,34 @@ export default function AdminCommunity() {
 
         {/* Main Grid */}
         <div className="grid grid-cols-1 xl:grid-cols-12 gap-8">
-          
+
           {/* Discussion Forums */}
           <div className="xl:col-span-5 flex flex-col gap-6">
             <div className="bg-white rounded-3xl border border-gray-100 shadow-sm p-6 relative overflow-hidden">
               <div className="absolute top-0 right-0 w-32 h-32 bg-gradient-to-br from-orange-50 to-transparent rounded-bl-full -z-10"></div>
-              
+
               <div className="flex items-center justify-between mb-6">
                 <h3 className="text-xl font-bold text-[#0f2336] flex items-center gap-2">
                   <MessageSquare size={20} className="text-[#d87943]" />
                   Active Discussions
                 </h3>
               </div>
-              
+
               <div className="space-y-4">
                 {discussions.map((post) => (
                   <div key={post.id} className="p-4 rounded-2xl bg-gray-50/50 hover:bg-gray-50 border border-gray-100 transition-colors cursor-pointer group">
                     <div className="flex items-center justify-between mb-2">
-                      <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider ${
-                        post.tagColor === 'orange' ? 'bg-orange-100 text-orange-600' :
-                        post.tagColor === 'blue' ? 'bg-blue-100 text-blue-600' :
-                        'bg-emerald-100 text-emerald-600'
-                      }`}>
+                      <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider ${post.tagColor === 'orange' ? 'bg-orange-100 text-orange-600' :
+                          post.tagColor === 'blue' ? 'bg-blue-100 text-blue-600' :
+                            'bg-emerald-100 text-emerald-600'
+                        }`}>
                         {post.tag}
                       </span>
                       <span className="text-xs text-gray-400 font-medium">{post.time}</span>
                     </div>
                     <h4 className="font-bold text-[#0f2336] group-hover:text-[#d87943] transition-colors mb-1">{post.title}</h4>
                     <p className="text-xs text-gray-500 mb-4">By {post.author}</p>
-                    
+
                     <div className="flex items-center gap-4 text-gray-400">
                       <div className="flex items-center gap-1.5 text-xs font-semibold group-hover:text-blue-500 transition-colors">
                         <MessageSquare size={14} /> {post.replies}
@@ -104,7 +133,7 @@ export default function AdminCommunity() {
                   </div>
                 ))}
               </div>
-              
+
               <button className="w-full mt-6 py-3 border border-dashed border-gray-200 text-gray-500 text-sm font-bold rounded-xl hover:bg-gray-50 transition-colors">
                 View All Forums
               </button>
@@ -114,20 +143,20 @@ export default function AdminCommunity() {
           {/* Resident Directory */}
           <div className="xl:col-span-7 flex flex-col gap-6">
             <div className="bg-white rounded-3xl border border-gray-100 shadow-sm overflow-hidden flex flex-col h-full">
-              
+
               <div className="p-6 md:p-8 border-b border-gray-100 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                 <h3 className="text-xl font-bold text-[#0f2336]">Resident Directory</h3>
-                
+
                 <div className="relative">
                   <Search size={16} className="absolute left-3 top-3 text-gray-400" />
-                  <input 
-                    type="text" 
-                    placeholder="Search residents or units..." 
+                  <input
+                    type="text"
+                    placeholder="Search residents or units..."
                     className="w-full sm:w-64 h-10 pl-10 pr-4 rounded-xl border border-gray-200 bg-gray-50 text-sm focus:bg-white focus:ring-2 focus:ring-[#d87943]/20 focus:border-[#d87943] outline-none transition-all"
                   />
                 </div>
               </div>
-              
+
               <div className="overflow-x-auto flex-1 p-2">
                 <table className="w-full text-sm text-left whitespace-nowrap">
                   <thead className="text-[11px] font-bold text-gray-400 uppercase tracking-wider">
@@ -158,9 +187,8 @@ export default function AdminCommunity() {
                         </td>
                         <td className="px-6 py-4 text-gray-500 font-medium">{r.role}</td>
                         <td className="px-6 py-4">
-                          <span className={`px-2 py-1 rounded-md text-[10px] font-bold uppercase tracking-wider flex items-center gap-1 w-fit ${
-                            r.status === 'Active' ? 'bg-emerald-50 text-emerald-600' : 'bg-orange-50 text-orange-600'
-                          }`}>
+                          <span className={`px-2 py-1 rounded-md text-[10px] font-bold uppercase tracking-wider flex items-center gap-1 w-fit ${r.status === 'Active' ? 'bg-emerald-50 text-emerald-600' : 'bg-orange-50 text-orange-600'
+                            }`}>
                             {r.status === 'Active' && <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>}
                             {r.status}
                           </span>

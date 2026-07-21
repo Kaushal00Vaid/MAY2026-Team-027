@@ -11,7 +11,16 @@ import AdminAmenities from "@/pages/AdminAmenities";
 import AdminCommunity from "@/pages/AdminCommunity";
 import AdminAnalytics from "@/pages/AdminAnalytics";
 import ResidentDashboard from "@/pages/ResidentDashboard";
+import ResidentFinancials from "@/pages/ResidentFinancials";
+import ResidentHelpdesk from "@/pages/ResidentHelpdesk";
+import ResidentAmenities from "@/pages/ResidentAmenities";
+import ResidentCommunity from "@/pages/ResidentCommunity";
+import ResidentDigitalID from "@/pages/ResidentDigitalID";
 import SecurityDashboard from "@/pages/SecurityDashboard";
+import StaffMaintenance from "@/pages/StaffMaintenance";
+import StaffOperations from "@/pages/StaffOperations";
+import StaffInventory from "@/pages/StaffInventory";
+import StaffRoster from "@/pages/StaffRoster";
 
 function App() {
   return (
@@ -28,7 +37,16 @@ function App() {
         <Route path="/admin/community" element={<AdminCommunity />} />
         <Route path="/admin/analytics" element={<AdminAnalytics />} />
         <Route path="/resident" element={<ResidentDashboard />} />
+        <Route path="/resident/finance" element={<ResidentFinancials />} />
+        <Route path="/resident/helpdesk" element={<ResidentHelpdesk />} />
+        <Route path="/resident/amenities" element={<ResidentAmenities />} />
+        <Route path="/resident/community" element={<ResidentCommunity />} />
+        <Route path="/resident/digital-id" element={<ResidentDigitalID />} />
         <Route path="/gate" element={<SecurityDashboard />} />
+        <Route path="/gate/maintenance" element={<StaffMaintenance />} />
+        <Route path="/gate/operations" element={<StaffOperations />} />
+        <Route path="/gate/inventory" element={<StaffInventory />} />
+        <Route path="/gate/roster" element={<StaffRoster />} />
       </Routes>
     </BrowserRouter>
   );

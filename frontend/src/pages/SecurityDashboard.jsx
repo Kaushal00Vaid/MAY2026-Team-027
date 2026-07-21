@@ -14,13 +14,7 @@ import {
 } from "lucide-react";
 import DashboardLayout from "@/components/layout/DashboardLayout";
 
-const sidebarItems = [
-  { label: "Entry Control", icon: ArrowRightToLine, active: true, href: "/gate" },
-  { label: "Resident Scanner", icon: QrCode, active: false },
-  { label: "Deliveries", icon: Truck, active: false },
-  { label: "Activity Log", icon: History, active: false },
-  { label: "Escalations", icon: AlertTriangle, active: false },
-];
+import { getGateSidebarItems } from "@/components/gate/GateSidebarConfig";
 
 const initialActions = [
   { id: 1, type: "timeout", unit: "712", title: "Approval Timeout", desc: "Resident has not responded to access request for 'Food Delivery'.", time: "4m ago" }
@@ -60,8 +54,38 @@ export default function SecurityDashboard() {
     setActions(actions.filter(a => a.id !== id));
   };
 
+  const [visitorForm, setVisitorForm] = useState({ name: "", unit: "", block: "", phone: "", purpose: "Guest / Friend" });
+  const [requestLoading, setRequestLoading] = useState(false);
+  const [showManualModal, setShowManualModal] = useState(false);
+  const [manualUnit, setManualUnit] = useState("");
+
+  const handleRequestApproval = () => {
+    if (!visitorForm.name || !visitorForm.unit) return;
+    setRequestLoading(true);
+    setTimeout(() => {
+      setActions([{ 
+        id: Date.now(), 
+        type: "approval", 
+        unit: `${visitorForm.block ? visitorForm.block + '-' : ''}${visitorForm.unit}`, 
+        title: "Approval Requested", 
+        desc: `Waiting for resident to approve ${visitorForm.name} for ${visitorForm.purpose}.`, 
+        time: "Just Now" 
+      }, ...actions]);
+      setVisitorForm({ name: "", unit: "", block: "", phone: "", purpose: "Guest / Friend" });
+      setRequestLoading(false);
+    }, 1500);
+  };
+
+  const handleManualEntrySubmit = (e) => {
+    e.preventDefault();
+    if (!manualUnit) return;
+    setFeed([{ id: Date.now(), t: "Just Now", e: `Manual Entry - ${manualUnit}`, type: "Entry", in: true, highlight: true }, ...feed]);
+    setManualUnit("");
+    setShowManualModal(false);
+  };
+
   return (
-    <DashboardLayout sidebarItems={sidebarItems} userRole="Gate 1 - North" userName="R. Davis">
+    <DashboardLayout sidebarItems={getGateSidebarItems("/gate")} userRole="Gate 1 - North" userName="R. Davis">
       <div className="p-4 md:p-6 max-w-[1400px] mx-auto min-h-full animate-in fade-in duration-500">
         
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
@@ -72,7 +96,12 @@ export default function SecurityDashboard() {
               <div className="absolute top-0 left-0 w-full h-full bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-white/5 to-transparent pointer-events-none"></div>
               
               <div className="flex items-center justify-between mb-8 relative z-10">
-                <h3 className="text-lg font-bold">Pre-Approved PIN</h3>
+                <h3 className="text-lg font-bold relative inline-block">
+                  Pre-Approved PIN
+                  <svg className="absolute -top-3 -right-6 w-8 h-8 text-white/10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" />
+                  </svg>
+                </h3>
                 <div className="flex gap-1.5">
                   <div className="w-2 h-2 bg-emerald-400 rounded-full animate-pulse shadow-[0_0_8px_rgba(52,211,153,0.8)]"></div>
                   <div className="w-2 h-2 bg-white/20 rounded-full"></div>
@@ -155,11 +184,41 @@ export default function SecurityDashboard() {
               
               <p className="text-xs text-center text-gray-500 mb-4 px-6 leading-relaxed">Present digital ID to the terminal scanner or enter unit number manually below.</p>
               
-              <button className="w-full py-3 bg-gray-50 border border-gray-200 rounded-xl text-sm font-semibold text-gray-700 hover:bg-gray-100 hover:border-gray-300 transition-all active:scale-95">
+              <button onClick={() => setShowManualModal(true)} className="w-full py-3 bg-gray-50 border border-gray-200 rounded-xl text-sm font-semibold text-gray-700 hover:bg-gray-100 hover:border-gray-300 transition-all active:scale-95">
                 Manual Unit Entry
               </button>
             </div>
           </div>
+
+          {/* Manual Entry Modal */}
+          {showManualModal && (
+            <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center animate-in fade-in duration-200">
+              <div className="bg-white w-full max-w-sm rounded-3xl p-6 shadow-2xl relative animate-in zoom-in-95 duration-200">
+                <button onClick={() => setShowManualModal(false)} className="absolute top-4 right-4 text-gray-400 hover:text-gray-700">
+                  <XCircle size={20} />
+                </button>
+                <h3 className="font-bold text-[#0f2336] text-lg mb-4 flex items-center gap-2">
+                  <ScanLine size={18} /> Manual Entry
+                </h3>
+                <form onSubmit={handleManualEntrySubmit} className="space-y-4">
+                  <div className="space-y-2">
+                    <label className="text-xs font-bold text-gray-600 uppercase tracking-wider">Unit / Tag Number</label>
+                    <input 
+                      type="text" 
+                      placeholder="e.g. A-101"
+                      className="w-full h-12 px-4 rounded-xl border border-gray-200 bg-gray-50 text-sm focus:bg-white focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none transition-all uppercase" 
+                      value={manualUnit}
+                      onChange={(e) => setManualUnit(e.target.value)}
+                      autoFocus
+                    />
+                  </div>
+                  <button type="submit" className="w-full py-3 bg-[#0f2336] hover:bg-[#1a365d] text-white text-sm font-bold rounded-xl transition-all shadow-md">
+                    Log Entry
+                  </button>
+                </form>
+              </div>
+            </div>
+          )}
 
           {/* Right Column: Actions & Feed */}
           <div className="lg:col-span-4 space-y-6">
@@ -253,22 +312,22 @@ export default function SecurityDashboard() {
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 relative z-10">
               <div className="space-y-2">
                 <label className="text-xs font-bold text-gray-600 uppercase tracking-wider">Full Name</label>
-                <input type="text" placeholder="e.g. Jane Doe" className="w-full h-12 px-4 rounded-xl border border-gray-200 bg-gray-50 text-sm focus:bg-white focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none transition-all" />
+                <input type="text" placeholder="e.g. Jane Doe" className="w-full h-12 px-4 rounded-xl border border-gray-200 bg-gray-50 text-sm focus:bg-white focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none transition-all" value={visitorForm.name} onChange={e => setVisitorForm({...visitorForm, name: e.target.value})} />
               </div>
               <div className="space-y-2">
                 <label className="text-xs font-bold text-gray-600 uppercase tracking-wider">Target Unit / Block</label>
                 <div className="flex gap-2">
-                  <input type="text" placeholder="Blk A" className="w-1/3 h-12 px-4 rounded-xl border border-gray-200 bg-gray-50 text-sm focus:bg-white focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none transition-all text-center uppercase" />
-                  <input type="text" placeholder="Unit 402" className="w-2/3 h-12 px-4 rounded-xl border border-gray-200 bg-gray-50 text-sm focus:bg-white focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none transition-all" />
+                  <input type="text" placeholder="Blk A" className="w-1/3 h-12 px-4 rounded-xl border border-gray-200 bg-gray-50 text-sm focus:bg-white focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none transition-all text-center uppercase" value={visitorForm.block} onChange={e => setVisitorForm({...visitorForm, block: e.target.value})} />
+                  <input type="text" placeholder="Unit 402" className="w-2/3 h-12 px-4 rounded-xl border border-gray-200 bg-gray-50 text-sm focus:bg-white focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none transition-all" value={visitorForm.unit} onChange={e => setVisitorForm({...visitorForm, unit: e.target.value})} />
                 </div>
               </div>
               <div className="space-y-2">
                 <label className="text-xs font-bold text-gray-600 uppercase tracking-wider">Phone Number <span className="text-gray-400 normal-case">(Optional)</span></label>
-                <input type="text" placeholder="(555) 000-0000" className="w-full h-12 px-4 rounded-xl border border-gray-200 bg-gray-50 text-sm focus:bg-white focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none transition-all" />
+                <input type="text" placeholder="(555) 000-0000" className="w-full h-12 px-4 rounded-xl border border-gray-200 bg-gray-50 text-sm focus:bg-white focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none transition-all" value={visitorForm.phone} onChange={e => setVisitorForm({...visitorForm, phone: e.target.value})} />
               </div>
               <div className="space-y-2">
                 <label className="text-xs font-bold text-gray-600 uppercase tracking-wider">Purpose of Visit</label>
-                <select className="w-full h-12 px-4 rounded-xl border border-gray-200 bg-gray-50 text-sm focus:bg-white focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none transition-all appearance-none cursor-pointer">
+                <select className="w-full h-12 px-4 rounded-xl border border-gray-200 bg-gray-50 text-sm focus:bg-white focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none transition-all appearance-none cursor-pointer" value={visitorForm.purpose} onChange={e => setVisitorForm({...visitorForm, purpose: e.target.value})}>
                   <option>Guest / Friend</option>
                   <option>Delivery</option>
                   <option>Maintenance</option>
@@ -278,12 +337,12 @@ export default function SecurityDashboard() {
             </div>
 
             <div className="mt-8 pt-6 border-t border-gray-100 flex flex-col sm:flex-row justify-end gap-3 relative z-10">
-              <button className="px-6 py-3 bg-white border border-gray-200 text-gray-600 text-sm font-bold rounded-xl hover:bg-gray-50 hover:text-gray-900 transition-all active:scale-95">
+              <button onClick={() => setVisitorForm({ name: "", unit: "", block: "", phone: "", purpose: "Guest / Friend" })} className="px-6 py-3 bg-white border border-gray-200 text-gray-600 text-sm font-bold rounded-xl hover:bg-gray-50 hover:text-gray-900 transition-all active:scale-95">
                 Clear Form
               </button>
-              <button className="px-6 py-3 bg-blue-600 text-white text-sm font-bold rounded-xl hover:bg-blue-700 transition-all active:scale-95 flex items-center justify-center gap-2 shadow-lg shadow-blue-500/30">
-                <AlertTriangle size={16} />
-                Request Resident Approval
+              <button onClick={handleRequestApproval} disabled={requestLoading} className="px-6 py-3 bg-blue-600 text-white text-sm font-bold rounded-xl hover:bg-blue-700 transition-all active:scale-95 flex items-center justify-center gap-2 shadow-lg shadow-blue-500/30 disabled:opacity-70 disabled:cursor-not-allowed">
+                {requestLoading ? <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></span> : <AlertTriangle size={16} />}
+                {requestLoading ? "Sending..." : "Request Resident Approval"}
               </button>
             </div>
           </div>

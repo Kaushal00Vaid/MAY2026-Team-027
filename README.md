@@ -1,29 +1,30 @@
 # SocietySync
 
 ## Project Structure
-MAY2026-Team-027/
-├── backend/
-│   ├── db/
-│   │   ├── database.py
-│   │   └── models.py
-│   ├── venv/
-│   ├── main.py
-│   └── requirements.txt
-├── docs/
-│   ├── database_design.md
-│   └── erd.mermaid
-├── frontend/
-│   ├── node_modules/
-│   ├── public/
-│   ├── src/
-│   ├── .gitignore
-│   ├── eslint.config.js
-│   ├── index.html
-│   ├── package-lock.json
-│   ├── package.json
-│   ├── README.md
-│   └── vite.config.js
-├── .gitignore
+MAY2026-Team-027/ \
+├── backend/ \
+│   ├── db/ \
+│   │   ├── database.py \
+│   │   └── models.py \
+│   ├── venv/ \
+│   ├── main.py \
+│   └── requirements.txt \
+├── docs/ \
+│   ├── database_design.md \
+│   ├── erd.mermaid \
+│   └── schema.sql \
+├── frontend/ \
+│   ├── node_modules/ \
+│   ├── public/ \
+│   ├── src/ \
+│   ├── .gitignore \
+│   ├── eslint.config.js \
+│   ├── index.html \
+│   ├── package-lock.json \
+│   ├── package.json \
+│   ├── README.md \
+│   └── vite.config.js \
+├── .gitignore \
 └── README.md
 
 ## Project Setup: Frontend & Backend
