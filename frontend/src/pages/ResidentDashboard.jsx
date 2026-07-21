@@ -17,13 +17,7 @@ import {
 } from "lucide-react";
 import DashboardLayout from "@/components/layout/DashboardLayout";
 
-const sidebarItems = [
-  { label: "Dashboard", icon: LayoutDashboard, active: true, href: "/resident" },
-  { label: "Financials", icon: Wallet, active: false },
-  { label: "Helpdesk", icon: Wrench, active: false },
-  { label: "Amenities", icon: CalendarDays, active: false },
-  { label: "Digital ID", icon: QrCode, active: false },
-];
+import { getResidentSidebarItems } from "@/components/resident/ResidentSidebarConfig";
 
 const tickets = [
   { id: "TKT-892", title: "Leaking Pipe in Kitchen", status: "In Progress", type: "Plumbing", updated: "2h ago", icon: Droplet, color: "orange" },
@@ -48,7 +42,7 @@ export default function ResidentDashboard() {
   });
 
   return (
-    <DashboardLayout sidebarItems={sidebarItems} userRole="Resident Portal" userName="Ananya">
+    <DashboardLayout sidebarItems={getResidentSidebarItems("/resident")} userRole="Resident Portal" userName="Ananya">
       <div className="p-6 md:p-8 max-w-7xl mx-auto animate-in fade-in duration-500">
         
         {/* Top Header & Balance */}

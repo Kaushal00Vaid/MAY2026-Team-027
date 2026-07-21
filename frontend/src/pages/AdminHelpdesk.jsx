@@ -34,12 +34,43 @@ const sidebarItems = [
 
 export default function AdminHelpdesk() {
   const [showModal, setShowModal] = useState(false);
+  const [showResolveModal, setShowResolveModal] = useState(false);
   const [category, setCategory] = useState("Lift / Elevator");
+  const [showToast, setShowToast] = useState(false);
+  const [toastMessage, setToastMessage] = useState({ title: "", desc: "" });
+
+  const handleResolve = () => {
+    setShowResolveModal(false);
+    setToastMessage({ title: "Ticket Updated", desc: "Ticket has been escalated to vendor." });
+    setShowToast(true);
+    setTimeout(() => setShowToast(false), 3000);
+  };
+  
+  const handleRaise = () => {
+    setShowModal(false);
+    setToastMessage({ title: "Ticket Raised", desc: "New ticket has been submitted to the queue." });
+    setShowToast(true);
+    setTimeout(() => setShowToast(false), 3000);
+  };
 
   return (
     <DashboardLayout sidebarItems={sidebarItems} userRole="Residential Admin">
       <div className="p-6 md:p-8 max-w-[1400px] mx-auto space-y-8 animate-in fade-in duration-500 relative">
         
+        {/* Toast Notification */}
+        {showToast && (
+          <div className="fixed bottom-6 right-6 bg-[#0f2336] text-white px-6 py-4 rounded-xl shadow-2xl flex items-center gap-3 animate-in slide-in-from-bottom-5 z-50">
+            <CheckCircle2 className="text-emerald-400" size={20} />
+            <div className="flex flex-col">
+              <span className="font-bold text-sm">{toastMessage.title}</span>
+              <span className="text-xs text-gray-300">{toastMessage.desc}</span>
+            </div>
+            <button onClick={() => setShowToast(false)} className="ml-4 text-gray-400 hover:text-white transition-colors">
+              <X size={16} />
+            </button>
+          </div>
+        )}
+
         {/* Background glow effects */}
         <div className="absolute top-0 right-0 w-96 h-96 bg-blue-500/5 rounded-full blur-3xl -z-10 pointer-events-none"></div>
         <div className="absolute top-40 left-10 w-72 h-72 bg-emerald-500/5 rounded-full blur-3xl -z-10 pointer-events-none"></div>
@@ -157,7 +188,7 @@ export default function AdminHelpdesk() {
                     <div className="w-6 h-6 rounded-full bg-gray-200 border-2 border-white flex items-center justify-center text-[10px] font-bold text-gray-600 z-10">402</div>
                     <span className="text-xs font-semibold text-gray-500">Apt 402 • 2h ago</span>
                   </div>
-                  <button className="w-8 h-8 rounded-full bg-gray-50 group-hover:bg-blue-50 group-hover:text-blue-600 flex items-center justify-center transition-colors">
+                  <button onClick={() => setShowResolveModal(true)} className="w-8 h-8 rounded-full bg-gray-50 group-hover:bg-blue-50 group-hover:text-blue-600 flex items-center justify-center transition-colors">
                     <ArrowRight size={14} />
                   </button>
                 </div>
@@ -186,7 +217,7 @@ export default function AdminHelpdesk() {
                     <div className="w-6 h-6 rounded-full bg-orange-100 border-2 border-white flex items-center justify-center text-[10px] font-bold text-orange-700 z-10">Sec</div>
                     <span className="text-xs font-semibold text-gray-500">Security • SLA Warning</span>
                   </div>
-                  <button className="w-8 h-8 rounded-full bg-orange-50 text-orange-600 group-hover:bg-orange-500 group-hover:text-white flex items-center justify-center transition-colors">
+                  <button onClick={() => setShowResolveModal(true)} className="w-8 h-8 rounded-full bg-orange-50 text-orange-600 group-hover:bg-orange-500 group-hover:text-white flex items-center justify-center transition-colors">
                     <ArrowRight size={14} />
                   </button>
                 </div>
@@ -213,7 +244,7 @@ export default function AdminHelpdesk() {
                     <div className="w-6 h-6 rounded-full bg-gray-200 border-2 border-white flex items-center justify-center text-[10px] font-bold text-gray-600 z-10">201</div>
                     <span className="text-xs font-semibold text-gray-500">Apt 201 • 1d ago</span>
                   </div>
-                  <button className="w-8 h-8 rounded-full bg-gray-50 group-hover:bg-purple-50 group-hover:text-purple-600 flex items-center justify-center transition-colors">
+                  <button onClick={() => setShowResolveModal(true)} className="w-8 h-8 rounded-full bg-gray-50 group-hover:bg-purple-50 group-hover:text-purple-600 flex items-center justify-center transition-colors">
                     <ArrowRight size={14} />
                   </button>
                 </div>
@@ -265,7 +296,7 @@ export default function AdminHelpdesk() {
                   </div>
                 </div>
                 
-                <button className="w-full mt-8 py-4 bg-white hover:bg-gray-100 text-[#0f1520] font-extrabold rounded-2xl text-sm transition-transform active:scale-95 flex items-center justify-center gap-2">
+                <button onClick={() => setShowResolveModal(true)} className="w-full mt-8 py-4 bg-white hover:bg-gray-100 text-[#0f1520] font-extrabold rounded-2xl text-sm transition-transform active:scale-95 flex items-center justify-center gap-2">
                   <AlertTriangle size={18} />
                   TAKE ACTION
                 </button>
@@ -376,9 +407,67 @@ export default function AdminHelpdesk() {
               </button>
               <button 
                 className="px-8 py-3 text-sm font-bold text-white bg-[#0f2336] hover:bg-[#1a3857] rounded-xl transition-transform shadow-lg shadow-[#0f2336]/20 active:scale-95"
-                onClick={() => setShowModal(false)}
+                onClick={handleRaise}
               >
                 Submit Ticket
+              </button>
+            </div>
+            
+          </div>
+        </div>
+      )}
+
+      {/* Resolve Modal Overlay */}
+      {showResolveModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-[#0f1a2b]/80 backdrop-blur-md animate-in fade-in duration-200">
+          <div className="bg-white rounded-[2rem] w-full max-w-md overflow-hidden shadow-2xl relative animate-in zoom-in-95 duration-200">
+            
+            <div className="px-8 py-6 flex items-center justify-between bg-white relative z-10">
+              <div>
+                <h2 className="text-2xl font-extrabold text-[#0f2336]">Update Ticket</h2>
+                <p className="text-sm text-gray-500 mt-1">Assign to vendor or close ticket.</p>
+              </div>
+              <button 
+                onClick={() => setShowResolveModal(false)}
+                className="w-10 h-10 bg-gray-50 hover:bg-gray-100 text-gray-500 rounded-full flex items-center justify-center transition-colors"
+              >
+                <X size={20} />
+              </button>
+            </div>
+            
+            <div className="px-8 pb-8 space-y-6 relative z-10">
+              
+              <div className="space-y-2">
+                <label className="text-xs font-bold text-gray-500 uppercase tracking-wider ml-1">Action</label>
+                <select className="w-full h-12 px-4 rounded-xl border-2 border-gray-100 bg-gray-50 text-sm font-semibold text-[#0f2336] focus:bg-white focus:border-blue-500 outline-none transition-all appearance-none cursor-pointer">
+                  <option>Assign to Staff / Vendor</option>
+                  <option>Mark as Resolved</option>
+                  <option>Escalate to Committee</option>
+                </select>
+              </div>
+
+              <div className="space-y-2">
+                <label className="text-xs font-bold text-gray-500 uppercase tracking-wider ml-1">Assignee</label>
+                <select className="w-full h-12 px-4 rounded-xl border-2 border-gray-100 bg-gray-50 text-sm font-semibold text-[#0f2336] focus:bg-white focus:border-blue-500 outline-none transition-all appearance-none cursor-pointer">
+                  <option>ABC Plumbing (Vendor)</option>
+                  <option>John Smith (Maintenance)</option>
+                  <option>XYZ Electricals (Vendor)</option>
+                </select>
+              </div>
+
+              <div className="space-y-2">
+                <label className="text-xs font-bold text-gray-500 uppercase tracking-wider ml-1">Admin Notes</label>
+                <textarea 
+                  placeholder="Internal notes..."
+                  className="w-full h-[100px] p-4 rounded-xl border-2 border-gray-100 bg-gray-50 text-sm font-medium focus:bg-white focus:border-blue-500 outline-none transition-all resize-none"
+                ></textarea>
+              </div>
+              
+              <button 
+                className="w-full py-4 text-sm font-bold text-white bg-[#0f2336] hover:bg-[#1a3857] rounded-xl transition-transform shadow-lg shadow-[#0f2336]/20 active:scale-95"
+                onClick={handleResolve}
+              >
+                Confirm Action
               </button>
             </div>
             

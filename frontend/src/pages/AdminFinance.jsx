@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import {
   LayoutDashboard,
   WalletCards,
@@ -14,7 +14,9 @@ import {
   Filter,
   ChevronLeft,
   ChevronRight,
-  AlertTriangle
+  AlertTriangle,
+  CheckCircle2,
+  X
 } from "lucide-react";
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from 'recharts';
 import DashboardLayout from "@/components/layout/DashboardLayout";
@@ -47,6 +49,21 @@ const ledgerData = [
 
 export default function AdminFinance() {
   const [activeIndex, setActiveIndex] = useState(null);
+  const [showToast, setShowToast] = useState(false);
+  const [toastMessage, setToastMessage] = useState({ title: "", desc: "" });
+
+  useEffect(() => {
+    let timer;
+    if (showToast) {
+      timer = setTimeout(() => setShowToast(false), 3000);
+    }
+    return () => clearTimeout(timer);
+  }, [showToast]);
+
+  const handleAction = (title, desc) => {
+    setToastMessage({ title, desc });
+    setShowToast(true);
+  };
 
   const onPieEnter = (_, index) => {
     setActiveIndex(index);
@@ -57,8 +74,22 @@ export default function AdminFinance() {
 
   return (
     <DashboardLayout sidebarItems={sidebarItems} userRole="Residential Admin">
-      <div className="p-6 md:p-8 max-w-[1400px] mx-auto space-y-8 animate-in fade-in duration-500">
+      <div className="p-6 md:p-8 max-w-[1400px] mx-auto space-y-8 animate-in fade-in duration-500 relative">
         
+        {/* Toast Notification */}
+        {showToast && (
+          <div className="fixed bottom-6 right-6 bg-[#0f2336] text-white px-6 py-4 rounded-xl shadow-2xl flex items-center gap-3 animate-in slide-in-from-bottom-5 z-50">
+            <CheckCircle2 className="text-emerald-400" size={20} />
+            <div className="flex flex-col">
+              <span className="font-bold text-sm">{toastMessage.title}</span>
+              <span className="text-xs text-gray-300">{toastMessage.desc}</span>
+            </div>
+            <button onClick={() => setShowToast(false)} className="ml-4 text-gray-400 hover:text-white transition-colors">
+              <X size={16} />
+            </button>
+          </div>
+        )}
+
         {/* Header Section */}
         <div className="flex flex-col md:flex-row md:items-end justify-between gap-4">
           <div>
@@ -66,11 +97,11 @@ export default function AdminFinance() {
             <p className="text-sm text-gray-500 mt-1">Comprehensive ledger and fund allocation oversight.</p>
           </div>
           <div className="flex items-center gap-3">
-            <button className="inline-flex items-center gap-2 px-5 py-2.5 bg-white border border-gray-200 hover:border-gray-300 hover:bg-gray-50 text-gray-700 text-sm font-semibold rounded-xl transition-all shadow-sm active:scale-95">
+            <button onClick={() => handleAction("Download Started", "Audit report is downloading.")} className="inline-flex items-center gap-2 px-5 py-2.5 bg-white border border-gray-200 hover:border-gray-300 hover:bg-gray-50 text-gray-700 text-sm font-semibold rounded-xl transition-all shadow-sm active:scale-95">
               <Download size={16} />
               Download Annual Audit
             </button>
-            <button className="inline-flex items-center gap-2 px-5 py-2.5 bg-[#0f2336] hover:bg-[#16334f] text-white text-sm font-semibold rounded-xl transition-all shadow-md active:scale-95">
+            <button onClick={() => handleAction("Generating Invoices", "Bulk generation process has started.")} className="inline-flex items-center gap-2 px-5 py-2.5 bg-[#0f2336] hover:bg-[#16334f] text-white text-sm font-semibold rounded-xl transition-all shadow-md active:scale-95">
               <FileText size={16} />
               Generate Bulk Invoices
             </button>
