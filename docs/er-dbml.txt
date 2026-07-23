@@ -1,0 +1,497 @@
+// =============================================================================
+// ENUM TYPES
+// =============================================================================
+
+Enum role_name {
+  admin
+  committee_member
+  flat_owner
+  resident_rental
+  support_staff
+}
+
+Enum staff_type {
+  gardener
+  house_help
+  security
+  maintenance_worker
+  event_volunteer
+}
+
+Enum residential_status {
+  occupied
+  empty
+}
+
+Enum service_category {
+  lift
+  garden
+  cleaning
+  club_house
+  plumbing
+  electrical
+  common_area
+  neighbouring_flats
+  security
+  others
+}
+
+Enum complaint_status {
+  open
+  acknowledged
+  assigned
+  in_progress
+  resolved
+  closed
+}
+
+Enum task_status {
+  pending
+  assigned
+  in_progress
+  done
+  cancelled
+}
+
+Enum billing_purpose {
+  maintenance
+  event_donation
+  society_electricity
+  water_tanker
+  others
+}
+
+Enum invoice_status {
+  pending
+  paid
+  overdue
+  waived
+  cancelled
+}
+
+Enum payment_gateway {
+  upi
+  credit_card
+  debit_card
+  net_banking
+}
+
+Enum payment_status {
+  initiated
+  success
+  failed
+  refunded
+}
+
+Enum booking_status {
+  confirmed
+  cancelled
+  completed
+}
+
+Enum visitor_approval_status {
+  pending
+  approved
+  denied
+  expired
+}
+
+Enum rsvp_status {
+  going
+  maybe
+  not_going
+}
+
+Enum volunteer_status {
+  applied
+  confirmed
+  declined
+}
+
+Enum notification_scope {
+  society
+  block
+  floor
+  flat
+  role
+}
+
+// =============================================================================
+// 2. SOCIETY STRUCTURE
+// =============================================================================
+
+Table flats {
+  flat_id bigserial [pk]
+  block varchar(10) [not null]
+  floor smallint [not null]
+  flat_number varchar(10) [not null]
+  residential_status residential_status [not null, default: 'empty']
+  created_at timestamptz [not null, default: `now()`]
+  updated_at timestamptz [not null, default: `now()`]
+
+  Indexes {
+    (block, floor, flat_number) [unique]
+  }
+}
+
+// =============================================================================
+// 3. USERS, ROLES & STAFF
+// =============================================================================
+
+Table users {
+  user_id bigserial [pk]
+  full_name varchar(150) [not null]
+  email citext [not null, unique]
+  phone_number varchar(20) [not null, unique]
+  whatsapp_number varchar(20) [not null]
+  password_hash text [not null]
+  flat_id bigint [null]
+  is_active boolean [not null, default: true]
+  created_at timestamptz [not null, default: `now()`]
+  updated_at timestamptz [not null, default: `now()`]
+  
+  Indexes {
+    flat_id
+  }
+}
+
+Table roles {
+  role_id smallint [pk]
+  role_name role_name [not null, unique]
+}
+
+Table user_roles {
+  user_id bigint [pk]
+  role_id smallint [pk]
+  assigned_at timestamptz [not null, default: `now()`]
+
+  Indexes {
+    role_id [name: 'uq_single_admin'] // Representing the partial unique index
+  }
+}
+
+Table support_staff_profiles {
+  user_id bigint [pk]
+  staff_type staff_type [not null]
+  employed_by varchar(20) [not null, default: 'society']
+  assigned_block varchar(10)
+}
+
+Table domestic_helpers {
+  helper_id bigserial [pk]
+  full_name varchar(150) [not null]
+  photo_url text
+  phone_number varchar(20)
+  helper_type varchar(30) [not null]
+  flat_id bigint [not null]
+  registered_by bigint [not null]
+  created_at timestamptz [not null, default: `now()`]
+  
+  Indexes {
+    flat_id
+  }
+}
+
+Table helper_attendance_logs {
+  log_id bigserial [pk]
+  helper_id bigint [not null]
+  log_date date [not null, default: `CURRENT_DATE`]
+  entry_time timestamptz
+  exit_time timestamptz
+  logged_by bigint [not null]
+
+  Indexes {
+    (helper_id, log_date) [unique]
+    log_date
+  }
+}
+
+// =============================================================================
+// 4. SECURITY & VISITOR MANAGEMENT
+// =============================================================================
+
+Table visitors {
+  visitor_id bigserial [pk]
+  full_name varchar(150) [not null]
+  phone_number varchar(20)
+  photo_url text
+  purpose varchar(100)
+  host_flat_id bigint [not null]
+  approved_by bigint
+  approval_status visitor_approval_status [not null, default: 'pending']
+  logged_by bigint [not null]
+  entry_time timestamptz
+  exit_time timestamptz
+  created_at timestamptz [not null, default: `now()`]
+  
+  Indexes {
+    host_flat_id
+    approval_status
+  }
+}
+
+// =============================================================================
+// 5. COMPLAINTS & MAINTENANCE
+// =============================================================================
+
+Table complaints {
+  complaint_id bigserial [pk]
+  raised_by bigint [not null]
+  category service_category [not null]
+  other_reason_text varchar(60)
+  description text [not null]
+  flat_id bigint
+  block varchar(10)
+  status complaint_status [not null, default: 'open']
+  linked_task_id bigint
+  created_at timestamptz [not null, default: `now()`]
+  updated_at timestamptz [not null, default: `now()`]
+
+  Indexes {
+    (category, block, status)
+    raised_by
+  }
+}
+
+Table complaint_attachments {
+  attachment_id bigserial [pk]
+  complaint_id bigint [not null]
+  photo_url text [not null]
+  latitude numeric(9,6)
+  longitude numeric(9,6)
+  uploaded_at timestamptz [not null, default: `now()`]
+}
+
+Table maintenance_tasks {
+  task_id bigserial [pk]
+  category service_category [not null]
+  description text
+  flat_id bigint
+  block varchar(10)
+  source_complaint_id bigint
+  assigned_to bigint
+  assigned_by bigint
+  sla_due_at timestamptz
+  status task_status [not null, default: 'pending']
+  resolved_at timestamptz
+  created_at timestamptz [not null, default: `now()`]
+  updated_at timestamptz [not null, default: `now()`]
+  
+  Indexes {
+    status
+    assigned_to
+    sla_due_at
+  }
+}
+
+// =============================================================================
+// 6. FINANCE & BILLING
+// =============================================================================
+
+Table late_fee_rules {
+  rule_id smallserial [pk]
+  min_days_overdue int [not null]
+  max_days_overdue int
+  fee_type varchar(10) [not null]
+  fee_value numeric(10,2) [not null]
+}
+
+Table invoices {
+  invoice_id bigserial [pk]
+  flat_id bigint [not null]
+  purpose billing_purpose [not null]
+  other_purpose_text varchar(60)
+  billing_period date
+  base_amount numeric(10,2) [not null]
+  late_fee_amount numeric(10,2) [not null, default: 0]
+  due_date date [not null]
+  status invoice_status [not null, default: 'pending']
+  created_at timestamptz [not null, default: `now()`]
+  updated_at timestamptz [not null, default: `now()`]
+
+  Indexes {
+    (flat_id, purpose, billing_period) [unique]
+    (flat_id, status)
+    due_date
+  }
+}
+
+Table payments {
+  payment_id bigserial [pk]
+  invoice_id bigint [not null]
+  paid_by bigint [not null]
+  amount_paid numeric(10,2) [not null]
+  gateway payment_gateway [not null]
+  gateway_txn_ref varchar(100) [not null]
+  status payment_status [not null, default: 'initiated']
+  receipt_number varchar(30) [unique]
+  receipt_pdf_url text
+  paid_at timestamptz
+  created_at timestamptz [not null, default: `now()`]
+
+  Indexes {
+    (gateway, gateway_txn_ref) [unique]
+    invoice_id
+  }
+}
+
+Table payment_reminders {
+  reminder_id bigserial [pk]
+  invoice_id bigint [not null]
+  scheduled_for timestamptz [not null]
+  sent_at timestamptz
+  channel varchar(20) [not null, default: 'push']
+
+  Indexes {
+    (invoice_id, scheduled_for) [unique]
+  }
+}
+
+// =============================================================================
+// 7. FACILITY & AMENITY BOOKING
+// =============================================================================
+
+Table amenities {
+  amenity_id smallserial [pk]
+  name varchar(60) [not null, unique]
+  description text
+  capacity int
+  operating_hours_start time [not null, default: '06:00']
+  operating_hours_end time [not null, default: '22:00']
+  slot_duration_minutes int [not null, default: 60]
+  max_bookings_per_flat_per_week int [not null, default: 2]
+}
+
+Table amenity_bookings {
+  booking_id uuid [pk, default: `gen_random_uuid()`]
+  amenity_id smallint [not null]
+  flat_id bigint [not null]
+  booked_by bigint [not null]
+  slot_start timestamptz [not null]
+  slot_end timestamptz [not null]
+  status booking_status [not null, default: 'confirmed']
+  created_at timestamptz [not null, default: `now()`]
+  
+  Indexes {
+    (flat_id, amenity_id, slot_start)
+  }
+}
+
+// =============================================================================
+// 8. COMMUNITY ENGAGEMENT
+// =============================================================================
+
+Table events {
+  event_id bigserial [pk]
+  event_name varchar(150) [not null]
+  description text
+  location varchar(150)
+  event_datetime timestamptz [not null]
+  max_capacity int
+  created_by bigint [not null]
+  created_at timestamptz [not null, default: `now()`]
+  
+  Indexes {
+    event_datetime
+  }
+}
+
+Table event_rsvps {
+  event_id bigint [pk]
+  user_id bigint [pk]
+  rsvp_status rsvp_status [not null, default: 'going']
+  responded_at timestamptz [not null, default: `now()`]
+}
+
+Table event_volunteers {
+  event_id bigint [pk]
+  user_id bigint [pk]
+  role_description varchar(100)
+  status volunteer_status [not null, default: 'applied']
+}
+
+Table polls {
+  poll_id bigserial [pk]
+  question varchar(255) [not null]
+  created_by bigint [not null]
+  starts_at timestamptz [not null, default: `now()`]
+  ends_at timestamptz [not null]
+}
+
+Table poll_options {
+  option_id bigserial [pk]
+  poll_id bigint [not null]
+  option_text varchar(150) [not null]
+}
+
+Table poll_votes {
+  poll_id bigint [pk]
+  user_id bigint [pk]
+  option_id bigint [not null]
+  voted_at timestamptz [not null, default: `now()`]
+}
+
+Table notifications {
+  notification_id bigserial [pk]
+  title varchar(150) [not null]
+  body text [not null]
+  scope notification_scope [not null]
+  scope_value varchar(20)
+  created_by bigint [not null]
+  sent_at timestamptz [not null, default: `now()`]
+}
+
+Table notification_deliveries {
+  notification_id bigint [pk]
+  user_id bigint [pk]
+  delivered_at timestamptz
+  read_at timestamptz
+  
+  Indexes {
+    user_id
+  }
+}
+
+// =============================================================================
+// RELATIONSHIPS
+// =============================================================================
+
+Ref: users.flat_id > flats.flat_id
+Ref: user_roles.user_id > users.user_id
+Ref: user_roles.role_id > roles.role_id
+Ref: support_staff_profiles.user_id - users.user_id
+Ref: domestic_helpers.flat_id > flats.flat_id
+Ref: domestic_helpers.registered_by > users.user_id
+Ref: helper_attendance_logs.helper_id > domestic_helpers.helper_id
+Ref: helper_attendance_logs.logged_by > users.user_id
+Ref: visitors.host_flat_id > flats.flat_id
+Ref: visitors.approved_by > users.user_id
+Ref: visitors.logged_by > users.user_id
+Ref: complaints.raised_by > users.user_id
+Ref: complaints.flat_id > flats.flat_id
+Ref: complaints.linked_task_id - maintenance_tasks.task_id
+Ref: complaint_attachments.complaint_id > complaints.complaint_id
+Ref: maintenance_tasks.flat_id > flats.flat_id
+Ref: maintenance_tasks.source_complaint_id > complaints.complaint_id
+Ref: maintenance_tasks.assigned_to > users.user_id
+Ref: maintenance_tasks.assigned_by > users.user_id
+Ref: invoices.flat_id > flats.flat_id
+Ref: payments.invoice_id > invoices.invoice_id
+Ref: payments.paid_by > users.user_id
+Ref: payment_reminders.invoice_id > invoices.invoice_id
+Ref: amenity_bookings.amenity_id > amenities.amenity_id
+Ref: amenity_bookings.flat_id > flats.flat_id
+Ref: amenity_bookings.booked_by > users.user_id
+Ref: events.created_by > users.user_id
+Ref: event_rsvps.event_id > events.event_id
+Ref: event_rsvps.user_id > users.user_id
+Ref: event_volunteers.event_id > events.event_id
+Ref: event_volunteers.user_id > users.user_id
+Ref: polls.created_by > users.user_id
+Ref: poll_options.poll_id > polls.poll_id
+Ref: poll_votes.poll_id > polls.poll_id
+Ref: poll_votes.option_id > poll_options.option_id
+Ref: poll_votes.user_id > users.user_id
+Ref: notifications.created_by > users.user_id
+Ref: notification_deliveries.notification_id > notifications.notification_id
+Ref: notification_deliveries.user_id > users.user_id
