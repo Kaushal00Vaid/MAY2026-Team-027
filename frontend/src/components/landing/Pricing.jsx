@@ -1,6 +1,8 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
 import Chip from "./Chip";
+import { motion } from "framer-motion";
+import { MiniBuilding } from "@/components/auth/components/AuthDecorations";
 
 const ANNUAL_FACTOR = 0.8;
 
@@ -65,7 +67,24 @@ export default function Pricing() {
             <span className="h-px w-6 bg-primary" />
           </div>
           <h2 className="mt-3 text-3xl md:text-4xl font-extrabold tracking-tight">
-            Priced per flat. No setup fees. Cancel anytime.
+            Priced per flat.{" "}
+            <span className="relative inline-block">
+              No setup fees.
+              <svg
+                className="absolute -bottom-2 sm:-bottom-3 left-0 w-[105%] h-3 sm:h-4 text-[#789048]"
+                viewBox="0 0 300 30"
+                fill="none"
+                preserveAspectRatio="none"
+              >
+                <motion.path 
+                  initial={{ pathLength: 0 }}
+                  whileInView={{ pathLength: 1 }}
+                  viewport={{ once: true, margin: "-50px" }}
+                  transition={{ duration: 1.5, ease: "easeInOut" }}
+                  d="M 10 25 C 80 -10, 150 40, 220 5 C 250 -10, 290 20, 290 20 C 250 -5, 100 40, 20 15" stroke="currentColor" strokeWidth="6" strokeLinecap="round" />
+              </svg>
+            </span>{" "}
+            Cancel anytime.
           </h2>
           <p className="mt-3 text-sm sm:text-base text-muted-foreground">
             Every plan includes double-entry ledger, unlimited residents, and free migration from
@@ -83,13 +102,20 @@ export default function Pricing() {
                 role="tab"
                 aria-selected={billing === b}
                 onClick={() => setBilling(b)}
-                className={`relative min-h-[40px] px-4 sm:px-5 rounded-full text-xs font-semibold capitalize transition active:scale-[0.97] touch-manipulation ${
-                  billing === b ? "bg-foreground text-background" : "text-muted-foreground hover:text-foreground"
+                className={`relative min-h-[40px] px-4 sm:px-5 rounded-full text-xs font-semibold capitalize transition active:scale-[0.97] touch-manipulation flex items-center justify-center ${
+                  billing === b ? "text-background" : "text-muted-foreground hover:text-foreground"
                 }`}
               >
-                {b}
+                {billing === b && (
+                  <motion.div
+                    layoutId="pricing-tab-indicator"
+                    className="absolute inset-0 rounded-full bg-foreground"
+                    transition={{ type: "spring", bounce: 0.2, duration: 0.6 }}
+                  />
+                )}
+                <span className="relative z-10">{b}</span>
                 {b === "annual" && (
-                  <span className="ml-1.5 rounded-full bg-primary/20 text-primary px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-widest">
+                  <span className="relative z-10 ml-1.5 rounded-full bg-primary/20 text-primary px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-widest">
                     -20%
                   </span>
                 )}
@@ -111,11 +137,14 @@ export default function Pricing() {
                     : "bg-card border-border hover:border-primary/40"
                 }`}
               >
-                <div className="flex items-center justify-between">
+                <div className="flex items-center justify-between relative z-10">
                   <div className="text-sm font-bold tracking-widest uppercase">{t.n}</div>
                   {t.accent && <Chip tone="primary">Most popular</Chip>}
                 </div>
-                <div className="mt-5 flex items-baseline gap-1">
+                {t.n === "Enterprise" && (
+                  <MiniBuilding className="absolute -bottom-4 right-0 w-32 h-auto text-primary opacity-5 pointer-events-none" />
+                )}
+                <div className="mt-5 flex items-baseline gap-1 relative z-10">
                   <div className="text-4xl sm:text-5xl font-extrabold tracking-tight">{p}</div>
                   <div className={`text-sm ${t.accent ? "text-background/60" : "text-muted-foreground"}`}>{u}</div>
                 </div>
@@ -127,7 +156,7 @@ export default function Pricing() {
                 <p className={`mt-3 text-sm ${t.accent ? "text-background/70" : "text-muted-foreground"}`}>
                   {t.d}
                 </p>
-                <ul className="mt-6 space-y-3 flex-1">
+                <ul className="mt-6 space-y-3 flex-1 relative z-10">
                   {t.f.map((f) => (
                     <li key={f} className="flex items-start gap-2 text-sm">
                       <svg
@@ -145,7 +174,7 @@ export default function Pricing() {
                 </ul>
                 <Link
                   to={t.ctaTo}
-                  className={`mt-8 min-h-[48px] rounded-lg py-3 text-sm font-semibold transition active:scale-[0.98] touch-manipulation flex items-center justify-center ${
+                  className={`mt-8 min-h-[48px] rounded-lg py-3 text-sm font-semibold transition active:scale-[0.98] touch-manipulation flex items-center justify-center relative z-10 ${
                     t.accent
                       ? "bg-primary text-primary-foreground hover:brightness-110"
                       : "bg-foreground text-background hover:opacity-90"

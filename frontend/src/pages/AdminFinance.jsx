@@ -227,10 +227,12 @@ export default function AdminFinance() {
                             : 'hover:bg-gray-50/50'
                         }`}
                       >
-                        {row.highlight && (
-                          <td className="absolute left-0 top-0 bottom-0 w-1 bg-red-500"></td>
-                        )}
-                        <td className="px-6 py-5 text-gray-500 font-medium">{row.date}</td>
+                        <td className="px-6 py-5 text-gray-500 font-medium relative">
+                          {row.highlight && (
+                            <div className="absolute left-0 top-0 bottom-0 w-1 bg-red-500"></div>
+                          )}
+                          {row.date}
+                        </td>
                         <td className="px-6 py-5 font-mono text-gray-400 text-xs">{row.id}</td>
                         <td className="px-6 py-5">
                           <div className={`font-semibold ${row.highlight ? 'text-red-600 flex items-center gap-1.5' : 'text-gray-900'}`}>

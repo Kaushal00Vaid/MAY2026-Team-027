@@ -1,15 +1,19 @@
 import { Link } from "react-router-dom";
 import Chip from "./Chip";
+import { CardContainer, CardBody, CardItem } from "@/components/ui/3d-card";
+import { motion } from "framer-motion";
+import { SkylineWatermark } from "@/components/auth/components/AuthDecorations";
 
 function HeroDeviceMock() {
   return (
-    <div className="relative">
-      <div
-        aria-hidden
-        className="absolute -inset-6 bg-gradient-to-tr from-primary/20 via-primary/5 to-transparent rounded-3xl blur-2xl"
-      />
-      <div className="relative rounded-2xl border border-border bg-card shadow-[0_30px_80px_-20px_rgba(0,0,0,0.25)] overflow-hidden">
-        {/* Browser chrome */}
+    <CardContainer className="inter-var w-full py-0">
+      <CardBody className="relative w-full h-auto">
+        <div
+          aria-hidden
+          className="absolute -inset-6 bg-gradient-to-tr from-primary/20 via-primary/5 to-transparent rounded-3xl blur-2xl"
+        />
+        <CardItem translateZ="30" className="relative w-full rounded-2xl border border-border bg-card shadow-[0_30px_80px_-20px_rgba(0,0,0,0.25)] overflow-hidden [transform-style:preserve-3d]">
+          {/* Browser chrome */}
         <div className="h-9 border-b border-border flex items-center px-4 gap-1.5">
           <span className="w-2.5 h-2.5 rounded-full bg-red-400/70" />
           <span className="w-2.5 h-2.5 rounded-full bg-amber-400/70" />
@@ -19,7 +23,7 @@ function HeroDeviceMock() {
           </div>
         </div>
 
-        <div className="grid grid-cols-12 min-h-[420px]">
+        <div className="grid grid-cols-12 min-h-[420px] [transform-style:preserve-3d]">
           {/* Sidebar */}
           <aside className="col-span-3 border-r border-border p-3 space-y-1 bg-stone-50/60">
             {[
@@ -41,26 +45,26 @@ function HeroDeviceMock() {
           </aside>
 
           {/* Main content */}
-          <div className="col-span-9 p-4 space-y-3">
+          <div className="col-span-9 p-4 space-y-3 [transform-style:preserve-3d]">
             {/* KPI cards */}
-            <div className="grid grid-cols-3 gap-2.5">
+            <div className="grid grid-cols-3 gap-2.5 [transform-style:preserve-3d]">
               {[
                 { l: "Collected", v: "₹4.82L", t: "+12%" },
                 { l: "Outstanding", v: "₹86K", t: "-8%" },
                 { l: "Open SLA", v: "14", t: "3 urgent" },
               ].map((k) => (
-                <div key={k.l} className="rounded-lg border border-border p-2.5">
+                <CardItem translateZ="30" key={k.l} className="w-full rounded-lg border border-border p-2.5 bg-stone-50/80 backdrop-blur-sm shadow-md">
                   <div className="text-[9px] font-mono uppercase tracking-widest text-muted-foreground">
                     {k.l}
                   </div>
                   <div className="text-lg font-extrabold mt-0.5">{k.v}</div>
                   <div className="text-[10px] text-primary font-semibold">{k.t}</div>
-                </div>
+                </CardItem>
               ))}
             </div>
 
             {/* Chart */}
-            <div className="rounded-lg border border-border p-3">
+            <CardItem translateZ="60" className="w-full rounded-lg border border-border p-3 bg-stone-50/80 backdrop-blur-sm shadow-xl">
               <div className="flex items-center justify-between mb-2">
                 <div className="text-[10px] font-mono uppercase tracking-widest text-muted-foreground">
                   Collections · Last 30 days
@@ -85,12 +89,12 @@ function HeroDeviceMock() {
                   strokeWidth="1.5"
                 />
               </svg>
-            </div>
+            </CardItem>
 
             {/* Bottom row */}
-            <div className="grid grid-cols-2 gap-2.5">
+            <div className="grid grid-cols-2 gap-2.5 [transform-style:preserve-3d]">
               {/* Complaint ledger */}
-              <div className="rounded-lg border border-border p-3">
+              <CardItem translateZ="30" className="w-full rounded-lg border border-border p-3 bg-stone-50/80 backdrop-blur-sm shadow-lg">
                 <div className="text-[10px] font-mono uppercase tracking-widest text-muted-foreground mb-2">
                   Complaint Ledger
                 </div>
@@ -117,10 +121,10 @@ function HeroDeviceMock() {
                     </span>
                   </div>
                 ))}
-              </div>
+              </CardItem>
 
               {/* Gate heatmap */}
-              <div className="rounded-lg border border-border p-3">
+              <CardItem translateZ="50" className="w-full rounded-lg border border-border p-3 bg-stone-50/80 backdrop-blur-sm shadow-2xl">
                 <div className="text-[10px] font-mono uppercase tracking-widest text-muted-foreground mb-2">
                   Gate · Last hour
                 </div>
@@ -141,14 +145,14 @@ function HeroDeviceMock() {
                   <span>00:00</span>
                   <span>Peak 19:00</span>
                 </div>
-              </div>
+              </CardItem>
             </div>
           </div>
         </div>
-      </div>
+      </CardItem>
 
       {/* Floating notification */}
-      <div className="absolute -bottom-6 -left-6 w-56 rounded-xl border border-border bg-card shadow-2xl p-3 hidden md:block">
+      <CardItem translateZ="60" className="absolute -bottom-6 -left-6 w-56 rounded-xl border border-border bg-card shadow-2xl p-3 hidden md:block">
         <div className="flex items-center gap-2">
           <div className="w-8 h-8 rounded-full bg-emerald-500/20 grid place-items-center">
             <svg
@@ -166,8 +170,9 @@ function HeroDeviceMock() {
             <div className="text-[10px] text-muted-foreground">B-402 · Zomato · 12s ago</div>
           </div>
         </div>
-      </div>
-    </div>
+      </CardItem>
+      </CardBody>
+    </CardContainer>
   );
 }
 
@@ -187,6 +192,9 @@ export default function Hero() {
       {/* Gradient blob */}
       <div aria-hidden className="absolute -top-40 -right-40 w-[560px] h-[560px] rounded-full bg-primary/20 blur-3xl" />
 
+      {/* Skyline watermark */}
+      <SkylineWatermark className="absolute bottom-0 left-0 w-full text-stone-900/[0.03] pointer-events-none" />
+
       <div className="relative mx-auto max-w-7xl px-4 sm:px-5 lg:px-8 pt-12 sm:pt-16 md:pt-24 pb-16 sm:pb-20 md:pb-28">
         <div className="grid lg:grid-cols-12 gap-10 lg:gap-12 items-center">
           {/* Copy */}
@@ -195,8 +203,18 @@ export default function Hero() {
               {/* Cute scribble star */}
               <div className="absolute -top-12 -left-14 hidden md:block text-[#789048]">
                 <svg width="64" height="64" viewBox="0 0 100 100" fill="none">
-                  <path d="M 50 5 L 60 38 L 95 50 L 60 62 L 50 95 L 40 62 L 5 50 L 40 38 Z" stroke="currentColor" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round" />
-                  <path d="M 50 20 L 55 43 L 80 50 L 55 57 L 50 80 L 45 57 L 20 50 L 45 43 Z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                  <motion.path 
+                    initial={{ pathLength: 0 }}
+                    whileInView={{ pathLength: 1 }}
+                    viewport={{ once: true }}
+                    transition={{ duration: 1.5, ease: "easeInOut" }}
+                    d="M 50 5 L 60 38 L 95 50 L 60 62 L 50 95 L 40 62 L 5 50 L 40 38 Z" stroke="currentColor" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round" />
+                  <motion.path 
+                    initial={{ pathLength: 0 }}
+                    whileInView={{ pathLength: 1 }}
+                    viewport={{ once: true }}
+                    transition={{ duration: 1.5, ease: "easeInOut" }}
+                    d="M 50 20 L 55 43 L 80 50 L 55 57 L 50 80 L 45 57 L 20 50 L 45 43 Z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
                 </svg>
               </div>
               
@@ -211,7 +229,12 @@ export default function Hero() {
                     fill="none"
                     preserveAspectRatio="none"
                   >
-                    <path d="M 10 25 C 80 -10, 150 40, 220 5 C 250 -10, 290 20, 290 20 C 250 -5, 100 40, 20 15" stroke="currentColor" strokeWidth="4" strokeLinecap="round" />
+                    <motion.path 
+                      initial={{ pathLength: 0 }}
+                      whileInView={{ pathLength: 1 }}
+                      viewport={{ once: true }}
+                      transition={{ duration: 1.5, ease: "easeInOut" }}
+                      d="M 10 25 C 80 -10, 150 40, 220 5 C 250 -10, 290 20, 290 20 C 250 -5, 100 40, 20 15" stroke="currentColor" strokeWidth="4" strokeLinecap="round" />
                   </svg>
                 </span>
               </h1>
@@ -224,7 +247,12 @@ export default function Hero() {
                 audited
                 {/* Cute circled text */}
                 <svg className="absolute -inset-1 w-[calc(100%+8px)] h-[calc(100%+8px)] text-[#789048]" viewBox="0 0 100 40" fill="none" preserveAspectRatio="none">
-                  <path d="M 50 5 C 20 5, 5 15, 5 20 C 5 25, 20 35, 50 35 C 80 35, 95 25, 95 20 C 95 12, 80 2, 45 8" stroke="currentColor" strokeWidth="3" strokeLinecap="round" />
+                  <motion.path 
+                    initial={{ pathLength: 0 }}
+                    whileInView={{ pathLength: 1 }}
+                    viewport={{ once: true, margin: "-100px" }}
+                    transition={{ duration: 1.5, ease: "easeInOut" }}
+                    d="M 50 5 C 20 5, 5 15, 5 20 C 5 25, 20 35, 50 35 C 80 35, 95 25, 95 20 C 95 12, 80 2, 45 8" stroke="currentColor" strokeWidth="3" strokeLinecap="round" />
                 </svg>
               </span>{" "}
               system of record.
@@ -235,8 +263,18 @@ export default function Hero() {
               <div className="absolute -top-16 left-32 hidden sm:block text-[#789048]">
                 <svg width="80" height="80" viewBox="0 0 100 100" fill="none">
                   {/* Loopy arrow path */}
-                  <path d="M 80 10 C 120 40, 80 80, 50 50 C 20 20, 10 60, 25 90" stroke="currentColor" strokeWidth="4" strokeLinecap="round" />
-                  <path d="M 10 75 L 25 95 L 45 80" stroke="currentColor" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round" />
+                  <motion.path 
+                    initial={{ pathLength: 0 }}
+                    whileInView={{ pathLength: 1 }}
+                    viewport={{ once: true }}
+                    transition={{ duration: 1.5, ease: "easeInOut" }}
+                    d="M 80 10 C 120 40, 80 80, 50 50 C 20 20, 10 60, 25 90" stroke="currentColor" strokeWidth="4" strokeLinecap="round" />
+                  <motion.path 
+                    initial={{ pathLength: 0 }}
+                    whileInView={{ pathLength: 1 }}
+                    viewport={{ once: true }}
+                    transition={{ duration: 0.3, ease: "easeInOut", delay: 1.3 }}
+                    d="M 10 75 L 25 95 L 45 80" stroke="currentColor" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round" />
                 </svg>
               </div>
 
