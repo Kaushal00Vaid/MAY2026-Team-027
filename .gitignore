@@ -4,5 +4,3 @@ env
 .env
 __pycache__
 # *schema.sql
-
-reference/

@@ -1,5 +1,7 @@
+import { useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { Search, Bell, Settings, LogOut, HelpCircle } from "lucide-react";
+import { motion, useScroll, useMotionValueEvent } from "framer-motion";
 
 export default function DashboardLayout({
   sidebarItems,
@@ -7,6 +9,14 @@ export default function DashboardLayout({
   userName = "SocietySync",
   children,
 }) {
+  const scrollRef = useRef(null);
+  const { scrollY } = useScroll({ container: scrollRef });
+  const [scrolled, setScrolled] = useState(false);
+
+  useMotionValueEvent(scrollY, "change", (latest) => {
+    setScrolled(latest > 20);
+  });
+
   return (
     <div className="min-h-screen bg-[#f3f4f6] flex text-[#111827]">
       {/* Sidebar */}
@@ -33,14 +43,21 @@ export default function DashboardLayout({
             <Link
               key={item.label}
               to={item.href || "#"}
-              className={`flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-semibold transition-all duration-200 ${
+              className={`relative flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-semibold transition-all duration-200 ${
                 item.active
-                  ? "bg-primary text-primary-foreground shadow-lg shadow-primary/20"
+                  ? "text-primary-foreground"
                   : "text-white/60 hover:bg-white/5 hover:text-white"
               }`}
             >
-              <item.icon size={18} className={item.active ? "" : "opacity-80"} />
-              {item.label}
+              {item.active && (
+                <motion.div
+                  layoutId="sidebar-active-indicator"
+                  className="absolute inset-0 bg-primary rounded-xl shadow-lg shadow-primary/20"
+                  transition={{ type: "spring", bounce: 0.2, duration: 0.6 }}
+                />
+              )}
+              <item.icon size={18} className={`relative z-10 ${item.active ? "" : "opacity-80"}`} />
+              <span className="relative z-10">{item.label}</span>
             </Link>
           ))}
         </nav>
@@ -65,9 +82,22 @@ export default function DashboardLayout({
       </aside>
 
       {/* Main Content */}
-      <main className="flex-1 flex flex-col min-w-0 bg-[#fbf9f6]">
-        {/* Header */}
-        <header className="h-16 sticky top-0 z-30 bg-white/70 backdrop-blur-xl border-b border-gray-200/50 flex items-center justify-between px-6 shrink-0">
+      <main className="flex-1 flex flex-col min-w-0 bg-[#fbf9f6] relative h-screen">
+        {/* Header (Absolute position for smooth floating) */}
+        <motion.header 
+          animate={{
+            width: scrolled ? "calc(100% - 32px)" : "100%",
+            y: scrolled ? 16 : 0,
+            borderRadius: scrolled ? "9999px" : "0px",
+            left: scrolled ? 16 : 0,
+            paddingLeft: scrolled ? "1.5rem" : "1.5rem",
+            paddingRight: scrolled ? "1.5rem" : "1.5rem",
+          }}
+          transition={{ type: "spring", stiffness: 200, damping: 50 }}
+          className={`h-16 absolute top-0 z-30 flex items-center justify-between shrink-0 mx-auto ${
+            scrolled ? "bg-white/90 backdrop-blur-md shadow-[0_8px_30px_rgb(0,0,0,0.08)] border border-gray-200" : "bg-white/70 backdrop-blur-xl border-b border-gray-200/50"
+          }`}
+        >
           {/* Search */}
           <div className="relative w-80 hidden sm:block group">
             <Search size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400 group-focus-within:text-primary transition-colors" />
@@ -97,10 +127,10 @@ export default function DashboardLayout({
               />
             </div>
           </div>
-        </header>
+        </motion.header>
 
         {/* Page Content */}
-        <div className="flex-1 overflow-y-auto">
+        <div ref={scrollRef} className="flex-1 overflow-y-auto pt-16">
           {children}
         </div>
       </main>

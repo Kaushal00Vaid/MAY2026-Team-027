@@ -1,5 +1,6 @@
 import { useState } from "react";
 import SectionLabel from "./SectionLabel";
+import { motion, AnimatePresence } from "framer-motion";
 
 const items = [
   {
@@ -33,20 +34,30 @@ export default function FAQ() {
         <SectionLabel eyebrow="FAQ" title="Answers before you ask." />
         <div className="mt-8 sm:mt-10 divide-y divide-border border-y border-border">
           {items.map((it, i) => (
-            <button
+            <div
               key={it.q}
-              onClick={() => setOpen(open === i ? -1 : i)}
-              aria-expanded={open === i}
-              className="w-full text-left py-5 min-h-[64px] flex items-start gap-4 group active:bg-accent/40 touch-manipulation transition"
+              onMouseEnter={() => setOpen(i)}
+              onMouseLeave={() => setOpen(-1)}
+              className="w-full text-left py-5 min-h-[64px] flex items-start gap-4 group cursor-pointer touch-manipulation transition"
             >
               <div className="flex-1">
                 <div className="font-semibold text-base group-hover:text-primary transition">{it.q}</div>
-                {open === i && (
-                  <p className="mt-3 text-sm text-muted-foreground leading-relaxed">{it.a}</p>
-                )}
+                <AnimatePresence>
+                  {open === i && (
+                    <motion.div
+                      initial={{ height: 0, opacity: 0 }}
+                      animate={{ height: "auto", opacity: 1 }}
+                      exit={{ height: 0, opacity: 0 }}
+                      transition={{ duration: 0.2 }}
+                      className="overflow-hidden"
+                    >
+                      <p className="mt-3 text-sm text-muted-foreground leading-relaxed">{it.a}</p>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
               </div>
               <div
-                className={`w-7 h-7 rounded-full border border-border grid place-items-center shrink-0 transition ${
+                className={`w-7 h-7 rounded-full border border-border grid place-items-center shrink-0 transition-transform duration-200 ${
                   open === i ? "bg-primary text-primary-foreground border-primary rotate-45" : ""
                 }`}
               >
@@ -54,7 +65,7 @@ export default function FAQ() {
                   <path d="M12 5v14M5 12h14" strokeLinecap="round" />
                 </svg>
               </div>
-            </button>
+            </div>
           ))}
         </div>
       </div>

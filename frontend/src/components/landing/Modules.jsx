@@ -2,6 +2,8 @@ import { useState } from "react";
 import { Link } from "react-router-dom";
 import SectionLabel from "./SectionLabel";
 import Chip from "./Chip";
+import { CardContainer, CardBody, CardItem } from "@/components/ui/3d-card";
+import { motion } from "framer-motion";
 
 /* ── Screen previews ─────────────────────────────────────────── */
 function AdminScreenPreview() {
@@ -172,7 +174,25 @@ export default function Modules() {
     <section id="modules" className="border-b border-border/70 bg-stone-50/60">
       <div className="mx-auto max-w-7xl px-4 sm:px-5 lg:px-8 py-16 sm:py-20 md:py-28">
         <div className="flex flex-col md:flex-row md:items-end md:justify-between gap-6">
-          <SectionLabel eyebrow="Built for three audiences" title="One system. Three purpose-built cockpits." />
+          <SectionLabel 
+            eyebrow="Built for three audiences" 
+            title={
+              <>
+                One system. Three purpose-built{" "}
+                <span className="relative inline-block px-1">
+                  cockpits.
+                  <svg className="absolute -inset-2 w-[calc(100%+16px)] h-[calc(100%+16px)] text-[#789048]" viewBox="0 0 100 40" fill="none" preserveAspectRatio="none">
+                    <motion.path 
+                      initial={{ pathLength: 0 }}
+                      whileInView={{ pathLength: 1 }}
+                      viewport={{ once: true, margin: "-50px" }}
+                      transition={{ duration: 1.5, ease: "easeInOut" }}
+                      d="M 50 5 C 20 5, 5 15, 5 20 C 5 25, 20 35, 50 35 C 80 35, 95 25, 95 20 C 95 12, 80 2, 45 8" stroke="currentColor" strokeWidth="3" strokeLinecap="round" />
+                  </svg>
+                </span>
+              </>
+            } 
+          />
           <div
             role="tablist"
             className="flex gap-1 bg-card border border-border rounded-lg p-1 w-full md:w-auto overflow-x-auto no-scrollbar"
@@ -183,11 +203,18 @@ export default function Modules() {
                 role="tab"
                 aria-selected={active === r.k}
                 onClick={() => setActive(r.k)}
-                className={`flex-1 md:flex-none min-h-[40px] px-4 py-2 rounded-md text-xs font-semibold capitalize whitespace-nowrap transition active:scale-[0.97] touch-manipulation ${
-                  active === r.k ? "bg-foreground text-background" : "text-muted-foreground hover:text-foreground"
+                className={`relative flex-1 md:flex-none min-h-[40px] px-4 py-2 rounded-md text-xs font-semibold capitalize whitespace-nowrap transition active:scale-[0.97] touch-manipulation flex items-center justify-center ${
+                  active === r.k ? "text-background" : "text-muted-foreground hover:text-foreground"
                 }`}
               >
-                {r.k}
+                {active === r.k && (
+                  <motion.div
+                    layoutId="modules-tab-indicator"
+                    className="absolute inset-0 rounded-md bg-foreground"
+                    transition={{ type: "spring", bounce: 0.2, duration: 0.6 }}
+                  />
+                )}
+                <span className="relative z-10">{r.k}</span>
               </button>
             ))}
           </div>
@@ -220,11 +247,13 @@ export default function Modules() {
 
           {/* Screen preview */}
           <div className="lg:col-span-7">
-            <div className="rounded-2xl border border-border bg-card overflow-hidden shadow-xl">
+            <CardContainer className="inter-var w-full py-0">
+              <CardBody className="relative w-full h-auto">
+            <CardItem translateZ="30" className="relative w-full rounded-2xl border border-border bg-card shadow-[0_30px_80px_-20px_rgba(0,0,0,0.25)] overflow-hidden">
               <div className="h-8 border-b border-border flex items-center px-3 gap-1.5">
-                <span className="w-2 h-2 rounded-full bg-stone-200" />
-                <span className="w-2 h-2 rounded-full bg-stone-200" />
-                <span className="w-2 h-2 rounded-full bg-stone-200" />
+                <span className="w-2.5 h-2.5 rounded-full bg-red-400/70" />
+                <span className="w-2.5 h-2.5 rounded-full bg-amber-400/70" />
+                <span className="w-2.5 h-2.5 rounded-full bg-emerald-400/70" />
                 <div className="ml-3 text-[10px] font-mono text-muted-foreground capitalize">
                   {current.k}.societysync.app
                 </div>
@@ -246,7 +275,9 @@ export default function Modules() {
                 {current.k === "resident" && <ResidentScreenPreview />}
                 {current.k === "security" && <SecurityScreenPreview />}
               </div>
-            </div>
+            </CardItem>
+            </CardBody>
+            </CardContainer>
           </div>
         </div>
       </div>
