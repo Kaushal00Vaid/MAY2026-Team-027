@@ -1,0 +1,1154 @@
+openapi: "3.0.3"
+
+info:
+  title: SocietySync API
+  description: |
+    Backend REST API for SocietySync — a residential society management platform.
+
+    ## User Story Mapping
+    | ID | User Story | Endpoint(s) |
+    |----|------------|-------------|
+    | US-01 | As a Resident, I want to register an account, So that I can access society services. | POST /auth/signup |
+    | US-02 | As a registered user, I want to log in with email & password, So that my account remains secure. | POST /auth/login/password |
+    | US-03 | As a user, I want to log in via OTP sent to my phone, So that I can access my account without remembering a password. | POST /auth/otp/request, POST /auth/otp/verify |
+    | US-04 | As a logged-in user, I want to view my profile, So that I can ensure my details are up to date. | GET /auth/me |
+    | US-05 | As a Resident, I want to categorize my complaint with a description, So that the maintenance team can resolve it efficiently. | POST /api/helpdesk/complaints |
+    | US-06 | As a staff member, I want to view all complaints, So that I can track pending issues. | GET /api/helpdesk/complaints |
+    | US-07 | As a Support Staff Member, I want to update the status of my assigned tasks to "In Progress" or "Resolved", So that management and residents are kept in the loop in real-time. | PATCH /api/helpdesk/complaints/{id} |
+    | US-08 | As a resident or staff, I want to comment on a complaint, So that I can provide updates or ask for clarification. | POST/GET /api/helpdesk/complaints/{id}/comments |
+    | US-09 | As a super admin, I want to view all registered users, So that I can oversee community access. | GET /users/ |
+    | US-10 | As an admin, I want to update a user's role, So that I can grant appropriate permissions to staff and committee members. | PATCH /users/{user_id}/role |
+    | US-11 | As an admin, I want to record income transactions, So that I can maintain a digital ledger of collected funds. | POST /api/finance/transactions |
+    | US-12 | As an admin, I want to record expense transactions, So that I can track society expenditures. | POST /api/finance/transactions |
+    | US-13 | As a Society President, I want to view a dynamic dashboard highlighting total funds collected vs. pending dues, So that I can instantly assess the financial health of the society. | GET /api/finance/transactions |
+
+  version: "1.0.0"
+
+servers:
+  - url: http://localhost:8000
+    description: Local development server
+
+tags:
+  - name: Health
+    description: API health checks
+  - name: Authentication
+    description: User registration, login (password & OTP), token management
+  - name: Users
+    description: User listing and role management (admin only)
+  - name: Helpdesk
+    description: Complaint CRUD and comments
+  - name: Finance
+    description: Society income/expense transactions (admin only)
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Security
+# ──────────────────────────────────────────────────────────────────────────────
+
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: Short-lived JWT access token. Obtain via /auth/login/password or /auth/otp/verify.
+
+    RefreshCookie:
+      type: apiKey
+      in: cookie
+      name: ss_refresh_token
+      description: HttpOnly refresh token cookie set by login endpoints.
+
+  # ── Reusable schemas ────────────────────────────────────────────────────────
+
+  schemas:
+
+    # Auth ────────────────────────────────────────────────────────────────────
+
+    SignupRequest:
+      type: object
+      required: [first_name, last_name, phone_number]
+      properties:
+        first_name:
+          type: string
+          maxLength: 75
+          example: John
+        last_name:
+          type: string
+          maxLength: 75
+          example: Doe
+        email:
+          type: string
+          format: email
+          example: john@example.com
+        phone_number:
+          type: string
+          description: "International format e.g. +919876543210"
+          example: "+919876543210"
+        password:
+          type: string
+          minLength: 8
+          example: "Secure@123"
+        confirm_password:
+          type: string
+          example: "Secure@123"
+        profile_picture_url:
+          type: string
+          nullable: true
+        flat_number:
+          type: string
+          nullable: true
+          example: "A-102"
+        building_block:
+          type: string
+          nullable: true
+          example: "A"
+        staff_type:
+          type: string
+          nullable: true
+        emergency_contact:
+          type: string
+          nullable: true
+
+    SignupResponse:
+      type: object
+      properties:
+        message:
+          type: string
+          example: "Account created. You can now log in."
+        user_id:
+          type: integer
+          example: 5
+        phone_number:
+          type: string
+          example: "+919876543210"
+
+    PasswordLoginRequest:
+      type: object
+      required: [email, password]
+      properties:
+        email:
+          type: string
+          format: email
+          example: admin@example.com
+        password:
+          type: string
+          example: "Secure@123"
+
+    OTPRequestSchema:
+      type: object
+      required: [phone_number]
+      properties:
+        phone_number:
+          type: string
+          example: "+919876543210"
+
+    OTPVerifyRequest:
+      type: object
+      required: [phone_number, otp_code]
+      properties:
+        phone_number:
+          type: string
+          example: "+919876543210"
+        otp_code:
+          type: string
+          pattern: "^\\d{6}$"
+          example: "482910"
+
+    TokenResponse:
+      type: object
+      properties:
+        access_token:
+          type: string
+          example: "eyJhbGciOiJIUzI1NiIsInR..."
+        token_type:
+          type: string
+          example: bearer
+        expires_in:
+          type: integer
+          description: Seconds until access token expires
+          example: 900
+
+    UserMeResponse:
+      type: object
+      properties:
+        user_id:
+          type: integer
+          example: 1
+        first_name:
+          type: string
+          example: Alice
+        last_name:
+          type: string
+          example: Resident
+        email:
+          type: string
+          nullable: true
+          example: alice@example.com
+        phone_number:
+          type: string
+          example: "+919876543210"
+        profile_picture_url:
+          type: string
+          nullable: true
+        flat_number:
+          type: string
+          nullable: true
+          example: "B-204"
+        building_block:
+          type: string
+          nullable: true
+          example: "B"
+        staff_type:
+          type: string
+          nullable: true
+        emergency_contact:
+          type: string
+          nullable: true
+        is_active:
+          type: boolean
+          example: true
+        is_phone_verified:
+          type: boolean
+          example: true
+        roles:
+          type: array
+          items:
+            type: string
+          example: ["flat_owner"]
+        created_at:
+          type: string
+          format: date-time
+          example: "2026-07-01T10:00:00+00:00"
+
+    # Users ───────────────────────────────────────────────────────────────────
+
+    UpdateUserRoleRequest:
+      type: object
+      required: [role_name]
+      properties:
+        role_name:
+          type: string
+          enum: [super_admin, admin, committee_member, flat_owner, staff]
+          example: admin
+
+    # Helpdesk ────────────────────────────────────────────────────────────────
+
+    ComplaintCreate:
+      type: object
+      required: [category, description]
+      properties:
+        title:
+          type: string
+          maxLength: 255
+          nullable: true
+          example: "Water Leakage"
+        category:
+          type: string
+          maxLength: 100
+          example: "Plumbing"
+        description:
+          type: string
+          example: "Pipe burst in Block A lobby"
+        location:
+          type: string
+          maxLength: 255
+          nullable: true
+          example: "Block A, Ground Floor"
+        priority:
+          type: string
+          enum: [Critical, High, Medium, Low, Normal]
+          default: Normal
+          example: High
+        latitude:
+          type: number
+          nullable: true
+          example: 19.0760
+        longitude:
+          type: number
+          nullable: true
+          example: 72.8777
+
+    ComplaintUpdate:
+      type: object
+      properties:
+        title:
+          type: string
+          maxLength: 255
+          nullable: true
+        category:
+          type: string
+          maxLength: 100
+          nullable: true
+        description:
+          type: string
+          nullable: true
+        location:
+          type: string
+          maxLength: 255
+          nullable: true
+        priority:
+          type: string
+          enum: [Critical, High, Medium, Low, Normal]
+          nullable: true
+        status:
+          type: string
+          description: |
+            Allowed values: Open, In Progress, Resolved, Closed.
+            NOTE (Bug TC-HD-07): Schema currently types this as Optional[str]
+            without a Literal constraint — service layer enforces allowed values.
+          enum: ["Open", "In Progress", "Resolved", "Closed"]
+          nullable: true
+          example: "In Progress"
+        latitude:
+          type: number
+          nullable: true
+        longitude:
+          type: number
+          nullable: true
+        assigned_to:
+          type: integer
+          nullable: true
+        parent_id:
+          type: integer
+          nullable: true
+        work_order_notes:
+          type: string
+          nullable: true
+        expected_version:
+          type: integer
+          nullable: true
+          description: Optimistic concurrency control. If provided and does not match current version, returns 409.
+
+    ComplaintResponse:
+      type: object
+      properties:
+        id:
+          type: integer
+          example: 3
+        user_id:
+          type: integer
+          example: 1
+        title:
+          type: string
+          nullable: true
+          example: "Water Leakage"
+        category:
+          type: string
+          example: "Plumbing"
+        description:
+          type: string
+          example: "Pipe burst in Block A lobby"
+        location:
+          type: string
+          nullable: true
+        priority:
+          type: string
+          example: "High"
+        status:
+          type: string
+          example: "Open"
+        latitude:
+          type: number
+          nullable: true
+        longitude:
+          type: number
+          nullable: true
+        assigned_to:
+          type: integer
+          nullable: true
+        sla_deadline:
+          type: string
+          format: date-time
+          nullable: true
+        parent_id:
+          type: integer
+          nullable: true
+        work_order_notes:
+          type: string
+          nullable: true
+        version:
+          type: integer
+          example: 1
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    CommentCreate:
+      type: object
+      required: [body]
+      properties:
+        body:
+          type: string
+          minLength: 1
+          maxLength: 2000
+          example: "Issue acknowledged. Team dispatched."
+
+    CommentResponse:
+      type: object
+      properties:
+        id:
+          type: integer
+          example: 1
+        complaint_id:
+          type: integer
+          example: 3
+        user_id:
+          type: integer
+          example: 1
+        body:
+          type: string
+          example: "Issue acknowledged. Team dispatched."
+        created_at:
+          type: string
+          format: date-time
+        author_name:
+          type: string
+          nullable: true
+          example: "Bob Admin"
+
+    # Finance ─────────────────────────────────────────────────────────────────
+
+    TransactionCreate:
+      type: object
+      required: [unit_or_vendor, category, amount, type]
+      properties:
+        unit_or_vendor:
+          type: string
+          minLength: 1
+          maxLength: 100
+          description: "Flat unit (e.g. A-102) or vendor name (e.g. Vendor-04)"
+          example: "A-102"
+        category:
+          type: string
+          minLength: 1
+          maxLength: 100
+          example: "Maintenance Fee"
+        amount:
+          type: number
+          format: decimal
+          exclusiveMinimum: 0
+          example: 2400.00
+        type:
+          type: string
+          enum: [income, expense]
+          example: income
+        description:
+          type: string
+          maxLength: 1000
+          nullable: true
+          example: "Monthly maintenance for July 2026"
+        transaction_date:
+          type: string
+          format: date-time
+          nullable: true
+          description: Defaults to current UTC time if omitted.
+
+    TransactionResponse:
+      type: object
+      properties:
+        id:
+          type: integer
+          example: 1
+        unit_or_vendor:
+          type: string
+          example: "A-102"
+        category:
+          type: string
+          example: "Maintenance Fee"
+        amount:
+          type: string
+          description: Decimal string from DB
+          example: "2400"
+        type:
+          type: string
+          example: income
+        description:
+          type: string
+          nullable: true
+        recorded_by:
+          type: integer
+          nullable: true
+          example: 99
+        transaction_date:
+          type: string
+          format: date-time
+        created_at:
+          type: string
+          format: date-time
+
+    # Errors ──────────────────────────────────────────────────────────────────
+
+    Error400:
+      type: object
+      properties:
+        detail:
+          type: string
+          example: "Invalid status. Must be one of: Open, In Progress, Resolved, Closed"
+
+    Error401:
+      type: object
+      properties:
+        detail:
+          type: string
+          example: "Authentication required."
+
+    Error403:
+      type: object
+      properties:
+        detail:
+          type: string
+          example: "Permission denied."
+
+    Error404:
+      type: object
+      properties:
+        detail:
+          type: string
+          example: "Complaint not found"
+
+    Error409:
+      type: object
+      properties:
+        detail:
+          type: string
+          example: "Conflict: Ticket modified by another user."
+
+    Error422:
+      type: object
+      properties:
+        detail:
+          type: array
+          items:
+            type: object
+            properties:
+              loc:
+                type: array
+                items:
+                  type: string
+              msg:
+                type: string
+              type:
+                type: string
+
+    Error429:
+      type: object
+      properties:
+        detail:
+          type: string
+          example: "Rate limit exceeded."
+
+  # ── Reusable responses ──────────────────────────────────────────────────────
+
+  responses:
+    Unauthorized:
+      description: Missing or invalid access token
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error401'
+    Forbidden:
+      description: Insufficient role permissions
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error403'
+    NotFound:
+      description: Resource not found
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error404'
+    UnprocessableEntity:
+      description: Request body / query param validation failed
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error422'
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Paths
+# ──────────────────────────────────────────────────────────────────────────────
+
+paths:
+
+  # ── Health ─────────────────────────────────────────────────────────────────
+
+  /:
+    get:
+      tags: [Health]
+      summary: Root health check
+      operationId: root_health
+      responses:
+        "200":
+          description: API is running
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status: { type: string, example: success }
+                  message: { type: string, example: "SocietySync API is running." }
+
+  /health:
+    get:
+      tags: [Health]
+      summary: Health endpoint
+      operationId: health_check
+      responses:
+        "200":
+          description: Healthy
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status: { type: string, example: healthy }
+
+  # ── Authentication ──────────────────────────────────────────────────────────
+
+  /auth/signup:
+    post:
+      tags: [Authentication]
+      summary: Register a new user
+      operationId: signup
+      description: |
+        Creates a new user account with the default role **flat_owner**.
+        An admin can later elevate the role via PATCH /users/{user_id}/role.
+        User Story: US-01
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SignupRequest'
+      responses:
+        "201":
+          description: User created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SignupResponse'
+        "409":
+          description: Email or phone already registered
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error400'
+        "422":
+          $ref: '#/components/responses/UnprocessableEntity'
+
+  /auth/login/password:
+    post:
+      tags: [Authentication]
+      summary: Login with email and password
+      operationId: login_password
+      description: |
+        Authenticates with email + password. Returns a JWT access token in the
+        response body and sets an HttpOnly refresh-token cookie.
+        User Story: US-02
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PasswordLoginRequest'
+      responses:
+        "200":
+          description: Login successful
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TokenResponse'
+          headers:
+            Set-Cookie:
+              description: HttpOnly ss_refresh_token cookie
+              schema: { type: string }
+        "401":
+          description: Invalid credentials
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error401'
+        "422":
+          $ref: '#/components/responses/UnprocessableEntity'
+
+  /auth/otp/request:
+    post:
+      tags: [Authentication]
+      summary: Request OTP for phone login
+      operationId: otp_request
+      description: |
+        Sends a 6-digit OTP to the given phone number.
+        Rate-limited to **3 requests per 10 minutes** per IP.
+        User Story: US-03
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/OTPRequestSchema'
+      responses:
+        "200":
+          description: OTP sent
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message: { type: string, example: "OTP sent successfully. Valid for 10 minutes." }
+        "404":
+          $ref: '#/components/responses/NotFound'
+        "422":
+          $ref: '#/components/responses/UnprocessableEntity'
+        "429":
+          description: Rate limit exceeded
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error429'
+
+  /auth/otp/verify:
+    post:
+      tags: [Authentication]
+      summary: Verify OTP and obtain tokens
+      operationId: otp_verify
+      description: |
+        Verifies the OTP and issues access + refresh tokens on success.
+        Also marks the phone number as verified on first successful login.
+        User Story: US-03
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/OTPVerifyRequest'
+      responses:
+        "200":
+          description: OTP verified
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TokenResponse'
+          headers:
+            Set-Cookie:
+              description: HttpOnly ss_refresh_token cookie
+              schema: { type: string }
+        "401":
+          description: OTP invalid or expired
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error401'
+        "422":
+          $ref: '#/components/responses/UnprocessableEntity'
+
+  /auth/refresh:
+    post:
+      tags: [Authentication]
+      summary: Refresh access token
+      operationId: refresh_token
+      description: |
+        Silently refreshes the access token using the HttpOnly refresh-token cookie.
+        Implements **token rotation** — the old refresh token is revoked and a
+        new one is issued.
+      security:
+        - RefreshCookie: []
+      responses:
+        "200":
+          description: New access token
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TokenResponse'
+        "401":
+          description: No or invalid refresh token cookie
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error401'
+
+  /auth/logout:
+    post:
+      tags: [Authentication]
+      summary: Logout and revoke refresh token
+      operationId: logout
+      description: Revokes the refresh token cookie. Access token expiry is handled client-side.
+      security:
+        - RefreshCookie: []
+      responses:
+        "200":
+          description: Logged out (always returns 200, even if no cookie present)
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message: { type: string, example: "Logged out successfully." }
+
+  /auth/me:
+    get:
+      tags: [Authentication]
+      summary: Get current user profile
+      operationId: get_me
+      description: |
+        Returns the authenticated user's full profile including roles.
+        User Story: US-04
+      security:
+        - BearerAuth: []
+      responses:
+        "200":
+          description: User profile
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserMeResponse'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+
+  # ── Users ───────────────────────────────────────────────────────────────────
+
+  /users/:
+    get:
+      tags: [Users]
+      summary: List all registered users
+      operationId: list_users
+      description: |
+        Returns a paginated list of all users with their roles.
+        **Requires role:** super_admin.
+        User Story: US-09
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: skip
+          in: query
+          schema: { type: integer, minimum: 0, default: 0 }
+        - name: limit
+          in: query
+          schema: { type: integer, minimum: 1, maximum: 200, default: 50 }
+      responses:
+        "200":
+          description: List of users
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/UserMeResponse'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+
+  /users/{user_id}/role:
+    patch:
+      tags: [Users]
+      summary: Update a user's role
+      operationId: patch_user_role
+      description: |
+        Replaces the target user's role. Only super_admin can assign super_admin
+        role. Admin cannot modify another super_admin's role.
+        **Requires role:** super_admin or admin.
+        User Story: US-10
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: user_id
+          in: path
+          required: true
+          schema: { type: integer }
+          example: 5
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateUserRoleRequest'
+      responses:
+        "200":
+          description: Updated user profile
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserMeResponse'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "404":
+          $ref: '#/components/responses/NotFound'
+        "422":
+          $ref: '#/components/responses/UnprocessableEntity'
+
+  # ── Helpdesk ────────────────────────────────────────────────────────────────
+
+  /api/helpdesk/complaints:
+    post:
+      tags: [Helpdesk]
+      summary: Create a new complaint
+      operationId: create_complaint
+      description: |
+        Submits a new helpdesk complaint. SLA deadline is auto-calculated
+        from priority (Critical=4h, High=24h, Medium=48h, Low=72h, Normal=48h).
+        User Story: US-05
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ComplaintCreate'
+      responses:
+        "201":
+          description: Complaint created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ComplaintResponse'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "422":
+          $ref: '#/components/responses/UnprocessableEntity'
+
+    get:
+      tags: [Helpdesk]
+      summary: List all complaints
+      operationId: list_complaints
+      description: |
+        Returns all complaints ordered by creation date (newest first).
+        User Story: US-06
+      security:
+        - BearerAuth: []
+      responses:
+        "200":
+          description: List of complaints
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/ComplaintResponse'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+
+  /api/helpdesk/complaints/{complaint_id}:
+    get:
+      tags: [Helpdesk]
+      summary: Get a single complaint
+      operationId: get_complaint
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: complaint_id
+          in: path
+          required: true
+          schema: { type: integer }
+      responses:
+        "200":
+          description: Complaint details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ComplaintResponse'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "404":
+          $ref: '#/components/responses/NotFound'
+
+    patch:
+      tags: [Helpdesk]
+      summary: Update a complaint
+      operationId: update_complaint
+      description: |
+        Partially updates a complaint. Allowed statuses: Open, In Progress,
+        Resolved, Closed. Supports optimistic concurrency via expected_version.
+        User Story: US-07
+
+        **Known Bug (TC-HD-07):** ComplaintUpdate.status is Optional[str] in
+        the Pydantic schema — invalid values are rejected only by the service
+        layer (HTTP 400), not at the schema level (HTTP 422). Fix: use
+        Literal type for status.
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: complaint_id
+          in: path
+          required: true
+          schema: { type: integer }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ComplaintUpdate'
+      responses:
+        "200":
+          description: Updated complaint
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ComplaintResponse'
+        "400":
+          description: Invalid status value
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error400'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "404":
+          $ref: '#/components/responses/NotFound'
+        "409":
+          description: Optimistic lock conflict
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error409'
+        "422":
+          $ref: '#/components/responses/UnprocessableEntity'
+
+  /api/helpdesk/complaints/{complaint_id}/comments:
+    post:
+      tags: [Helpdesk]
+      summary: Add a comment to a complaint
+      operationId: add_comment
+      description: User Story — US-08
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: complaint_id
+          in: path
+          required: true
+          schema: { type: integer }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CommentCreate'
+      responses:
+        "201":
+          description: Comment added
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CommentResponse'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "404":
+          $ref: '#/components/responses/NotFound'
+        "422":
+          $ref: '#/components/responses/UnprocessableEntity'
+
+    get:
+      tags: [Helpdesk]
+      summary: List comments for a complaint
+      operationId: get_comments
+      description: User Story — US-08
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: complaint_id
+          in: path
+          required: true
+          schema: { type: integer }
+      responses:
+        "200":
+          description: List of comments
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/CommentResponse'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "404":
+          $ref: '#/components/responses/NotFound'
+
+  # ── Finance ─────────────────────────────────────────────────────────────────
+
+  /api/finance/transactions:
+    get:
+      tags: [Finance]
+      summary: List recent transactions
+      operationId: get_transactions
+      description: |
+        Returns society financial transactions ordered by date (newest first).
+        Optionally filter by type (income or expense). Supports pagination.
+        **Requires role:** admin, super_admin, or committee_member.
+        User Stories: US-11, US-12, US-13
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: type
+          in: query
+          required: false
+          description: "Filter by transaction type"
+          schema:
+            type: string
+            enum: [income, expense]
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 10
+        - name: offset
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 0
+            default: 0
+      responses:
+        "200":
+          description: List of transactions
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/TransactionResponse'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "422":
+          $ref: '#/components/responses/UnprocessableEntity'
+
+    post:
+      tags: [Finance]
+      summary: Record a new transaction
+      operationId: create_transaction
+      description: |
+        Records a new income or expense transaction for the society.
+        Amount must be positive; direction is expressed via `type`.
+        **Requires role:** admin, super_admin, or committee_member.
+        User Stories: US-11, US-12
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TransactionCreate'
+      responses:
+        "201":
+          description: Transaction created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TransactionResponse'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "422":
+          $ref: '#/components/responses/UnprocessableEntity'
