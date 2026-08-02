@@ -1,18 +1,15 @@
-from fastapi import FastAPI
+"""
+main.py — Backend entry point.
 
-# Initialize the FastAPI app
-app = FastAPI(
-    title="Backend API",
-    description="Minimal FastAPI setup to verify the development server.",
-    version="0.1.0"
-)
+Run with:
+    uvicorn main:app --reload
+    or
+    python main.py
+"""
 
-# Root endpoint
-@app.get("/")
-def read_root():
-    return {"status": "success", "message": "FastAPI development server is running!"}
+import uvicorn
+from app.main import app  # noqa: F401 — re-exported for uvicorn
 
-# A simple health check endpoint
-@app.get("/health")
-def health_check():
-    return {"status": "healthy"}
+
+if __name__ == "__main__":
+    uvicorn.run("app.main:app", host="0.0.0.0", port=8000, reload=True)

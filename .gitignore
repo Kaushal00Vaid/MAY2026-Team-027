@@ -4,3 +4,5 @@ env
 .env
 __pycache__
 # *schema.sql
+
+temp.txt
