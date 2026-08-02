@@ -16,7 +16,8 @@ import {
   ChevronRight,
   AlertTriangle,
   CheckCircle2,
-  X
+  X,
+  UserCog
 } from "lucide-react";
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from 'recharts';
 import DashboardLayout from "@/components/layout/DashboardLayout";
@@ -29,6 +30,7 @@ const sidebarItems = [
   { label: "Amenities", icon: CalendarCheck, active: false, href: "/admin/amenities" },
   { label: "Community", icon: Users, active: false, href: "/admin/community" },
   { label: "Analytics", icon: BarChart3, active: false, href: "/admin/analytics" },
+  { label: "User Roles", icon: UserCog, active: false, href: "/admin/users" },
 ];
 
 const allocationData = [

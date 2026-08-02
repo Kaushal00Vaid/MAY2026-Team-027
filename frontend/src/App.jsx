@@ -27,11 +27,14 @@ import StaffMaintenance from "@/pages/StaffMaintenance";
 import StaffOperations from "@/pages/StaffOperations";
 import StaffInventory from "@/pages/StaffInventory";
 import StaffRoster from "@/pages/StaffRoster";
+import AdminUserManagement from "@/pages/AdminUserManagement";
 
 // Role constants
 const ADMIN_ROLES = ["super_admin", "admin", "committee_member"];
 const RESIDENT_ROLES = ["flat_owner", "resident_rental"];
 const STAFF_ROLES = ["support_staff"];
+const SUPER_ADMIN_ROLES = ["super_admin"];
+
 
 function App() {
   return (
@@ -77,6 +80,9 @@ function App() {
           } />
           <Route path="/admin/analytics" element={
             <ProtectedRoute allowedRoles={ADMIN_ROLES}><AdminAnalytics /></ProtectedRoute>
+          } />
+          <Route path="/admin/users" element={
+            <ProtectedRoute allowedRoles={SUPER_ADMIN_ROLES}><AdminUserManagement /></ProtectedRoute>
           } />
 
           {/* Resident routes */}

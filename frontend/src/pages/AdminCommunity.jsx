@@ -14,7 +14,8 @@ import {
   MoreHorizontal,
   Plus,
   CheckCircle2,
-  X
+  X,
+  UserCog
 } from "lucide-react";
 import DashboardLayout from "@/components/layout/DashboardLayout";
 
@@ -26,6 +27,7 @@ const sidebarItems = [
   { label: "Amenities", icon: CalendarCheck, active: false, href: "/admin/amenities" },
   { label: "Community", icon: Users, active: true, href: "/admin/community" },
   { label: "Analytics", icon: BarChart3, active: false, href: "/admin/analytics" },
+  { label: "User Roles", icon: UserCog, active: false, href: "/admin/users" },
 ];
 
 const discussions = [

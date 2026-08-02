@@ -16,7 +16,8 @@ import {
   Clock,
   MapPin,
   Plus,
-  X
+  X,
+  UserCog
 } from "lucide-react";
 import DashboardLayout from "@/components/layout/DashboardLayout";
 
@@ -28,6 +29,7 @@ const sidebarItems = [
   { label: "Amenities", icon: CalendarCheck, active: true, href: "/admin/amenities" },
   { label: "Community", icon: Users, active: false, href: "/admin/community" },
   { label: "Analytics", icon: BarChart3, active: false, href: "/admin/analytics" },
+  { label: "User Roles", icon: UserCog, active: false, href: "/admin/users" },
 ];
 
 export default function AdminAmenities() {
