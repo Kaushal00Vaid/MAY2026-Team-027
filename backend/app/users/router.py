@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
 
 from app.auth import schemas as auth_schemas
@@ -9,6 +9,18 @@ from app.dependencies import require_roles
 from app.users import schemas, service
 
 router = APIRouter()
+
+
+@router.get("/", response_model=list[auth_schemas.UserMeResponse])
+def list_users(
+    skip: int = Query(0, ge=0),
+    limit: int = Query(50, ge=1, le=200),
+    current_user: User = Depends(require_roles("super_admin")),
+    db: Session = Depends(get_db),
+):
+    """List all registered users. Super admin only."""
+    users = service.list_all_users(db, skip=skip, limit=limit)
+    return [auth_schemas.UserMeResponse(**get_user_profile(u)) for u in users]
 
 
 @router.patch("/{user_id}/role", response_model=auth_schemas.UserMeResponse)

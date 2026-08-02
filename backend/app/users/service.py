@@ -1,4 +1,4 @@
-from typing import Optional
+from typing import Optional, List
 
 from fastapi import HTTPException, status
 from sqlalchemy.orm import Session, joinedload
@@ -14,6 +14,18 @@ def _get_user_with_roles(db: Session, user_id: int) -> Optional[User]:
         .options(joinedload(User.roles).joinedload(UserRole.role))
         .filter(User.user_id == user_id)
         .first()
+    )
+
+
+def list_all_users(db: Session, skip: int = 0, limit: int = 50) -> List[User]:
+    """Return a paginated list of all users with their roles eager-loaded."""
+    return (
+        db.query(User)
+        .options(joinedload(User.roles).joinedload(UserRole.role))
+        .order_by(User.created_at.desc())
+        .offset(skip)
+        .limit(limit)
+        .all()
     )
 
 
