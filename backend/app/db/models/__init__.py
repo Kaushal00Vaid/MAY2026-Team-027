@@ -7,6 +7,7 @@ from app.db.models.otp import OTPRecord, OTPPurpose  # noqa: F401
 from app.db.models.token import RefreshToken  # noqa: F401
 from app.db.models.complaint import Complaint  # noqa: F401
 from app.db.models.complaint_comment import ComplaintComment  # noqa: F401
+from app.db.models.transaction import Transaction, TransactionType  # noqa: F401
 
 __all__ = [
     "User",
@@ -18,4 +19,6 @@ __all__ = [
     "RefreshToken",
     "Complaint",
     "ComplaintComment",
+    "Transaction",
+    "TransactionType",
 ]
