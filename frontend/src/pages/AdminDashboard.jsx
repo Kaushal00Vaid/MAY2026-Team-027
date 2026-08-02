@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import {
   LayoutDashboard,
   WalletCards,
@@ -18,6 +18,7 @@ import {
 } from "lucide-react";
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import DashboardLayout from "@/components/layout/DashboardLayout";
+import { getTransactions } from "@/api/finance";
 
 const sidebarItems = [
   { label: "Dashboard", icon: LayoutDashboard, active: true, href: "/admin" },
@@ -39,22 +40,41 @@ const revenueData = [
   { name: 'Jul', value: 7000 },
 ];
 
-const transactions = [
-  { id: 1, unit: "A-102", category: "Maintenance", amount: "+$240.00", type: "income", date: "Today, 10:30 AM" },
-  { id: 2, unit: "Vendor-04", category: "Plumbing Repair", amount: "-$120.00", type: "expense", date: "Today, 09:15 AM" },
-  { id: 3, unit: "C-305", category: "Late Fee", amount: "+$25.00", type: "income", date: "Yesterday" },
-  { id: 4, unit: "Vendor-12", category: "Lift AMC", amount: "-$850.00", type: "expense", date: "Yesterday" },
-  { id: 5, unit: "B-401", category: "Maintenance", amount: "+$240.00", type: "income", date: "Oct 12" },
-];
 
 export default function AdminDashboard() {
   const [activeTab, setActiveTab] = useState("all");
+  const [transactions, setTransactions] = useState([]);
+  const [txLoading, setTxLoading] = useState(true);
+  const [txError, setTxError] = useState(null);
 
-  const filteredTransactions = transactions.filter(t => {
-    if (activeTab === "income") return t.type === "income";
-    if (activeTab === "expenses") return t.type === "expense";
-    return true;
-  });
+  // Re-fetch whenever the active tab changes
+  useEffect(() => {
+    setTxLoading(true);
+    setTxError(null);
+    getTransactions({ type: activeTab, limit: 10 })
+      .then((res) => {
+        // Map API shape → table shape
+        const mapped = res.data.map((tx) => ({
+          id: tx.id,
+          unit: tx.unit_or_vendor,
+          category: tx.category,
+          type: tx.type,
+          amount:
+            tx.type === "income"
+              ? `+$${parseFloat(tx.amount).toFixed(2)}`
+              : `-$${parseFloat(tx.amount).toFixed(2)}`,
+          date: new Date(tx.transaction_date).toLocaleString("en-IN", {
+            dateStyle: "medium",
+            timeStyle: "short",
+          }),
+        }));
+        setTransactions(mapped);
+      })
+      .catch(() => setTxError("Failed to load transactions."))
+      .finally(() => setTxLoading(false));
+  }, [activeTab]);
+
+  const filteredTransactions = transactions;
 
   return (
     <DashboardLayout sidebarItems={sidebarItems} userRole="Residential Admin">
@@ -259,7 +279,21 @@ export default function AdminDashboard() {
                         </td>
                       </tr>
                     ))}
-                    {filteredTransactions.length === 0 && (
+                    {txLoading && (
+                      <tr>
+                        <td colSpan={4} className="px-6 py-8 text-center text-gray-400 text-sm animate-pulse">
+                          Loading transactions…
+                        </td>
+                      </tr>
+                    )}
+                    {txError && !txLoading && (
+                      <tr>
+                        <td colSpan={4} className="px-6 py-8 text-center text-red-500 text-sm">
+                          {txError}
+                        </td>
+                      </tr>
+                    )}
+                    {!txLoading && !txError && filteredTransactions.length === 0 && (
                       <tr>
                         <td colSpan={4} className="px-6 py-8 text-center text-gray-500">
                           No transactions found for this filter.
