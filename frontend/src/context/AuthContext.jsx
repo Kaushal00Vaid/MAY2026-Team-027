@@ -43,7 +43,9 @@ export function AuthProvider({ children }) {
   const storeSession = useCallback(async (token) => {
     setAccessToken(token);
     try {
-      const { data } = await authApi.getMe();
+      const { data } = await axiosInstance.get("/auth/me", {
+        headers: { Authorization: `Bearer ${token}` },
+      });
       // Inject token for this specific call
       setUser(data);
     } catch {

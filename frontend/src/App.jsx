@@ -30,8 +30,8 @@ import StaffRoster from "@/pages/StaffRoster";
 
 // Role constants
 const ADMIN_ROLES = ["super_admin", "admin", "committee_member"];
-const RESIDENT_ROLES = ["flat_owner", "resident_rental", ...ADMIN_ROLES];
-const STAFF_ROLES = ["support_staff", ...ADMIN_ROLES];
+const RESIDENT_ROLES = ["flat_owner", "resident_rental"];
+const STAFF_ROLES = ["support_staff"];
 
 function App() {
   return (
