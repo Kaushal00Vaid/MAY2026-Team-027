@@ -26,7 +26,7 @@ from app.auth.password import hash_password
 SUPER_ADMIN = {
     "first_name": "Super",
     "last_name": "Admin",
-    "email": "superadmin@societysync.local",
+    "email": "superadmin@societysync.com",
     "phone_number": "+910000000000",  # change before production
     "password": "ChangeMe@123",       # change immediately after first login
 }

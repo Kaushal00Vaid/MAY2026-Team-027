@@ -9,6 +9,8 @@ from app.config import settings
 
 # ─── Token creation ──────────────────────────────────────────────────────────
 
+import uuid
+
 def create_access_token(user_id: int, roles: list[str]) -> str:
     """Create a short-lived JWT access token."""
     expire = datetime.now(timezone.utc) + timedelta(
@@ -20,6 +22,7 @@ def create_access_token(user_id: int, roles: list[str]) -> str:
         "exp": expire,
         "iat": datetime.now(timezone.utc),
         "type": "access",
+        "jti": uuid.uuid4().hex,
     }
     return jwt.encode(payload, settings.JWT_SECRET, algorithm=settings.JWT_ALGORITHM)
 
@@ -34,6 +37,7 @@ def create_refresh_token(user_id: int) -> str:
         "exp": expire,
         "iat": datetime.now(timezone.utc),
         "type": "refresh",
+        "jti": uuid.uuid4().hex,
     }
     return jwt.encode(payload, settings.JWT_SECRET, algorithm=settings.JWT_ALGORITHM)
 
