@@ -5,6 +5,7 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy.orm import Session
 
 from app.auth.jwt_handler import decode_token
+from app.core.exceptions import PermissionDeniedException
 from app.db.database import get_db
 from app.db.models.user import User
 
@@ -51,7 +52,21 @@ def get_current_user(
     return user
 
 
-# NOTE: require_roles() — Role-Based Access Control (RBAC) — is not implemented here.
-# The data model (Role, UserRole, RoleName) and the get_current_user dependency are
-# already in place. A teammate is responsible for adding RBAC enforcement.
-# See temp.txt in the project root for a full guide on how to implement it.
+def require_roles(*allowed_roles: str):
+    """
+    Dependency factory for role-based access control.
+    Usage:
+        @router.delete("/users/{id}")
+        def delete_user(user = Depends(require_roles("super_admin", "admin"))):
+            ...
+    """
+
+    allowed_role_set = set(allowed_roles)
+
+    def _check(current_user: User = Depends(get_current_user)) -> User:
+        user_roles = {ur.role.role_name.value for ur in current_user.roles}
+        if not user_roles.intersection(allowed_role_set):
+            raise PermissionDeniedException()
+        return current_user
+
+    return _check
