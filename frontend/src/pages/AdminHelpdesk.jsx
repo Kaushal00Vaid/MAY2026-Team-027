@@ -21,7 +21,8 @@ import {
   UploadCloud
 } from "lucide-react";
 import DashboardLayout from "@/components/layout/DashboardLayout";
-
+import axiosInstance from "@/api/axiosInstance";
+import { useEffect } from "react";
 const sidebarItems = [
   { label: "Dashboard", icon: LayoutDashboard, active: false, href: "/admin" },
   { label: "Finance", icon: WalletCards, active: false, href: "/admin/finance" },
@@ -36,21 +37,103 @@ export default function AdminHelpdesk() {
   const [showModal, setShowModal] = useState(false);
   const [showResolveModal, setShowResolveModal] = useState(false);
   const [category, setCategory] = useState("Lift / Elevator");
+  const [description, setDescription] = useState("");
+  const [location, setLocation] = useState("Block A, Tower 1");
+  const [priority, setPriority] = useState("Normal");
   const [showToast, setShowToast] = useState(false);
   const [toastMessage, setToastMessage] = useState({ title: "", desc: "" });
+  const [tickets, setTickets] = useState([]);
+  const [selectedTicketId, setSelectedTicketId] = useState(null);
+  const [selectedTicketVersion, setSelectedTicketVersion] = useState(null);
+  const [adminNote, setAdminNote] = useState("");
+  const [assignee, setAssignee] = useState("");
+  const [workOrderNotes, setWorkOrderNotes] = useState("");
+  const [actionType, setActionType] = useState("Assign to Staff / Vendor");
+  const [comments, setComments] = useState([]);
 
-  const handleResolve = () => {
-    setShowResolveModal(false);
-    setToastMessage({ title: "Ticket Updated", desc: "Ticket has been escalated to vendor." });
-    setShowToast(true);
-    setTimeout(() => setShowToast(false), 3000);
+  const fetchTickets = async () => {
+    try {
+      const response = await axiosInstance.get("/api/helpdesk/complaints");
+      setTickets(response.data);
+    } catch (error) {
+      console.error("Failed to fetch tickets", error);
+    }
+  };
+
+  useEffect(() => {
+    fetchTickets();
+  }, []);
+
+  const openResolveModal = async (ticket) => {
+    setSelectedTicketId(ticket.id);
+    setSelectedTicketVersion(ticket.version);
+    setAdminNote("");
+    setAssignee(ticket.assigned_to || "");
+    setWorkOrderNotes(ticket.work_order_notes || "");
+    setActionType("Assign to Staff / Vendor");
+    try {
+      const res = await axiosInstance.get(`/api/helpdesk/complaints/${ticket.id}/comments`);
+      setComments(res.data);
+    } catch {
+      setComments([]);
+    }
+    setShowResolveModal(true);
+  };
+
+  const handleResolve = async () => {
+    if (!selectedTicketId) return;
+    try {
+      if (adminNote.trim()) {
+        await axiosInstance.post(`/api/helpdesk/complaints/${selectedTicketId}/comments`, { body: adminNote.trim() });
+      }
+
+      let payload = { expected_version: selectedTicketVersion };
+      if (actionType === "Mark as Resolved") {
+        payload.status = "Resolved";
+      }
+      if (assignee) payload.assigned_to = parseInt(assignee);
+      if (workOrderNotes) payload.work_order_notes = workOrderNotes;
+
+      await axiosInstance.patch(`/api/helpdesk/complaints/${selectedTicketId}`, payload);
+      
+      setShowResolveModal(false);
+      setAdminNote("");
+      setComments([]);
+      setToastMessage({ title: "Ticket Updated", desc: "Ticket has been successfully updated." });
+      setShowToast(true);
+      fetchTickets();
+      setTimeout(() => setShowToast(false), 3000);
+    } catch (err) {
+      console.error(err);
+      if (err.response?.status === 409) {
+        setToastMessage({ title: "Conflict Detected", desc: "This ticket was modified by someone else. Please refresh and try again." });
+        setShowToast(true);
+        setTimeout(() => setShowToast(false), 5000);
+      } else {
+        setToastMessage({ title: "Error", desc: "Failed to update ticket." });
+        setShowToast(true);
+        setTimeout(() => setShowToast(false), 3000);
+      }
+    }
   };
   
-  const handleRaise = () => {
-    setShowModal(false);
-    setToastMessage({ title: "Ticket Raised", desc: "New ticket has been submitted to the queue." });
-    setShowToast(true);
-    setTimeout(() => setShowToast(false), 3000);
+  const handleRaise = async () => {
+    try {
+      await axiosInstance.post("/api/helpdesk/complaints", {
+        title: category,
+        category: category,
+        description: description || "No description provided",
+        location: location,
+        priority: priority
+      });
+      setShowModal(false);
+      setToastMessage({ title: "Ticket Raised", desc: "New ticket has been submitted to the queue." });
+      setShowToast(true);
+      fetchTickets();
+      setTimeout(() => setShowToast(false), 3000);
+    } catch (error) {
+      console.error("Failed to create ticket", error);
+    }
   };
 
   return (
@@ -167,88 +250,33 @@ export default function AdminHelpdesk() {
             
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
               
-              {/* Premium Ticket Card 1 */}
-              <div className="bg-white rounded-3xl p-6 border border-gray-100 shadow-sm hover:shadow-xl hover:shadow-blue-500/5 transition-all duration-300 cursor-pointer group flex flex-col justify-between">
+              {tickets.map(ticket => (
+              <div key={ticket.id} className="bg-white rounded-3xl p-6 border border-gray-100 shadow-sm hover:shadow-xl hover:shadow-blue-500/5 transition-all duration-300 cursor-pointer group flex flex-col justify-between">
                 <div>
                   <div className="flex items-center justify-between mb-5">
                     <div className="flex items-center gap-2">
                       <div className="w-8 h-8 rounded-full bg-blue-50 flex items-center justify-center text-blue-500">
                         <Droplet size={14} />
                       </div>
-                      <span className="text-xs font-bold text-gray-900 uppercase tracking-wider">Plumbing</span>
+                      <span className="text-xs font-bold text-gray-900 uppercase tracking-wider">{ticket.category}</span>
                     </div>
-                    <span className="px-2.5 py-1 bg-gray-50 border border-gray-100 text-gray-500 text-[10px] font-bold uppercase tracking-wider rounded-lg">#884</span>
+                    <span className="px-2.5 py-1 bg-gray-50 border border-gray-100 text-gray-500 text-[10px] font-bold uppercase tracking-wider rounded-lg">#{ticket.id}</span>
                   </div>
-                  <h4 className="font-extrabold text-lg text-[#0f2336] mb-2 group-hover:text-blue-600 transition-colors leading-tight">Kitchen pipe leaking extensively</h4>
-                  <p className="text-sm text-gray-500 line-clamp-2">"The pipe under the sink burst an hour ago. Need immediate assistance before flooring gets damaged."</p>
+                  <h4 className="font-extrabold text-lg text-[#0f2336] mb-2 group-hover:text-blue-600 transition-colors leading-tight">{ticket.title || ticket.category}</h4>
+                  <p className="text-sm text-gray-500 line-clamp-2">"{ticket.description}"</p>
                 </div>
                 
                 <div className="mt-6 pt-5 border-t border-gray-100 flex items-center justify-between">
                   <div className="flex items-center gap-2">
-                    <div className="w-6 h-6 rounded-full bg-gray-200 border-2 border-white flex items-center justify-center text-[10px] font-bold text-gray-600 z-10">402</div>
-                    <span className="text-xs font-semibold text-gray-500">Apt 402 • 2h ago</span>
+                    <div className="w-6 h-6 rounded-full bg-gray-200 border-2 border-white flex items-center justify-center text-[10px] font-bold text-gray-600 z-10">{ticket.status === "Resolved" ? "✓" : "!"}</div>
+                    <span className="text-xs font-semibold text-gray-500">{ticket.location || "N/A"} • {ticket.priority}</span>
                   </div>
-                  <button onClick={() => setShowResolveModal(true)} className="w-8 h-8 rounded-full bg-gray-50 group-hover:bg-blue-50 group-hover:text-blue-600 flex items-center justify-center transition-colors">
+                  <button onClick={() => openResolveModal(ticket)} className="w-8 h-8 rounded-full bg-gray-50 group-hover:bg-blue-50 group-hover:text-blue-600 flex items-center justify-center transition-colors">
                     <ArrowRight size={14} />
                   </button>
                 </div>
               </div>
-
-              {/* Premium Ticket Card 2 (Warning) */}
-              <div className="bg-white rounded-3xl p-6 border border-orange-200 shadow-[0_8px_30px_rgba(249,115,22,0.06)] hover:shadow-[0_8px_30px_rgba(249,115,22,0.12)] transition-all duration-300 cursor-pointer group flex flex-col justify-between relative overflow-hidden">
-                <div className="absolute top-0 right-0 w-24 h-24 bg-orange-50 rounded-bl-full -z-10 group-hover:scale-125 transition-transform"></div>
-                
-                <div>
-                  <div className="flex items-center justify-between mb-5">
-                    <div className="flex items-center gap-2">
-                      <div className="w-8 h-8 rounded-full bg-orange-100 flex items-center justify-center text-orange-600 animate-pulse">
-                        <AlertTriangle size={14} />
-                      </div>
-                      <span className="text-xs font-bold text-orange-600 uppercase tracking-wider">Lift/Elevator</span>
-                    </div>
-                    <span className="px-2.5 py-1 bg-orange-50 border border-orange-200 text-orange-600 text-[10px] font-bold uppercase tracking-wider rounded-lg shadow-sm">High Priority</span>
-                  </div>
-                  <h4 className="font-extrabold text-lg text-[#0f2336] mb-2 group-hover:text-orange-600 transition-colors leading-tight">Elevator stuck on 4th floor</h4>
-                  <p className="text-sm text-gray-500 line-clamp-2">"Block A main elevator is jammed. No one inside but requires urgent fix from vendor."</p>
-                </div>
-                
-                <div className="mt-6 pt-5 border-t border-gray-100 flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <div className="w-6 h-6 rounded-full bg-orange-100 border-2 border-white flex items-center justify-center text-[10px] font-bold text-orange-700 z-10">Sec</div>
-                    <span className="text-xs font-semibold text-gray-500">Security • SLA Warning</span>
-                  </div>
-                  <button onClick={() => setShowResolveModal(true)} className="w-8 h-8 rounded-full bg-orange-50 text-orange-600 group-hover:bg-orange-500 group-hover:text-white flex items-center justify-center transition-colors">
-                    <ArrowRight size={14} />
-                  </button>
-                </div>
-              </div>
-
-              {/* Premium Ticket Card 3 */}
-              <div className="bg-white rounded-3xl p-6 border border-gray-100 shadow-sm hover:shadow-xl hover:shadow-purple-500/5 transition-all duration-300 cursor-pointer group flex flex-col justify-between">
-                <div>
-                  <div className="flex items-center justify-between mb-5">
-                    <div className="flex items-center gap-2">
-                      <div className="w-8 h-8 rounded-full bg-purple-50 flex items-center justify-center text-purple-500">
-                        <Zap size={14} />
-                      </div>
-                      <span className="text-xs font-bold text-gray-900 uppercase tracking-wider">Electrical</span>
-                    </div>
-                    <span className="px-2.5 py-1 bg-gray-50 border border-gray-100 text-gray-500 text-[10px] font-bold uppercase tracking-wider rounded-lg">#881</span>
-                  </div>
-                  <h4 className="font-extrabold text-lg text-[#0f2336] mb-2 group-hover:text-purple-600 transition-colors leading-tight">Corridor lights out on 3rd floor</h4>
-                  <p className="text-sm text-gray-500 line-clamp-2">"Entire corridor is pitch black. Needs bulb replacements ASAP."</p>
-                </div>
-                
-                <div className="mt-6 pt-5 border-t border-gray-100 flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <div className="w-6 h-6 rounded-full bg-gray-200 border-2 border-white flex items-center justify-center text-[10px] font-bold text-gray-600 z-10">201</div>
-                    <span className="text-xs font-semibold text-gray-500">Apt 201 • 1d ago</span>
-                  </div>
-                  <button onClick={() => setShowResolveModal(true)} className="w-8 h-8 rounded-full bg-gray-50 group-hover:bg-purple-50 group-hover:text-purple-600 flex items-center justify-center transition-colors">
-                    <ArrowRight size={14} />
-                  </button>
-                </div>
-              </div>
+              ))}
 
             </div>
           </div>
@@ -363,6 +391,8 @@ export default function AdminHelpdesk() {
                 <div className="space-y-2 md:row-span-2">
                   <label className="text-xs font-bold text-gray-500 uppercase tracking-wider ml-1">Description</label>
                   <textarea 
+                    value={description}
+                    onChange={(e) => setDescription(e.target.value)}
                     placeholder="Provide details about the issue..."
                     className="w-full h-[120px] p-4 rounded-xl border-2 border-gray-100 bg-gray-50 text-sm font-medium focus:bg-white focus:border-blue-500 outline-none transition-all resize-none"
                   ></textarea>
@@ -372,7 +402,9 @@ export default function AdminHelpdesk() {
                   <label className="text-xs font-bold text-gray-500 uppercase tracking-wider ml-1">Location</label>
                   <input 
                     type="text" 
-                    defaultValue="Block A, Tower 1"
+                    value={location}
+                    onChange={(e) => setLocation(e.target.value)}
+                    placeholder="Location"
                     className="w-full h-12 px-4 rounded-xl border-2 border-gray-100 bg-gray-50 text-sm font-semibold text-[#0f2336] focus:bg-white focus:border-blue-500 outline-none transition-all" 
                   />
                 </div>
@@ -380,8 +412,8 @@ export default function AdminHelpdesk() {
                 <div className="space-y-2">
                   <label className="text-xs font-bold text-gray-500 uppercase tracking-wider ml-1">Priority Level</label>
                   <div className="flex bg-gray-50 p-1 rounded-xl border-2 border-gray-100">
-                    <button className="flex-1 py-2 text-sm font-bold rounded-lg text-gray-500 hover:text-gray-900 transition-colors">Normal</button>
-                    <button className="flex-1 py-2 text-sm font-bold rounded-lg bg-white text-[#0f2336] shadow-sm">Critical</button>
+                    <button onClick={() => setPriority("Normal")} className={`flex-1 py-2 text-sm font-bold rounded-lg transition-colors ${priority === "Normal" ? "bg-white text-[#0f2336] shadow-sm" : "text-gray-500 hover:text-gray-900"}`}>Normal</button>
+                    <button onClick={() => setPriority("Critical")} className={`flex-1 py-2 text-sm font-bold rounded-lg transition-colors ${priority === "Critical" ? "bg-white text-[#0f2336] shadow-sm" : "text-gray-500 hover:text-gray-900"}`}>Critical</button>
                   </div>
                 </div>
                 
@@ -439,7 +471,11 @@ export default function AdminHelpdesk() {
               
               <div className="space-y-2">
                 <label className="text-xs font-bold text-gray-500 uppercase tracking-wider ml-1">Action</label>
-                <select className="w-full h-12 px-4 rounded-xl border-2 border-gray-100 bg-gray-50 text-sm font-semibold text-[#0f2336] focus:bg-white focus:border-blue-500 outline-none transition-all appearance-none cursor-pointer">
+                <select 
+                  value={actionType}
+                  onChange={(e) => setActionType(e.target.value)}
+                  className="w-full h-12 px-4 rounded-xl border-2 border-gray-100 bg-gray-50 text-sm font-semibold text-[#0f2336] focus:bg-white focus:border-blue-500 outline-none transition-all appearance-none cursor-pointer"
+                >
                   <option>Assign to Staff / Vendor</option>
                   <option>Mark as Resolved</option>
                   <option>Escalate to Committee</option>
@@ -448,20 +484,53 @@ export default function AdminHelpdesk() {
 
               <div className="space-y-2">
                 <label className="text-xs font-bold text-gray-500 uppercase tracking-wider ml-1">Assignee</label>
-                <select className="w-full h-12 px-4 rounded-xl border-2 border-gray-100 bg-gray-50 text-sm font-semibold text-[#0f2336] focus:bg-white focus:border-blue-500 outline-none transition-all appearance-none cursor-pointer">
-                  <option>ABC Plumbing (Vendor)</option>
-                  <option>John Smith (Maintenance)</option>
-                  <option>XYZ Electricals (Vendor)</option>
+                <select 
+                  value={assignee}
+                  onChange={(e) => setAssignee(e.target.value)}
+                  className="w-full h-12 px-4 rounded-xl border-2 border-gray-100 bg-gray-50 text-sm font-semibold text-[#0f2336] focus:bg-white focus:border-blue-500 outline-none transition-all appearance-none cursor-pointer"
+                >
+                  <option value="">Unassigned</option>
+                  <option value="1">Super Admin (User 1)</option>
                 </select>
+              </div>
+              
+              <div className="space-y-2">
+                <label className="text-xs font-bold text-gray-500 uppercase tracking-wider ml-1">Work Order Notes</label>
+                <textarea 
+                  placeholder="Task instructions for staff..."
+                  value={workOrderNotes}
+                  onChange={(e) => setWorkOrderNotes(e.target.value)}
+                  className="w-full h-[60px] p-4 rounded-xl border-2 border-gray-100 bg-gray-50 text-sm font-medium focus:bg-white focus:border-blue-500 outline-none transition-all resize-none"
+                ></textarea>
               </div>
 
               <div className="space-y-2">
                 <label className="text-xs font-bold text-gray-500 uppercase tracking-wider ml-1">Admin Notes</label>
                 <textarea 
                   placeholder="Internal notes..."
-                  className="w-full h-[100px] p-4 rounded-xl border-2 border-gray-100 bg-gray-50 text-sm font-medium focus:bg-white focus:border-blue-500 outline-none transition-all resize-none"
+                  value={adminNote}
+                  onChange={(e) => setAdminNote(e.target.value)}
+                  className="w-full h-[60px] p-4 rounded-xl border-2 border-gray-100 bg-gray-50 text-sm font-medium focus:bg-white focus:border-blue-500 outline-none transition-all resize-none"
                 ></textarea>
               </div>
+
+              {/* Existing Comments */}
+              {comments.length > 0 && (
+                <div className="space-y-2">
+                  <label className="text-xs font-bold text-gray-500 uppercase tracking-wider ml-1">Previous Notes</label>
+                  <div className="space-y-2 max-h-32 overflow-y-auto">
+                    {comments.map((c) => (
+                      <div key={c.id} className="p-3 rounded-xl bg-gray-50 border border-gray-100">
+                        <div className="flex justify-between items-center mb-1">
+                          <span className="text-xs font-bold text-gray-600">{c.author_name}</span>
+                          <span className="text-[10px] text-gray-400">{new Date(c.created_at).toLocaleString()}</span>
+                        </div>
+                        <p className="text-sm text-gray-700">{c.body}</p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
               
               <button 
                 className="w-full py-4 text-sm font-bold text-white bg-[#0f2336] hover:bg-[#1a3857] rounded-xl transition-transform shadow-lg shadow-[#0f2336]/20 active:scale-95"

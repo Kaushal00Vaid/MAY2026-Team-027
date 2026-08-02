@@ -66,7 +66,21 @@ export default function SignInPage() {
   const clearErrors = () => { setError(""); setOtpError(false); };
 
   const handleRedirect = (user) => {
-    const path = from || getRoleRedirectPath(user?.roles || []);
+    let path = from;
+    const roles = user?.roles || [];
+    
+    if (path) {
+      if (path.startsWith("/admin") && !roles.some(r => ["super_admin", "admin", "committee_member"].includes(r))) {
+        path = null;
+      } else if (path.startsWith("/gate") && !roles.includes("support_staff")) {
+        path = null;
+      }
+    }
+
+    if (!path) {
+      path = getRoleRedirectPath(roles);
+    }
+    
     navigate(path, { replace: true });
   };
 

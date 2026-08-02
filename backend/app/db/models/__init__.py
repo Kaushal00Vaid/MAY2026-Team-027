@@ -5,6 +5,8 @@ from app.db.models.user import User  # noqa: F401
 from app.db.models.role import Role, UserRole, RoleName  # noqa: F401
 from app.db.models.otp import OTPRecord, OTPPurpose  # noqa: F401
 from app.db.models.token import RefreshToken  # noqa: F401
+from app.db.models.complaint import Complaint  # noqa: F401
+from app.db.models.complaint_comment import ComplaintComment  # noqa: F401
 
 __all__ = [
     "User",
@@ -14,4 +16,6 @@ __all__ = [
     "OTPRecord",
     "OTPPurpose",
     "RefreshToken",
+    "Complaint",
+    "ComplaintComment",
 ]

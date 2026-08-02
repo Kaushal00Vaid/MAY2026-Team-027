@@ -17,19 +17,45 @@ import {
   CheckCircle2
 } from "lucide-react";
 
-const initialTickets = [
-  { id: "TK-8821", title: "Gym AC not cooling", updated: "2 hrs ago", status: "In Progress", statusColor: "bg-gray-100 text-gray-700" },
-  { id: "TK-8755", title: "Visitor Pass: Contractor", updated: "yesterday", status: "Pending Approval", statusColor: "bg-blue-100 text-blue-700" },
-];
+import axiosInstance from "@/api/axiosInstance";
+
+const getStatusColor = (status) => {
+  switch(status) {
+    case 'Open': return "bg-emerald-100 text-emerald-700";
+    case 'In Progress': return "bg-blue-100 text-blue-700";
+    case 'Resolved': return "bg-gray-100 text-gray-700";
+    case 'Closed': return "bg-gray-100 text-gray-500";
+    default: return "bg-gray-100 text-gray-700";
+  }
+};
 
 export default function ResidentHelpdesk() {
   const [message, setMessage] = useState("");
-  const [tickets, setTickets] = useState(initialTickets);
+  const [tickets, setTickets] = useState([]);
   const [showModal, setShowModal] = useState(false);
   const [newTitle, setNewTitle] = useState("");
+  const [newDescription, setNewDescription] = useState("");
+  const [newCategory, setNewCategory] = useState("Maintenance");
+  const [newPriority, setNewPriority] = useState("Medium");
   const [showToast, setShowToast] = useState(false);
 
+  const fetchTickets = async () => {
+    try {
+      const response = await axiosInstance.get("/api/helpdesk/complaints");
+      setTickets(response.data.map(t => ({
+        id: `TK-${t.id}`,
+        title: t.title || t.category,
+        updated: new Date(t.updated_at).toLocaleString(),
+        status: t.status,
+        statusColor: getStatusColor(t.status)
+      })));
+    } catch (error) {
+      console.error("Failed to fetch tickets", error);
+    }
+  };
+
   useEffect(() => {
+    fetchTickets();
     let timer;
     if (showToast) {
       timer = setTimeout(() => setShowToast(false), 3000);
@@ -44,20 +70,26 @@ export default function ResidentHelpdesk() {
     { label: "Billing Query", icon: FileQuestion },
   ];
 
-  const handleCreateTicket = (e) => {
+  const handleCreateTicket = async (e) => {
     e.preventDefault();
     if (!newTitle.trim()) return;
-    const newTicket = {
-      id: `TK-${Math.floor(8000 + Math.random() * 999)}`,
-      title: newTitle,
-      updated: "just now",
-      status: "New",
-      statusColor: "bg-emerald-100 text-emerald-700"
-    };
-    setTickets([newTicket, ...tickets]);
-    setNewTitle("");
-    setShowModal(false);
-    setShowToast(true);
+    try {
+      await axiosInstance.post("/api/helpdesk/complaints", {
+        title: newTitle,
+        description: newDescription || newTitle,
+        category: newCategory,
+        priority: newPriority,
+      });
+      setNewTitle("");
+      setNewDescription("");
+      setNewCategory("Maintenance");
+      setNewPriority("Medium");
+      setShowModal(false);
+      setShowToast(true);
+      fetchTickets();
+    } catch (error) {
+      console.error("Failed to create ticket", error);
+    }
   };
 
   return (
@@ -91,23 +123,53 @@ export default function ResidentHelpdesk() {
               <form onSubmit={handleCreateTicket} className="space-y-4">
                 <div className="space-y-2">
                   <label className="text-xs font-bold text-gray-600 uppercase tracking-wider">Issue Title</label>
-                  <input 
-                    type="text" 
+                  <input
+                    type="text"
                     placeholder="e.g. Broken gym equipment"
                     className="w-full h-12 px-4 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:bg-white focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 transition-all"
                     value={newTitle}
                     onChange={(e) => setNewTitle(e.target.value)}
                     autoFocus
+                    required
                   />
                 </div>
                 <div className="space-y-2">
-                  <label className="text-xs font-bold text-gray-600 uppercase tracking-wider">Category</label>
-                  <select className="w-full h-12 px-4 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:bg-white focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 transition-all appearance-none cursor-pointer">
-                    <option>Maintenance</option>
-                    <option>Billing</option>
-                    <option>Community</option>
-                    <option>Other</option>
-                  </select>
+                  <label className="text-xs font-bold text-gray-600 uppercase tracking-wider">Description</label>
+                  <textarea
+                    placeholder="Describe the issue in detail..."
+                    rows={3}
+                    className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:bg-white focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 transition-all resize-none"
+                    value={newDescription}
+                    onChange={(e) => setNewDescription(e.target.value)}
+                  />
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-2">
+                    <label className="text-xs font-bold text-gray-600 uppercase tracking-wider">Category</label>
+                    <select
+                      className="w-full h-12 px-4 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:bg-white focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 transition-all appearance-none cursor-pointer"
+                      value={newCategory}
+                      onChange={(e) => setNewCategory(e.target.value)}
+                    >
+                      <option value="Maintenance">Maintenance</option>
+                      <option value="Billing">Billing</option>
+                      <option value="Community">Community</option>
+                      <option value="Other">Other</option>
+                    </select>
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-xs font-bold text-gray-600 uppercase tracking-wider">Priority</label>
+                    <select
+                      className="w-full h-12 px-4 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:bg-white focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 transition-all appearance-none cursor-pointer"
+                      value={newPriority}
+                      onChange={(e) => setNewPriority(e.target.value)}
+                    >
+                      <option value="Low">Low</option>
+                      <option value="Medium">Medium</option>
+                      <option value="High">High</option>
+                      <option value="Critical">Critical</option>
+                    </select>
+                  </div>
                 </div>
                 <button type="submit" className="w-full mt-4 py-4 bg-[#0f2336] hover:bg-[#1a365d] text-white rounded-xl font-bold transition-all active:scale-95 shadow-lg">
                   Submit Ticket
