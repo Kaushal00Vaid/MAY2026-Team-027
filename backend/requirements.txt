@@ -8,6 +8,7 @@ uvicorn==0.49.0
 twilio
 python-jose[cryptography]
 bcrypt
+argon2-cffi>=23.1.0
 python-dotenv
 slowapi
 alembic

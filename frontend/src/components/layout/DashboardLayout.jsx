@@ -1,7 +1,8 @@
 import { useRef, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { Search, Bell, Settings, LogOut, HelpCircle } from "lucide-react";
 import { motion, useScroll, useMotionValueEvent } from "framer-motion";
+import { useAuth } from "@/hooks/useAuth";
 
 export default function DashboardLayout({
   sidebarItems,
@@ -9,6 +10,8 @@ export default function DashboardLayout({
   userName = "SocietySync",
   children,
 }) {
+  const navigate = useNavigate();
+  const { logout } = useAuth();
   const scrollRef = useRef(null);
   const { scrollY } = useScroll({ container: scrollRef });
   const [scrolled, setScrolled] = useState(false);
@@ -16,6 +19,12 @@ export default function DashboardLayout({
   useMotionValueEvent(scrollY, "change", (latest) => {
     setScrolled(latest > 20);
   });
+
+  const handleLogout = async () => {
+    const logoutRequest = logout();
+    navigate("/signin", { replace: true });
+    await logoutRequest;
+  };
 
   return (
     <div className="min-h-screen bg-[#f3f4f6] flex text-[#111827]">
@@ -71,13 +80,14 @@ export default function DashboardLayout({
             <HelpCircle size={18} className="opacity-80" />
             Help Center
           </Link>
-          <Link
-            to="/"
+          <button
+            type="button"
+            onClick={handleLogout}
             className="flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium text-white/60 hover:bg-white/5 hover:text-white transition-colors"
           >
             <LogOut size={18} className="opacity-80" />
             Logout
-          </Link>
+          </button>
         </div>
       </aside>
 

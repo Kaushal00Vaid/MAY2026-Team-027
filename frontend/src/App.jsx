@@ -1,4 +1,4 @@
-import { BrowserRouter, Routes, Route } from "react-router-dom";
+import { BrowserRouter, Navigate, Routes, Route } from "react-router-dom";
 import "./App.css";
 
 // Auth context
@@ -58,6 +58,7 @@ function App() {
               </div>
             }
           />
+          <Route path="/unauthorised" element={<Navigate to="/unauthorized" replace />} />
 
           {/* Admin routes */}
           <Route path="/admin" element={

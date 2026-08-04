@@ -5,10 +5,16 @@ from app.auth import schemas as auth_schemas
 from app.auth.service import get_user_profile
 from app.db.database import get_db
 from app.db.models.user import User
-from app.dependencies import require_roles
+from app.dependencies import get_current_user, require_roles
 from app.users import schemas, service
 
 router = APIRouter()
+
+
+@router.get("/me", response_model=auth_schemas.UserMeResponse)
+def get_me(current_user: User = Depends(get_current_user)):
+    """Canonical endpoint; /auth/me remains for frontend compatibility."""
+    return auth_schemas.UserMeResponse(**get_user_profile(current_user))
 
 
 @router.get("/", response_model=list[auth_schemas.UserMeResponse])
