@@ -52,6 +52,25 @@ def update_user_role(
     if RoleName.super_admin in target_roles and not caller_is_super_admin:
         raise PermissionDeniedException()
 
+    if RoleName.super_admin in target_roles and role_name != RoleName.super_admin:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="The system administrator role cannot be removed or replaced.",
+        )
+
+    if role_name == RoleName.super_admin and RoleName.super_admin not in target_roles:
+        existing_admin = (
+            db.query(UserRole)
+            .join(Role, UserRole.role_id == Role.role_id)
+            .filter(Role.role_name == RoleName.super_admin)
+            .first()
+        )
+        if existing_admin:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="Exactly one system administrator is allowed.",
+            )
+
     role = db.query(Role).filter(Role.role_name == role_name).first()
     if not role:
         raise HTTPException(

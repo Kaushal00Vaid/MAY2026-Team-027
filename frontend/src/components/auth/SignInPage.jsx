@@ -70,9 +70,13 @@ export default function SignInPage() {
     const roles = user?.roles || [];
     
     if (path) {
-      if (path.startsWith("/admin") && !roles.some(r => ["super_admin", "admin", "committee_member"].includes(r))) {
+      if (path.startsWith("/admin/users") && !roles.includes("super_admin")) {
+        path = null;
+      } else if (path.startsWith("/admin") && !roles.some(r => ["super_admin", "admin", "committee_member"].includes(r))) {
         path = null;
       } else if (path.startsWith("/gate") && !roles.includes("support_staff")) {
+        path = null;
+      } else if (path.startsWith("/resident") && !roles.some(r => ["flat_owner", "resident_rental"].includes(r))) {
         path = null;
       }
     }
@@ -90,8 +94,7 @@ export default function SignInPage() {
     clearErrors();
     setLoading(true);
     try {
-      await loginWithPassword(email, password);
-      const { data: user } = await authApi.getMe();
+      const user = await loginWithPassword(email, password);
       handleRedirect(user);
     } catch (err) {
       setError(err?.response?.data?.detail || "Invalid email or password.");
@@ -123,8 +126,7 @@ export default function SignInPage() {
     clearErrors();
     setLoading(true);
     try {
-      await loginWithOtp(phone, otpCode);
-      const { data: user } = await authApi.getMe();
+      const user = await loginWithOtp(phone, otpCode);
       handleRedirect(user);
     } catch (err) {
       setOtpError(true);

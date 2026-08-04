@@ -37,6 +37,12 @@ def _clear_refresh_cookie(response: Response) -> None:
 # Signup
 
 @router.post("/signup", response_model=schemas.SignupResponse, status_code=201)
+@router.post(
+    "/register",
+    response_model=schemas.SignupResponse,
+    status_code=201,
+    include_in_schema=False,
+)
 def signup(
     data: schemas.SignupRequest,
     db: Session = Depends(get_db),
@@ -56,6 +62,7 @@ def signup(
 # Password login
 
 @router.post("/login/password", response_model=schemas.TokenResponse)
+@router.post("/login", response_model=schemas.TokenResponse, include_in_schema=False)
 def login_password(
     data: schemas.PasswordLoginRequest,
     request: Request,
