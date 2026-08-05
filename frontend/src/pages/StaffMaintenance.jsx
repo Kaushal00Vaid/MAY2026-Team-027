@@ -1,237 +1,162 @@
-import { useState, useEffect } from "react";
+import { useEffect, useRef, useState } from "react";
 import DashboardLayout from "@/components/layout/DashboardLayout";
 import { getGateSidebarItems } from "@/components/gate/GateSidebarConfig";
-import { Camera, MapPin, User, Clock, CheckCircle2, ChevronRight, Filter, AlertTriangle, Image as ImageIcon, X } from "lucide-react";
+import { useAuth } from "@/hooks/useAuth";
+import {
+  completeMaintenanceTask,
+  errorMessage,
+  getDutyState,
+  listMaintenanceTasks,
+  setDutyState,
+} from "@/features/helpdesk/api";
+import { Camera, MapPin, User, Clock, CheckCircle2, AlertTriangle, Image as ImageIcon, X } from "lucide-react";
 
-const initialTasks = [
-  { id: "TK-4092", title: "Major Pipe Leak", loc: "Bldg A, Floor 3, Apt 304", reporter: "Sarah Jenkins", time: "09:15 AM", type: "Urgent", status: "pending", category: "Plumbing" },
-  { id: "TK-4090", title: "Flickering Hallway Lights", loc: "Bldg C, Floor 1, North Corridor", reporter: "System", time: "08:30 AM", type: "Routine", status: "pending", category: "Electrical" },
-  { id: "TK-4085", title: "HVAC Filter Replacement", loc: "Clubhouse Main Hall", reporter: "Schedule", time: "Yesterday", type: "Scheduled", status: "pending", category: "Maintenance" },
+const FILTERS = [
+  ["All Tasks", "all"],
+  ["Urgent", "urgent"],
+  ["Plumbing", "plumbing"],
+  ["Electrical", "electrical"],
 ];
 
+const taskType = (task) => {
+  if (["Critical", "High"].includes(task.priority)) return "Urgent";
+  return task.priority === "Normal" ? "Routine" : task.priority;
+};
+
 export default function StaffMaintenance() {
-  const [tasks, setTasks] = useState(initialTasks);
-  const [selectedTask, setSelectedTask] = useState(initialTasks[0]);
-  const [dutyStatus, setDutyStatus] = useState(true);
-  const [photoUploaded, setPhotoUploaded] = useState(false);
-  const [showToast, setShowToast] = useState(false);
+  const { user } = useAuth();
+  const fileRef = useRef(null);
+  const [tasks, setTasks] = useState([]);
+  const [selectedTask, setSelectedTask] = useState(null);
+  const [filter, setFilter] = useState("all");
+  const [dutyStatus, setDutyStatusValue] = useState(true);
+  const [notes, setNotes] = useState("");
+  const [photo, setPhoto] = useState(null);
+  const [checkedSteps, setCheckedSteps] = useState({});
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
   const [toastMessage, setToastMessage] = useState("");
 
-  useEffect(() => {
-    let timer;
-    if (showToast) {
-      timer = setTimeout(() => setShowToast(false), 3000);
+  const loadTasks = async (activeFilter = filter) => {
+    setLoading(true);
+    setError("");
+    try {
+      const [{ data: taskData }, { data: dutyData }] = await Promise.all([
+        listMaintenanceTasks(activeFilter),
+        getDutyState(),
+      ]);
+      setTasks(taskData.items);
+      setDutyStatusValue(dutyData.on_duty);
+      setSelectedTask((current) =>
+        taskData.items.find((item) => item.id === current?.id) || taskData.items[0] || null,
+      );
+    } catch (requestError) {
+      setError(errorMessage(requestError, "Unable to load assigned maintenance tasks."));
+    } finally {
+      setLoading(false);
     }
-    return () => clearTimeout(timer);
-  }, [showToast]);
-
-  const handleCompleteTask = () => {
-    if (!selectedTask) return;
-    setToastMessage(`Task ${selectedTask.id} marked as complete.`);
-    setShowToast(true);
-    
-    const remainingTasks = tasks.filter(t => t.id !== selectedTask.id);
-    setTasks(remainingTasks);
-    if (remainingTasks.length > 0) {
-      setSelectedTask(remainingTasks[0]);
-    } else {
-      setSelectedTask(null);
-    }
-    setPhotoUploaded(false);
   };
 
+  useEffect(() => { void Promise.resolve().then(() => loadTasks(filter)); }, [filter]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    if (!toastMessage) return undefined;
+    const timer = setTimeout(() => setToastMessage(""), 3000);
+    return () => clearTimeout(timer);
+  }, [toastMessage]);
+
+  const selectTask = (task) => {
+    setSelectedTask(task);
+    setNotes(task.resolution_notes || "");
+    setPhoto(null);
+    setCheckedSteps({});
+    setError("");
+  };
+
+  const toggleDuty = async () => {
+    const next = !dutyStatus;
+    setDutyStatusValue(next);
+    try {
+      await setDutyState(next);
+    } catch (requestError) {
+      setDutyStatusValue(!next);
+      setError(errorMessage(requestError, "Unable to update duty status."));
+    }
+  };
+
+  const handleCompleteTask = async () => {
+    if (!selectedTask || saving) return;
+    const allChecked = selectedTask.instructions.every((_, index) => checkedSteps[index]);
+    if (!allChecked) return setError("Complete every required step before resolving the task.");
+    if (!notes.trim()) return setError("Technician notes are required.");
+    if (!photo) return setError("Upload a proof-of-work photo before resolving the task.");
+    setSaving(true);
+    setError("");
+    try {
+      await completeMaintenanceTask(selectedTask.id, notes, photo);
+      setToastMessage(`Task TK-${selectedTask.complaint_id} marked as complete.`);
+      setNotes(""); setPhoto(null); setCheckedSteps({});
+      await loadTasks(filter);
+    } catch (requestError) {
+      setError(errorMessage(requestError, "Unable to complete the task."));
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const selectedType = selectedTask ? taskType(selectedTask) : "Routine";
+  const userName = user ? `${user.first_name} ${user.last_name}` : "Maintenance Staff";
+
   return (
-    <DashboardLayout sidebarItems={getGateSidebarItems("/gate/maintenance")} userRole="Maintenance Dept." userName="T. Foreman">
+    <DashboardLayout sidebarItems={getGateSidebarItems("/gate/maintenance")} userRole="Maintenance Dept." userName={userName}>
       <div className="flex flex-col h-[calc(100vh-4rem)]">
-        
-        {/* Header Bar */}
         <div className="bg-white px-6 py-4 border-b border-gray-100 flex items-center justify-between shrink-0 shadow-sm z-10 relative">
-          <div>
-            <h1 className="text-xl font-extrabold text-[#0f2336] flex items-center gap-3 relative inline-block">
-              Task Queue
-              <span className="text-xs font-bold bg-gray-100 text-gray-500 px-2 py-1 rounded-md">{tasks.length} Pending</span>
-              <svg className="absolute -bottom-2 -left-2 w-32 h-3 text-blue-500/30" viewBox="0 0 100 10" preserveAspectRatio="none">
-                <path d="M0,5 Q20,10 40,5 T80,0 T100,8" stroke="currentColor" strokeWidth="2" fill="none" strokeLinecap="round" />
-              </svg>
-            </h1>
-          </div>
+          <h1 className="text-xl font-extrabold text-[#0f2336] flex items-center gap-3">Task Queue
+            <span className="text-xs font-bold bg-gray-100 text-gray-500 px-2 py-1 rounded-md">{tasks.length} Pending</span>
+          </h1>
           <div className="flex items-center gap-3">
             <span className="text-sm font-bold text-gray-600">Duty Status</span>
-            <button 
-              onClick={() => setDutyStatus(!dutyStatus)}
-              className={`w-12 h-6 rounded-full transition-colors relative flex items-center ${dutyStatus ? 'bg-blue-600' : 'bg-gray-300'}`}
-            >
-              <div className={`w-5 h-5 bg-white rounded-full absolute shadow-sm transition-transform duration-300 flex items-center justify-center ${dutyStatus ? 'translate-x-6' : 'translate-x-1'}`}>
-                {dutyStatus && <CheckCircle2 size={12} className="text-blue-600" />}
-              </div>
+            <button type="button" aria-label="Toggle duty status" onClick={toggleDuty} className={`w-12 h-6 rounded-full transition-colors relative flex items-center ${dutyStatus ? "bg-blue-600" : "bg-gray-300"}`}>
+              <div className={`w-5 h-5 bg-white rounded-full absolute shadow-sm transition-transform ${dutyStatus ? "translate-x-6" : "translate-x-1"}`} />
             </button>
           </div>
         </div>
 
-        {/* Main Content */}
         <div className="flex-1 flex overflow-hidden bg-gray-50/50">
-          
-          {/* Left Panel: Task List */}
-          <div className="w-full md:w-80 lg:w-96 flex flex-col border-r border-gray-200 bg-white shrink-0 z-0 relative">
-            <div className="p-4 border-b border-gray-100 flex gap-2 overflow-x-auto no-scrollbar shrink-0">
-               {["All Tasks", "Urgent", "Plumbing", "Electrical"].map((f, i) => (
-                 <button key={i} className={`px-4 py-1.5 rounded-full text-xs font-bold whitespace-nowrap transition-colors border ${i === 0 ? 'bg-[#0f2336] text-white border-[#0f2336]' : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'}`}>
-                   {f}
-                 </button>
-               ))}
-            </div>
-            
-            <div className="flex-1 overflow-y-auto p-4 space-y-3">
-              {tasks.map((task) => (
-                <div 
-                  key={task.id}
-                  onClick={() => setSelectedTask(task)}
-                  className={`p-4 rounded-2xl border-2 transition-all cursor-pointer group ${
-                    selectedTask.id === task.id 
-                      ? (task.type === 'Urgent' ? 'border-orange-500 bg-orange-50/30' : 'border-[#0f2336] bg-blue-50/30')
-                      : 'border-transparent bg-gray-50 hover:bg-gray-100 hover:border-gray-200'
-                  }`}
-                >
-                  <div className="flex justify-between items-start mb-2">
-                    <span className={`text-[10px] font-bold px-2 py-0.5 rounded uppercase tracking-wider ${
-                      task.type === 'Urgent' ? 'bg-orange-500 text-white' : 
-                      task.type === 'Routine' ? 'bg-amber-400 text-[#0f2336]' : 
-                      'bg-gray-200 text-gray-700'
-                    }`}>
-                      {task.type}
-                    </span>
-                    <span className="text-xs font-mono font-bold text-gray-400">{task.id}</span>
-                  </div>
-                  <h3 className={`font-bold text-sm mb-2 leading-tight ${selectedTask.id === task.id ? 'text-[#0f2336]' : 'text-gray-800'}`}>
-                    {task.title}
-                  </h3>
-                  <div className="text-xs text-gray-500 flex flex-col gap-1.5 mt-2">
-                    <span className="flex items-center gap-1.5"><MapPin size={12} className="opacity-70" /> {task.loc}</span>
-                    <span className="flex items-center gap-1.5"><Clock size={12} className="opacity-70" /> {task.time}</span>
-                  </div>
-                </div>
+          <div className="w-full md:w-80 lg:w-96 flex flex-col border-r border-gray-200 bg-white shrink-0">
+            <div className="p-4 border-b border-gray-100 flex gap-2 overflow-x-auto no-scrollbar">
+              {FILTERS.map(([label, value]) => (
+                <button key={value} onClick={() => setFilter(value)} className={`px-4 py-1.5 rounded-full text-xs font-bold whitespace-nowrap border ${filter === value ? "bg-[#0f2336] text-white border-[#0f2336]" : "bg-white text-gray-600 border-gray-200"}`}>{label}</button>
               ))}
+            </div>
+            <div className="flex-1 overflow-y-auto p-4 space-y-3">
+              {loading && <div className="text-sm text-gray-500 p-4">Loading assigned tasks…</div>}
+              {!loading && tasks.length === 0 && <div className="text-sm text-gray-500 p-4">No assigned tasks. You are all caught up!</div>}
+              {tasks.map((task) => {
+                const type = taskType(task);
+                return <button type="button" key={task.id} onClick={() => selectTask(task)} className={`w-full text-left p-4 rounded-2xl border-2 transition-all ${selectedTask?.id === task.id ? (type === "Urgent" ? "border-orange-500 bg-orange-50/30" : "border-[#0f2336] bg-blue-50/30") : "border-transparent bg-gray-50 hover:bg-gray-100"}`}>
+                  <div className="flex justify-between mb-2"><span className={`text-[10px] font-bold px-2 py-0.5 rounded uppercase ${type === "Urgent" ? "bg-orange-500 text-white" : "bg-amber-400 text-[#0f2336]"}`}>{type}</span><span className="text-xs font-mono font-bold text-gray-400">TK-{task.complaint_id}</span></div>
+                  <h3 className="font-bold text-sm mb-2 text-[#0f2336]">{task.title}</h3>
+                  <div className="text-xs text-gray-500 space-y-1"><span className="flex gap-1"><MapPin size={12}/>{task.location || "Location not specified"}</span><span className="flex gap-1"><Clock size={12}/>{new Date(task.created_at).toLocaleString()}</span></div>
+                </button>;
+              })}
             </div>
           </div>
 
-          {/* Right Panel: Task Details */}
           <div className="flex-1 overflow-y-auto bg-gray-50 relative">
-             
-             {/* Toast Notification */}
-             {showToast && (
-               <div className="fixed bottom-6 right-6 bg-[#0f2336] text-white px-6 py-4 rounded-xl shadow-2xl flex items-center gap-3 animate-in slide-in-from-bottom-5 z-50">
-                 <CheckCircle2 className="text-emerald-400" size={20} />
-                 <div className="flex flex-col">
-                   <span className="font-bold text-sm">Success</span>
-                   <span className="text-xs text-gray-300">{toastMessage}</span>
-                 </div>
-                 <button onClick={() => setShowToast(false)} className="ml-4 text-gray-400 hover:text-white transition-colors">
-                   <X size={16} />
-                 </button>
-               </div>
-             )}
-
-             {selectedTask ? (
-               <div className="max-w-3xl mx-auto p-6 md:p-8 space-y-6">
-                  
-                  {/* Detail Header */}
-                  <div className="bg-white p-6 md:p-8 rounded-3xl border border-gray-100 shadow-sm relative overflow-hidden">
-                    {selectedTask.type === 'Urgent' && (
-                      <div className="absolute top-0 right-0 w-32 h-32 bg-orange-500/10 rounded-bl-full -mt-10 -mr-10"></div>
-                    )}
-                    
-                    <div className="flex items-center gap-3 mb-4 relative z-10">
-                      <span className={`text-[10px] font-bold px-2.5 py-1 rounded-md uppercase tracking-wider ${
-                        selectedTask.type === 'Urgent' ? 'bg-orange-500 text-white shadow-sm shadow-orange-500/20' : 
-                        selectedTask.type === 'Routine' ? 'bg-amber-400 text-[#0f2336]' : 
-                        'bg-gray-200 text-gray-700'
-                      }`}>
-                        {selectedTask.type}
-                      </span>
-                      <span className="text-sm font-bold text-gray-400">{selectedTask.id}</span>
-                    </div>
-                    
-                    <h2 className="text-3xl font-extrabold text-[#0f2336] mb-4 relative z-10">{selectedTask.title}</h2>
-                    
-                    <div className="flex flex-wrap items-center gap-6 text-sm font-medium text-gray-500 relative z-10">
-                      <div className="flex items-center gap-2"><MapPin size={16} className="text-gray-400" /> {selectedTask.loc}</div>
-                      <div className="flex items-center gap-2"><User size={16} className="text-gray-400" /> Reported by: {selectedTask.reporter}</div>
-                    </div>
-                  </div>
-
-                {/* Description Box */}
-                <div className="bg-white p-6 rounded-3xl border border-gray-100 shadow-sm">
-                  <h3 className="font-bold text-[#0f2336] text-sm flex items-center gap-2 mb-3">
-                     <AlertTriangle size={16} className="text-blue-500" /> Description
-                  </h3>
-                  <p className="text-sm text-gray-600 leading-relaxed">
-                     Water is actively leaking from the ceiling in the master bathroom. Resident reported it 10 mins ago. Stated that the water is spreading quickly to the hallway.
-                     <br/><br/>
-                     <span className="font-bold text-orange-600">Immediate shutoff may be required before repair begins.</span>
-                  </p>
-                </div>
-
-                {/* Instructions Box */}
-                <div className="bg-white p-6 rounded-3xl border border-gray-100 shadow-sm">
-                  <h3 className="font-bold text-[#0f2336] text-sm flex items-center gap-2 mb-4">
-                     <CheckCircle2 size={16} className="text-emerald-500" /> Required Steps
-                  </h3>
-                  <div className="space-y-3">
-                     {[
-                       "Locate main water shutoff valve for Apt 304 (Utility Closet B).",
-                       "Assess damage to ceiling drywall and plumbing fixture.",
-                       "Document leak source with clear photos before repair."
-                     ].map((step, i) => (
-                       <label key={i} className="flex items-start gap-3 p-3 rounded-xl border border-gray-100 bg-gray-50 hover:bg-gray-100 transition-colors cursor-pointer group">
-                         <div className="relative flex items-start mt-0.5">
-                           <input type="checkbox" className="peer w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500 appearance-none bg-white checked:bg-blue-600 checked:border-transparent transition-all" />
-                           <CheckCircle2 size={12} className="absolute inset-0 m-auto text-white opacity-0 peer-checked:opacity-100 pointer-events-none transition-opacity" strokeWidth={3} />
-                         </div>
-                         <span className="text-sm text-gray-700 font-medium group-hover:text-gray-900 leading-snug select-none">{step}</span>
-                       </label>
-                     ))}
-                  </div>
-                </div>
-
-                {/* Technician Notes */}
-                <div className="bg-white p-6 rounded-3xl border border-gray-100 shadow-sm">
-                  <h3 className="font-bold text-[#0f2336] text-sm mb-3">Technician Notes</h3>
-                  <textarea 
-                    className="w-full h-32 p-4 bg-gray-50 border border-gray-200 rounded-2xl text-sm focus:bg-white focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none transition-all resize-none"
-                    placeholder="Add diagnosis, parts used, or additional observations here..."
-                  ></textarea>
-                </div>
-
-                {/* Proof of Work */}
-                <div className="bg-white p-6 rounded-3xl border border-gray-100 shadow-sm">
-                  <h3 className="font-bold text-[#0f2336] text-sm flex items-center gap-2 mb-2">
-                    <Camera size={16} className="text-purple-500" /> Proof of Work
-                  </h3>
-                  <p className="text-xs text-gray-500 mb-4">Upload at least one photo of the completed repair before closing task.</p>
-                  
-                  <div onClick={() => setPhotoUploaded(true)} className={`border-2 border-dashed ${photoUploaded ? 'border-emerald-400 bg-emerald-50/30' : 'border-gray-300 bg-gray-50/50 hover:bg-gray-50'} rounded-2xl p-8 flex flex-col items-center justify-center transition-colors cursor-pointer group`}>
-                    <div className={`w-12 h-12 rounded-full shadow-sm flex items-center justify-center mb-3 transition-transform ${photoUploaded ? 'bg-emerald-100 text-emerald-600' : 'bg-white text-gray-400 group-hover:scale-110'}`}>
-                       {photoUploaded ? <CheckCircle2 size={20} /> : <ImageIcon size={20} />}
-                    </div>
-                    <span className={`text-sm font-bold ${photoUploaded ? 'text-emerald-700' : 'text-gray-600'}`}>
-                      {photoUploaded ? 'repair_after_photo.jpg' : 'Tap to take photo or upload'}
-                    </span>
-                  </div>
-
-                  <button onClick={handleCompleteTask} className="w-full mt-6 py-4 bg-[#0f2336] hover:bg-[#1a365d] text-white text-sm font-bold rounded-2xl transition-all shadow-lg active:scale-[0.98] flex items-center justify-center gap-2">
-                    <CheckCircle2 size={18} /> Mark Task Complete
-                  </button>
-                </div>
-                
-                {/* Spacer for scrolling */}
-                <div className="h-8"></div>
-             </div>
-             ) : (
-               <div className="flex items-center justify-center h-full text-gray-400 font-semibold">
-                 No tasks available. You are all caught up!
-               </div>
-             )}
-           </div>
+            {toastMessage && <div className="fixed bottom-6 right-6 bg-[#0f2336] text-white px-6 py-4 rounded-xl shadow-2xl flex items-center gap-3 z-50"><CheckCircle2 className="text-emerald-400" size={20}/><span className="text-sm font-bold">{toastMessage}</span><button onClick={() => setToastMessage("")}><X size={16}/></button></div>}
+            {selectedTask ? <div className="max-w-3xl mx-auto p-6 md:p-8 space-y-6">
+              <div className="bg-white p-6 md:p-8 rounded-3xl border border-gray-100 shadow-sm">
+                <div className="flex gap-3 mb-4"><span className={`text-[10px] font-bold px-2.5 py-1 rounded-md uppercase ${selectedType === "Urgent" ? "bg-orange-500 text-white" : "bg-amber-400"}`}>{selectedType}</span><span className="text-sm font-bold text-gray-400">TK-{selectedTask.complaint_id}</span></div>
+                <h2 className="text-3xl font-extrabold text-[#0f2336] mb-4">{selectedTask.title}</h2>
+                <div className="flex flex-wrap gap-6 text-sm text-gray-500"><span className="flex gap-2"><MapPin size={16}/>{selectedTask.location || "Location not specified"}</span><span className="flex gap-2"><User size={16}/>Reported by: {selectedTask.reporter_name}</span></div>
+              </div>
+              <div className="bg-white p-6 rounded-3xl border border-gray-100 shadow-sm"><h3 className="font-bold text-[#0f2336] text-sm flex gap-2 mb-3"><AlertTriangle size={16} className="text-blue-500"/>Description</h3><p className="text-sm text-gray-600 leading-relaxed">{selectedTask.description}</p></div>
+              <div className="bg-white p-6 rounded-3xl border border-gray-100 shadow-sm"><h3 className="font-bold text-[#0f2336] text-sm flex gap-2 mb-4"><CheckCircle2 size={16} className="text-emerald-500"/>Required Steps</h3><div className="space-y-3">{selectedTask.instructions.map((step, index) => <label key={step} className="flex gap-3 p-3 rounded-xl border bg-gray-50 cursor-pointer"><input type="checkbox" checked={Boolean(checkedSteps[index])} onChange={(event) => setCheckedSteps((current) => ({...current, [index]: event.target.checked}))}/><span className="text-sm text-gray-700 font-medium">{step}</span></label>)}</div></div>
+              <div className="bg-white p-6 rounded-3xl border border-gray-100 shadow-sm"><h3 className="font-bold text-[#0f2336] text-sm mb-3">Technician Notes</h3><textarea value={notes} onChange={(event) => setNotes(event.target.value)} className="w-full h-32 p-4 bg-gray-50 border border-gray-200 rounded-2xl text-sm" placeholder="Add diagnosis, parts used, and repair details…"/></div>
+              <div className="bg-white p-6 rounded-3xl border border-gray-100 shadow-sm"><h3 className="font-bold text-[#0f2336] text-sm flex gap-2 mb-2"><Camera size={16} className="text-purple-500"/>Proof of Work</h3><p className="text-xs text-gray-500 mb-4">Upload at least one photo before closing the task.</p><input ref={fileRef} type="file" accept="image/jpeg,image/png,image/webp" className="hidden" onChange={(event) => setPhoto(event.target.files?.[0] || null)}/><button type="button" onClick={() => fileRef.current?.click()} className={`w-full border-2 border-dashed ${photo ? "border-emerald-400 bg-emerald-50/30" : "border-gray-300 bg-gray-50/50"} rounded-2xl p-8 flex flex-col items-center`}><ImageIcon size={20}/><span className="text-sm font-bold mt-3">{photo?.name || "Tap to take photo or upload"}</span></button>{error && <p className="mt-4 text-sm font-semibold text-red-600">{error}</p>}<button disabled={saving} onClick={handleCompleteTask} className="w-full mt-6 py-4 bg-[#0f2336] disabled:opacity-50 text-white text-sm font-bold rounded-2xl flex justify-center gap-2"><CheckCircle2 size={18}/>{saving ? "Completing…" : "Mark Task Complete"}</button></div>
+            </div> : !loading && <div className="flex items-center justify-center h-full text-gray-400 font-semibold">No tasks available. You are all caught up!</div>}
+          </div>
         </div>
       </div>
     </DashboardLayout>

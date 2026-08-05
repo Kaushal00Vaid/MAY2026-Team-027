@@ -7,6 +7,16 @@ from app.db.models.otp import OTPRecord, OTPPurpose  # noqa: F401
 from app.db.models.token import RefreshToken  # noqa: F401
 from app.db.models.complaint import Complaint  # noqa: F401
 from app.db.models.complaint_comment import ComplaintComment  # noqa: F401
+from app.helpdesk.complaints.models import (  # noqa: F401
+    ComplaintAttachment,
+    ComplaintStatusHistory,
+)
+from app.helpdesk.work_orders.models import (  # noqa: F401
+    KnownIssueSubscription,
+    MaintenanceWorkOrder,
+    StaffDutyState,
+    WorkOrderResolutionPhoto,
+)
 from app.db.models.transaction import Transaction, TransactionType  # noqa: F401
 
 __all__ = [
@@ -19,6 +29,12 @@ __all__ = [
     "RefreshToken",
     "Complaint",
     "ComplaintComment",
+    "ComplaintAttachment",
+    "ComplaintStatusHistory",
+    "KnownIssueSubscription",
+    "MaintenanceWorkOrder",
+    "StaffDutyState",
+    "WorkOrderResolutionPhoto",
     "Transaction",
     "TransactionType",
 ]

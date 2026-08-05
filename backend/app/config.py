@@ -26,6 +26,8 @@ class Settings(BaseSettings):
     # App
     FRONTEND_URL: str = "http://localhost:5173"
     ENVIRONMENT: str = "development"
+    MEDIA_ROOT: str = "./media"
+    HELPDESK_MAX_UPLOAD_BYTES: int = 5 * 1024 * 1024
 
 
 @lru_cache()
