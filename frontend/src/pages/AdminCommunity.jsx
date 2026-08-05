@@ -1,216 +1,54 @@
-import { useState, useEffect } from "react";
-import {
-  LayoutDashboard,
-  WalletCards,
-  Headset,
-  ShieldCheck,
-  CalendarCheck,
-  Users,
-  BarChart3,
-  Search,
-  MessageSquare,
-  Megaphone,
-  Heart,
-  MoreHorizontal,
-  Plus,
-  CheckCircle2,
-  X,
-  UserCog
-} from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import { useNavigate } from "react-router-dom";
+import { LayoutDashboard, WalletCards, Headset, ShieldCheck, CalendarCheck, Users, BarChart3, Search, MessageSquare, Megaphone, Heart, Plus, CheckCircle2, X, UserCog } from "lucide-react";
 import DashboardLayout from "@/components/layout/DashboardLayout";
+import { useAuth } from "@/hooks/useAuth";
+import { communityError, createNotice, listDirectory, listDiscussions } from "@/features/community/api";
 
 const sidebarItems = [
-  { label: "Dashboard", icon: LayoutDashboard, active: false, href: "/admin" },
-  { label: "Finance", icon: WalletCards, active: false, href: "/admin/finance" },
-  { label: "Helpdesk", icon: Headset, active: false, href: "/admin/helpdesk" },
-  { label: "Security", icon: ShieldCheck, active: false, href: "/admin/security" },
-  { label: "Amenities", icon: CalendarCheck, active: false, href: "/admin/amenities" },
-  { label: "Community", icon: Users, active: true, href: "/admin/community" },
-  { label: "Analytics", icon: BarChart3, active: false, href: "/admin/analytics" },
-  { label: "User Roles", icon: UserCog, active: false, href: "/admin/users" },
+  { label: "Dashboard", icon: LayoutDashboard, href: "/admin" }, { label: "Finance", icon: WalletCards, href: "/admin/finance" },
+  { label: "Helpdesk", icon: Headset, href: "/admin/helpdesk" }, { label: "Security", icon: ShieldCheck, href: "/admin/security" },
+  { label: "Amenities", icon: CalendarCheck, href: "/admin/amenities" }, { label: "Community", icon: Users, active: true, href: "/admin/community" },
+  { label: "Analytics", icon: BarChart3, href: "/admin/analytics" }, { label: "User Roles", icon: UserCog, href: "/admin/users" },
 ];
-
-const discussions = [
-  { id: 1, title: "Diwali Decoration Ideas", author: "Ananya S. (A-402)", replies: 24, likes: 12, time: "2h ago", tag: "Events", tagColor: "orange" },
-  { id: 2, title: "Pool Maintenance Schedule", author: "Admin", replies: 5, likes: 8, time: "1d ago", tag: "Notice", tagColor: "blue" },
-  { id: 3, title: "Car Pooling to IT Park?", author: "Rahul M. (C-104)", replies: 15, likes: 3, time: "2d ago", tag: "General", tagColor: "emerald" },
-];
-
-const residents = [
-  { id: 1, name: "Ananya Singh", unit: "A-402", role: "Resident", status: "Active", join: "Oct 2022" },
-  { id: 2, name: "Rahul Mehta", unit: "C-104", role: "Owner", status: "Active", join: "Jan 2020" },
-  { id: 3, name: "Priya Desai", unit: "B-201", role: "Tenant", status: "Pending", join: "New" },
-  { id: 4, name: "Vikram R.", unit: "A-101", role: "Owner", status: "Active", join: "Mar 2018" },
-];
+const EMPTY_NOTICE = { title: "", body: "", target_type: "all", target_value: "" };
 
 export default function AdminCommunity() {
-  const [showToast, setShowToast] = useState(false);
+  const { user } = useAuth(); const navigate = useNavigate(); const requestId = useRef(0);
+  const [discussions, setDiscussions] = useState([]); const [residents, setResidents] = useState([]);
+  const [search, setSearch] = useState(""); const [notice, setNotice] = useState(EMPTY_NOTICE);
+  const [showNotice, setShowNotice] = useState(false); const [showForums, setShowForums] = useState(false);
+  const [selectedDiscussion, setSelectedDiscussion] = useState(null); const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false); const [error, setError] = useState(""); const [toast, setToast] = useState("");
 
-  useEffect(() => {
-    let timer;
-    if (showToast) {
-      timer = setTimeout(() => setShowToast(false), 3000);
-    }
-    return () => clearTimeout(timer);
-  }, [showToast]);
-
-  const handleBroadcast = () => {
-    setShowToast(true);
+  const load = async (query = search) => {
+    const current = ++requestId.current; setLoading(true); setError("");
+    try { const [{ data: forumData }, { data: directoryData }] = await Promise.all([listDiscussions(), listDirectory(query)]); if (current !== requestId.current) return; setDiscussions(forumData.items); setResidents(directoryData.items); }
+    catch (requestError) { if (current === requestId.current) setError(communityError(requestError, "Unable to load Community administration.")); }
+    finally { if (current === requestId.current) setLoading(false); }
   };
+  useEffect(() => { const timer = setTimeout(() => load(search), 250); return () => clearTimeout(timer); }, [search]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { if (!toast) return undefined; const timer = setTimeout(() => setToast(""), 3500); return () => clearTimeout(timer); }, [toast]);
 
-  return (
-    <DashboardLayout sidebarItems={sidebarItems} userRole="Residential Admin">
-      <div className="p-6 md:p-8 max-w-[1400px] mx-auto space-y-8 animate-in fade-in duration-500 relative">
+  const broadcast = async (event) => {
+    event.preventDefault(); if (saving) return; setSaving(true); setError("");
+    try { await createNotice({ ...notice, target_value: notice.target_type === "all" ? null : notice.target_value }); setNotice(EMPTY_NOTICE); setShowNotice(false); setToast("Notice broadcasted to the selected residents."); }
+    catch (requestError) { setError(communityError(requestError, "Unable to broadcast notice.")); }
+    finally { setSaving(false); }
+  };
+  const userName = user ? `${user.first_name} ${user.last_name}` : "Admin";
 
-        {/* Toast Notification */}
-        {showToast && (
-          <div className="fixed bottom-6 right-6 bg-[#d87943] text-white px-6 py-4 rounded-xl shadow-2xl flex items-center gap-3 animate-in slide-in-from-bottom-5 z-50">
-            <CheckCircle2 className="text-white" size={20} />
-            <div className="flex flex-col">
-              <span className="font-bold text-sm">Notice Broadcasted</span>
-              <span className="text-xs text-orange-100">Notice has been sent to all residents.</span>
-            </div>
-            <button onClick={() => setShowToast(false)} className="ml-4 text-orange-200 hover:text-white transition-colors">
-              <X size={16} />
-            </button>
-          </div>
-        )}
-
-        {/* Header Section */}
-        <div className="flex flex-col md:flex-row md:items-end justify-between gap-4">
-          <div>
-            <h1 className="text-3xl font-extrabold text-[#0f2336] tracking-tight">Community Hub</h1>
-            <p className="text-sm text-gray-500 mt-1">Manage resident directory, notices, and community forums.</p>
-          </div>
-          <div className="flex gap-3">
-            <button onClick={handleBroadcast} className="inline-flex items-center gap-2 px-5 py-2.5 bg-white border border-gray-200 hover:border-gray-300 hover:bg-gray-50 text-gray-700 text-sm font-semibold rounded-xl transition-all shadow-sm active:scale-95">
-              <Megaphone size={16} />
-              Broadcast Notice
-            </button>
-            <button className="inline-flex items-center gap-2 px-5 py-2.5 bg-[#d87943] hover:bg-[#c66a39] text-white text-sm font-semibold rounded-xl transition-all shadow-md active:scale-95">
-              <Plus size={16} />
-              Add Resident
-            </button>
-          </div>
-        </div>
-
-        {/* Main Grid */}
-        <div className="grid grid-cols-1 xl:grid-cols-12 gap-8">
-
-          {/* Discussion Forums */}
-          <div className="xl:col-span-5 flex flex-col gap-6">
-            <div className="bg-white rounded-3xl border border-gray-100 shadow-sm p-6 relative overflow-hidden">
-              <div className="absolute top-0 right-0 w-32 h-32 bg-gradient-to-br from-orange-50 to-transparent rounded-bl-full -z-10"></div>
-
-              <div className="flex items-center justify-between mb-6">
-                <h3 className="text-xl font-bold text-[#0f2336] flex items-center gap-2">
-                  <MessageSquare size={20} className="text-[#d87943]" />
-                  Active Discussions
-                </h3>
-              </div>
-
-              <div className="space-y-4">
-                {discussions.map((post) => (
-                  <div key={post.id} className="p-4 rounded-2xl bg-gray-50/50 hover:bg-gray-50 border border-gray-100 transition-colors cursor-pointer group">
-                    <div className="flex items-center justify-between mb-2">
-                      <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider ${post.tagColor === 'orange' ? 'bg-orange-100 text-orange-600' :
-                          post.tagColor === 'blue' ? 'bg-blue-100 text-blue-600' :
-                            'bg-emerald-100 text-emerald-600'
-                        }`}>
-                        {post.tag}
-                      </span>
-                      <span className="text-xs text-gray-400 font-medium">{post.time}</span>
-                    </div>
-                    <h4 className="font-bold text-[#0f2336] group-hover:text-[#d87943] transition-colors mb-1">{post.title}</h4>
-                    <p className="text-xs text-gray-500 mb-4">By {post.author}</p>
-
-                    <div className="flex items-center gap-4 text-gray-400">
-                      <div className="flex items-center gap-1.5 text-xs font-semibold group-hover:text-blue-500 transition-colors">
-                        <MessageSquare size={14} /> {post.replies}
-                      </div>
-                      <div className="flex items-center gap-1.5 text-xs font-semibold group-hover:text-pink-500 transition-colors">
-                        <Heart size={14} /> {post.likes}
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-
-              <button className="w-full mt-6 py-3 border border-dashed border-gray-200 text-gray-500 text-sm font-bold rounded-xl hover:bg-gray-50 transition-colors">
-                View All Forums
-              </button>
-            </div>
-          </div>
-
-          {/* Resident Directory */}
-          <div className="xl:col-span-7 flex flex-col gap-6">
-            <div className="bg-white rounded-3xl border border-gray-100 shadow-sm overflow-hidden flex flex-col h-full">
-
-              <div className="p-6 md:p-8 border-b border-gray-100 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-                <h3 className="text-xl font-bold text-[#0f2336]">Resident Directory</h3>
-
-                <div className="relative">
-                  <Search size={16} className="absolute left-3 top-3 text-gray-400" />
-                  <input
-                    type="text"
-                    placeholder="Search residents or units..."
-                    className="w-full sm:w-64 h-10 pl-10 pr-4 rounded-xl border border-gray-200 bg-gray-50 text-sm focus:bg-white focus:ring-2 focus:ring-[#d87943]/20 focus:border-[#d87943] outline-none transition-all"
-                  />
-                </div>
-              </div>
-
-              <div className="overflow-x-auto flex-1 p-2">
-                <table className="w-full text-sm text-left whitespace-nowrap">
-                  <thead className="text-[11px] font-bold text-gray-400 uppercase tracking-wider">
-                    <tr>
-                      <th className="px-6 py-3">Resident</th>
-                      <th className="px-6 py-3">Unit</th>
-                      <th className="px-6 py-3">Role</th>
-                      <th className="px-6 py-3">Status</th>
-                      <th className="px-6 py-3"></th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-gray-50">
-                    {residents.map((r, i) => (
-                      <tr key={i} className="hover:bg-gray-50/50 transition-colors group">
-                        <td className="px-6 py-4">
-                          <div className="flex items-center gap-3">
-                            <div className="w-9 h-9 rounded-full bg-indigo-50 text-indigo-600 flex items-center justify-center font-bold text-xs">
-                              {r.name.charAt(0)}
-                            </div>
-                            <div>
-                              <div className="font-bold text-[#0f2336] group-hover:text-indigo-600 transition-colors">{r.name}</div>
-                              <div className="text-[10px] text-gray-400">Joined {r.join}</div>
-                            </div>
-                          </div>
-                        </td>
-                        <td className="px-6 py-4">
-                          <span className="px-3 py-1 bg-gray-100 text-gray-700 font-bold rounded-lg text-xs">{r.unit}</span>
-                        </td>
-                        <td className="px-6 py-4 text-gray-500 font-medium">{r.role}</td>
-                        <td className="px-6 py-4">
-                          <span className={`px-2 py-1 rounded-md text-[10px] font-bold uppercase tracking-wider flex items-center gap-1 w-fit ${r.status === 'Active' ? 'bg-emerald-50 text-emerald-600' : 'bg-orange-50 text-orange-600'
-                            }`}>
-                            {r.status === 'Active' && <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>}
-                            {r.status}
-                          </span>
-                        </td>
-                        <td className="px-6 py-4 text-right">
-                          <button className="p-2 text-gray-400 hover:text-gray-600 rounded-lg hover:bg-gray-100 transition-colors">
-                            <MoreHorizontal size={18} />
-                          </button>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-
-            </div>
-          </div>
-
-        </div>
+  return <DashboardLayout sidebarItems={sidebarItems} userRole="Residential Admin" userName={userName}>
+    <div className="p-6 md:p-8 max-w-[1400px] mx-auto space-y-8 animate-in fade-in duration-500 relative">
+      {toast && <div className="fixed bottom-6 right-6 bg-[#d87943] text-white px-6 py-4 rounded-xl shadow-2xl flex items-center gap-3 z-50"><CheckCircle2 size={20}/><span className="font-bold text-sm">{toast}</span><button onClick={() => setToast("")}><X size={16}/></button></div>}
+      <div className="flex flex-col md:flex-row md:items-end justify-between gap-4"><div><h1 className="text-3xl font-extrabold text-[#0f2336]">Community Hub</h1><p className="text-sm text-gray-500 mt-1">Manage resident directory, notices, and community forums.</p></div><div className="flex gap-3"><button onClick={() => setShowNotice(true)} className="inline-flex items-center gap-2 px-5 py-2.5 bg-white border rounded-xl text-sm font-semibold"><Megaphone size={16}/>Broadcast Notice</button><button onClick={() => navigate("/admin/users")} className="inline-flex items-center gap-2 px-5 py-2.5 bg-[#d87943] text-white rounded-xl text-sm font-semibold"><Plus size={16}/>Add Resident</button></div></div>
+      {error && <div className="p-3 bg-red-50 text-red-600 rounded-xl text-sm font-semibold">{error}</div>}
+      <div className="grid grid-cols-1 xl:grid-cols-12 gap-8">
+        <div className="xl:col-span-5"><div className="bg-white rounded-3xl border shadow-sm p-6"><h3 className="text-xl font-bold text-[#0f2336] flex gap-2 mb-6"><MessageSquare className="text-[#d87943]" size={20}/>Active Discussions</h3>{loading && <p className="text-sm text-gray-500">Loading discussions…</p>}{!loading && discussions.length === 0 && <p className="text-sm text-gray-500">No active discussions.</p>}<div className="space-y-4">{discussions.slice(0, showForums ? discussions.length : 3).map((post) => <button key={post.id} onClick={() => setSelectedDiscussion(post)} className="w-full text-left p-4 rounded-2xl bg-gray-50/50 border hover:bg-gray-50"><div className="flex justify-between mb-2"><span className="px-2 py-0.5 rounded text-[10px] font-bold uppercase bg-orange-100 text-orange-600">{post.tag}</span><span className="text-xs text-gray-400">{new Date(post.created_at).toLocaleString()}</span></div><h4 className="font-bold text-[#0f2336]">{post.title}</h4><p className="text-xs text-gray-500 mb-4">By {post.author}{post.author_flat ? ` (${post.author_flat})` : ""}</p><div className="flex gap-4 text-gray-400 text-xs"><span className="flex gap-1"><MessageSquare size={14}/>{post.reply_count}</span><span className="flex gap-1"><Heart size={14}/>{post.like_count}</span></div></button>)}</div>{discussions.length > 3 && <button onClick={() => setShowForums((value) => !value)} className="w-full mt-6 py-3 border border-dashed rounded-xl text-sm font-bold text-gray-500">{showForums ? "Show Less" : "View All Forums"}</button>}</div></div>
+        <div className="xl:col-span-7"><div className="bg-white rounded-3xl border shadow-sm overflow-hidden"><div className="p-6 md:p-8 border-b flex flex-col sm:flex-row justify-between gap-4"><h3 className="text-xl font-bold text-[#0f2336]">Resident Directory</h3><div className="relative"><Search size={16} className="absolute left-3 top-3 text-gray-400"/><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search residents or units..." className="w-full sm:w-64 h-10 pl-10 pr-4 rounded-xl border bg-gray-50 text-sm"/></div></div>{loading && <p className="p-8 text-sm text-gray-500">Loading residents…</p>}{!loading && residents.length === 0 && <p className="p-8 text-sm text-gray-500">No residents match the search.</p>}<div className="overflow-x-auto"><table className="w-full text-sm text-left"><thead className="text-[11px] text-gray-400 uppercase"><tr><th className="px-6 py-3">Resident</th><th className="px-6 py-3">Unit</th><th className="px-6 py-3">Role</th><th className="px-6 py-3">Status</th></tr></thead><tbody className="divide-y">{residents.map((resident) => <tr key={resident.user_id}><td className="px-6 py-4"><div className="font-bold text-[#0f2336]">{resident.name}</div><div className="text-[10px] text-gray-400">Joined {new Date(resident.joined_at).toLocaleDateString()}</div></td><td className="px-6 py-4"><span className="px-3 py-1 bg-gray-100 rounded-lg text-xs font-bold">{resident.unit || "N/A"}</span></td><td className="px-6 py-4 text-gray-500">{resident.role}</td><td className="px-6 py-4"><span className={`px-2 py-1 rounded-md text-[10px] font-bold uppercase ${resident.status === "Active" ? "bg-emerald-50 text-emerald-600" : "bg-gray-100 text-gray-500"}`}>{resident.status}</span></td></tr>)}</tbody></table></div></div></div>
       </div>
-    </DashboardLayout>
-  );
+      {showNotice && <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4"><form onSubmit={broadcast} className="bg-white rounded-3xl p-8 w-full max-w-lg relative"><button type="button" onClick={() => setShowNotice(false)} className="absolute right-6 top-6"><X size={20}/></button><h2 className="text-2xl font-extrabold text-[#0f2336] mb-6">Broadcast Notice</h2><div className="space-y-4"><input required maxLength={255} value={notice.title} onChange={(event) => setNotice({...notice, title: event.target.value})} placeholder="Notice title" className="w-full h-12 px-4 border rounded-xl"/><textarea required maxLength={10000} value={notice.body} onChange={(event) => setNotice({...notice, body: event.target.value})} placeholder="Notice message" className="w-full h-32 p-4 border rounded-xl"/><select value={notice.target_type} onChange={(event) => setNotice({...notice, target_type: event.target.value, target_value: ""})} className="w-full h-12 px-4 border rounded-xl"><option value="all">All Blocks</option><option value="block">Specific Block</option><option value="flat">Specific Flat</option></select>{notice.target_type !== "all" && <input required value={notice.target_value} onChange={(event) => setNotice({...notice, target_value: event.target.value})} placeholder={notice.target_type === "block" ? "Block, e.g. A" : "Flat, e.g. A-101"} className="w-full h-12 px-4 border rounded-xl"/>}<button disabled={saving} className="w-full py-3 bg-[#d87943] text-white font-bold rounded-xl">{saving ? "Broadcasting…" : "Broadcast Notice"}</button></div></form></div>}
+      {selectedDiscussion && <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4"><div className="bg-white rounded-3xl p-8 w-full max-w-lg relative"><button onClick={() => setSelectedDiscussion(null)} className="absolute right-6 top-6"><X size={20}/></button><span className="text-xs font-bold text-orange-600 uppercase">{selectedDiscussion.tag}</span><h2 className="text-2xl font-extrabold text-[#0f2336] mt-2">{selectedDiscussion.title}</h2><p className="text-sm text-gray-500 mt-1">By {selectedDiscussion.author}</p><p className="text-gray-700 mt-5">{selectedDiscussion.body}</p></div></div>}
+    </div>
+  </DashboardLayout>;
 }

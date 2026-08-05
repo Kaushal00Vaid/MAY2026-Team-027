@@ -18,6 +18,11 @@ from app.helpdesk.work_orders.models import (  # noqa: F401
     WorkOrderResolutionPhoto,
 )
 from app.db.models.transaction import Transaction, TransactionType  # noqa: F401
+from app.community.models import (  # noqa: F401
+    CommunityEvent, DiscussionLike, DiscussionReply, DiscussionThread,
+    EventRsvp, Notice, NoticeDelivery, Poll, PollOption, PollVote,
+    VolunteerOpportunity, VolunteerSignup,
+)
 
 __all__ = [
     "User",
@@ -37,4 +42,7 @@ __all__ = [
     "WorkOrderResolutionPhoto",
     "Transaction",
     "TransactionType",
+    "Notice", "NoticeDelivery", "CommunityEvent", "EventRsvp",
+    "VolunteerOpportunity", "VolunteerSignup", "Poll", "PollOption",
+    "PollVote", "DiscussionThread", "DiscussionReply", "DiscussionLike",
 ]
