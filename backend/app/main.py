@@ -12,6 +12,8 @@ from app.config import settings
 from app.core.security import limiter
 from app.users.router import router as users_router
 from app.helpdesk.router import router as helpdesk_router
+from app.helpdesk.complaints.router import router as complaints_router
+from app.helpdesk.work_orders.router import router as helpdesk_operations_router
 from app.finance.router import router as finance_router
 
 def create_app() -> FastAPI:
@@ -40,12 +42,17 @@ def create_app() -> FastAPI:
     app.include_router(auth_router, prefix="/auth", tags=["Authentication"])
     app.include_router(users_router, prefix="/users", tags=["Users"])
     app.include_router(helpdesk_router, prefix="/api/helpdesk", tags=["Helpdesk"])
+    app.include_router(
+        complaints_router,
+        prefix="/api/v1/complaints",
+        tags=["Helpdesk - Complaints"],
+    )
+    app.include_router(
+        helpdesk_operations_router,
+        prefix="/api/v1/helpdesk",
+        tags=["Helpdesk - Operations"],
+    )
     app.include_router(finance_router, prefix="/api/finance", tags=["Finance"])
-
-    # Auto-create any new tables (safe — skips existing tables)
-    from app.db.database import Base, engine
-    from app.db import models as _models  # noqa: F401 — ensures all models are registered
-    Base.metadata.create_all(bind=engine)
 
     # Health check
     @app.get("/", tags=["Health"])

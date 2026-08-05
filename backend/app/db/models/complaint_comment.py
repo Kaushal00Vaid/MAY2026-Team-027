@@ -1,4 +1,4 @@
-from sqlalchemy import BigInteger, Column, DateTime, ForeignKey, Text
+from sqlalchemy import BigInteger, Boolean, Column, DateTime, ForeignKey, Text
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 
@@ -22,6 +22,7 @@ class ComplaintComment(Base):
     )
 
     body = Column(Text, nullable=False)
+    is_internal = Column(Boolean, nullable=False, server_default="false")
 
     created_at = Column(
         DateTime(timezone=True), server_default=func.now(), nullable=False

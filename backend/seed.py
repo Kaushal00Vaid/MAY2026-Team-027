@@ -17,10 +17,9 @@ load_dotenv()
 # Ensure the backend directory is on sys.path
 sys.path.insert(0, os.path.dirname(__file__))
 
-from app.db.database import SessionLocal, engine
-from app.db.models import User, Role, UserRole, RoleName  # noqa: registers all models
-from app.db.database import Base
-from app.auth.password import hash_password
+from app.db.database import SessionLocal  # noqa: E402
+from app.db.models import User, Role, UserRole, RoleName  # noqa: E402
+from app.auth.password import hash_password  # noqa: E402
 
 # ─── Configuration ────────────────────────────────────────────────────────────
 SUPER_ADMIN = {
@@ -50,12 +49,12 @@ def seed_roles(db) -> dict[RoleName, Role]:
     return role_map
 
 
-def seed_super_admin(db, role_map: dict[RoleName, Role]) -> None:
+def seed_super_admin(db, role_map: dict[RoleName, Role]) -> User:
     """Create the super-admin user if they don't exist."""
     existing = db.query(User).filter(User.email == SUPER_ADMIN["email"]).first()
     if existing:
         print(f"  [skip]   Super-admin '{SUPER_ADMIN['email']}' already exists.")
-        return
+        return existing
 
     user = User(
         first_name=SUPER_ADMIN["first_name"],
@@ -78,6 +77,7 @@ def seed_super_admin(db, role_map: dict[RoleName, Role]) -> None:
     print(f"  [create] Super-admin created: {SUPER_ADMIN['email']}")
     print(f"           Default password: {SUPER_ADMIN['password']}")
     print("           ⚠️  Change this password immediately!")
+    return user
 
 
 def main():
@@ -90,7 +90,11 @@ def main():
         role_map = seed_roles(db)
 
         print("\n👤 Seeding super-admin...")
-        seed_super_admin(db, role_map)
+        admin = seed_super_admin(db, role_map)
+
+        print("\n🛠️  Seeding Helpdesk demo data...")
+        from app.helpdesk.seed import seed_helpdesk
+        seed_helpdesk(db, role_map, admin)
 
         print("\n✅ Seed completed successfully.\n")
     except Exception as exc:

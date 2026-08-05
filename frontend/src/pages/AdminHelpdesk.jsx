@@ -1,550 +1,139 @@
-import { useState } from "react";
-import {
-  LayoutDashboard,
-  WalletCards,
-  Headset,
-  ShieldCheck,
-  CalendarCheck,
-  Users,
-  BarChart3,
-  Filter,
-  Plus,
-  AlertTriangle,
-  Clock,
-  ArrowRight,
-  Droplet,
-  Zap,
-  Wrench,
-  Search,
-  CheckCircle2,
-  X,
-  UploadCloud,
-  UserCog
-} from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import { LayoutDashboard, WalletCards, Headset, ShieldCheck, CalendarCheck, Users, BarChart3, Filter, Plus, AlertTriangle, Clock, ArrowRight, Droplet, Wrench, Search, CheckCircle2, X, UploadCloud, UserCog } from "lucide-react";
 import DashboardLayout from "@/components/layout/DashboardLayout";
-import axiosInstance from "@/api/axiosInstance";
-import { useEffect } from "react";
+import { useAuth } from "@/hooks/useAuth";
+import {
+  addComment, createComplaint, errorMessage, escalateComplaint, getStats,
+  listAssignees, listComments, listComplaints, listKnownIssues,
+  updateComplaint, uploadAttachment,
+} from "@/features/helpdesk/api";
+
 const sidebarItems = [
-  { label: "Dashboard", icon: LayoutDashboard, active: false, href: "/admin" },
-  { label: "Finance", icon: WalletCards, active: false, href: "/admin/finance" },
+  { label: "Dashboard", icon: LayoutDashboard, href: "/admin" },
+  { label: "Finance", icon: WalletCards, href: "/admin/finance" },
   { label: "Helpdesk", icon: Headset, active: true, href: "/admin/helpdesk" },
-  { label: "Security", icon: ShieldCheck, active: false, href: "/admin/security" },
-  { label: "Amenities", icon: CalendarCheck, active: false, href: "/admin/amenities" },
-  { label: "Community", icon: Users, active: false, href: "/admin/community" },
-  { label: "Analytics", icon: BarChart3, active: false, href: "/admin/analytics" },
-  { label: "User Roles", icon: UserCog, active: false, href: "/admin/users" },
+  { label: "Security", icon: ShieldCheck, href: "/admin/security" },
+  { label: "Amenities", icon: CalendarCheck, href: "/admin/amenities" },
+  { label: "Community", icon: Users, href: "/admin/community" },
+  { label: "Analytics", icon: BarChart3, href: "/admin/analytics" },
+  { label: "User Roles", icon: UserCog, href: "/admin/users" },
 ];
+const EMPTY_STATS = { active: 0, unassigned: 0, sla_warning: 0, breached: 0, resolved_today: 0 };
 
 export default function AdminHelpdesk() {
+  const { user } = useAuth();
+  const fileRef = useRef(null);
+  const requestSequence = useRef(0);
+  const [tickets, setTickets] = useState([]);
+  const [stats, setStats] = useState(EMPTY_STATS);
+  const [assignees, setAssignees] = useState([]);
+  const [knownIssues, setKnownIssues] = useState([]);
+  const [search, setSearch] = useState("");
+  const [statusFilter, setStatusFilter] = useState("");
   const [showModal, setShowModal] = useState(false);
   const [showResolveModal, setShowResolveModal] = useState(false);
   const [category, setCategory] = useState("Lift / Elevator");
   const [description, setDescription] = useState("");
   const [location, setLocation] = useState("Block A, Tower 1");
   const [priority, setPriority] = useState("Normal");
-  const [showToast, setShowToast] = useState(false);
-  const [toastMessage, setToastMessage] = useState({ title: "", desc: "" });
-  const [tickets, setTickets] = useState([]);
-  const [selectedTicketId, setSelectedTicketId] = useState(null);
-  const [selectedTicketVersion, setSelectedTicketVersion] = useState(null);
+  const [attachment, setAttachment] = useState(null);
+  const [selectedTicket, setSelectedTicket] = useState(null);
   const [adminNote, setAdminNote] = useState("");
   const [assignee, setAssignee] = useState("");
   const [workOrderNotes, setWorkOrderNotes] = useState("");
   const [actionType, setActionType] = useState("Assign to Staff / Vendor");
   const [comments, setComments] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+  const [toast, setToast] = useState("");
 
-  const fetchTickets = async () => {
+  const load = async (searchValue = search, statusValue = statusFilter) => {
+    const requestId = ++requestSequence.current;
+    setLoading(true); setError("");
     try {
-      const response = await axiosInstance.get("/api/helpdesk/complaints");
-      setTickets(response.data);
-    } catch (error) {
-      console.error("Failed to fetch tickets", error);
+      const params = { page_size: 100, sort_by: "updated_at", sort_order: "desc" };
+      if (searchValue.trim()) params.search = searchValue.trim();
+      if (statusValue) params.status = statusValue;
+      const [{ data: complaints }, { data: metricData }, { data: staff }, { data: issues }] = await Promise.all([
+        listComplaints(params), getStats(), listAssignees(), listKnownIssues(),
+      ]);
+      if (requestId !== requestSequence.current) return;
+      setTickets(complaints.items); setStats(metricData); setAssignees(staff); setKnownIssues(issues);
+    } catch (requestError) {
+      if (requestId === requestSequence.current) setError(errorMessage(requestError, "Unable to load Helpdesk operations."));
+    } finally {
+      if (requestId === requestSequence.current) setLoading(false);
     }
   };
-
   useEffect(() => {
-    fetchTickets();
-  }, []);
+    const timer = setTimeout(() => load(search, statusFilter), 250);
+    return () => clearTimeout(timer);
+  }, [search, statusFilter]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { if (!toast) return undefined; const timer = setTimeout(() => setToast(""), 3500); return () => clearTimeout(timer); }, [toast]);
 
-  const openResolveModal = async (ticket) => {
-    setSelectedTicketId(ticket.id);
-    setSelectedTicketVersion(ticket.version);
-    setAdminNote("");
-    setAssignee(ticket.assigned_to || "");
-    setWorkOrderNotes(ticket.work_order_notes || "");
-    setActionType("Assign to Staff / Vendor");
-    try {
-      const res = await axiosInstance.get(`/api/helpdesk/complaints/${ticket.id}/comments`);
-      setComments(res.data);
-    } catch {
-      setComments([]);
-    }
+  const openResolve = async (ticket) => {
+    setSelectedTicket(ticket); setAssignee(ticket.assigned_to || ""); setWorkOrderNotes(ticket.work_order_notes || ""); setAdminNote(""); setActionType("Assign to Staff / Vendor");
+    try { const { data } = await listComments(ticket.id); setComments(data); }
+    catch { setComments([]); }
     setShowResolveModal(true);
   };
 
-  const handleResolve = async () => {
-    if (!selectedTicketId) return;
+  const handleAction = async () => {
+    if (!selectedTicket || saving) return; setSaving(true); setError("");
     try {
-      if (adminNote.trim()) {
-        await axiosInstance.post(`/api/helpdesk/complaints/${selectedTicketId}/comments`, { body: adminNote.trim() });
-      }
-
-      let payload = { expected_version: selectedTicketVersion };
-      if (actionType === "Mark as Resolved") {
-        payload.status = "Resolved";
-      }
-      if (assignee) payload.assigned_to = parseInt(assignee);
-      if (workOrderNotes) payload.work_order_notes = workOrderNotes;
-
-      await axiosInstance.patch(`/api/helpdesk/complaints/${selectedTicketId}`, payload);
-      
-      setShowResolveModal(false);
-      setAdminNote("");
-      setComments([]);
-      setToastMessage({ title: "Ticket Updated", desc: "Ticket has been successfully updated." });
-      setShowToast(true);
-      fetchTickets();
-      setTimeout(() => setShowToast(false), 3000);
-    } catch (err) {
-      console.error(err);
-      if (err.response?.status === 409) {
-        setToastMessage({ title: "Conflict Detected", desc: "This ticket was modified by someone else. Please refresh and try again." });
-        setShowToast(true);
-        setTimeout(() => setShowToast(false), 5000);
+      if (actionType === "Escalate to Committee") {
+        await escalateComplaint(selectedTicket.id, { expected_version: selectedTicket.version, note: adminNote || undefined });
       } else {
-        setToastMessage({ title: "Error", desc: "Failed to update ticket." });
-        setShowToast(true);
-        setTimeout(() => setShowToast(false), 3000);
+        const payload = { expected_version: selectedTicket.version };
+        if (actionType === "Mark as Resolved") payload.status = "Resolved";
+        if (assignee) payload.assigned_to = Number(assignee);
+        if (workOrderNotes.trim()) payload.work_order_notes = workOrderNotes.trim();
+        await updateComplaint(selectedTicket.id, payload);
+        if (adminNote.trim()) await addComment(selectedTicket.id, adminNote.trim(), true);
       }
-    }
+      setShowResolveModal(false); setToast("Ticket updated successfully."); await load();
+    } catch (requestError) { setError(errorMessage(requestError, "Unable to update the ticket.")); }
+    finally { setSaving(false); }
   };
-  
+
   const handleRaise = async () => {
+    if (!description.trim()) return setError("Description is required.");
+    setSaving(true); setError("");
     try {
-      await axiosInstance.post("/api/helpdesk/complaints", {
-        title: category,
-        category: category,
-        description: description || "No description provided",
-        location: location,
-        priority: priority
-      });
-      setShowModal(false);
-      setToastMessage({ title: "Ticket Raised", desc: "New ticket has been submitted to the queue." });
-      setShowToast(true);
-      fetchTickets();
-      setTimeout(() => setShowToast(false), 3000);
-    } catch (error) {
-      console.error("Failed to create ticket", error);
-    }
+      const { data } = await createComplaint({ title: category, category, description, location, priority });
+      if (attachment) await uploadAttachment(data.id, attachment);
+      setShowModal(false); setDescription(""); setAttachment(null); setToast("Ticket raised successfully."); await load();
+    } catch (requestError) { setError(errorMessage(requestError, "Unable to raise the ticket.")); }
+    finally { setSaving(false); }
   };
 
-  return (
-    <DashboardLayout sidebarItems={sidebarItems} userRole="Residential Admin">
-      <div className="p-6 md:p-8 max-w-[1400px] mx-auto space-y-8 animate-in fade-in duration-500 relative">
-        
-        {/* Toast Notification */}
-        {showToast && (
-          <div className="fixed bottom-6 right-6 bg-[#0f2336] text-white px-6 py-4 rounded-xl shadow-2xl flex items-center gap-3 animate-in slide-in-from-bottom-5 z-50">
-            <CheckCircle2 className="text-emerald-400" size={20} />
-            <div className="flex flex-col">
-              <span className="font-bold text-sm">{toastMessage.title}</span>
-              <span className="text-xs text-gray-300">{toastMessage.desc}</span>
-            </div>
-            <button onClick={() => setShowToast(false)} className="ml-4 text-gray-400 hover:text-white transition-colors">
-              <X size={16} />
-            </button>
-          </div>
-        )}
+  const breachedTicket = tickets.find((ticket) => ["Open", "In Progress"].includes(ticket.status) && ticket.sla_deadline && new Date(ticket.sla_deadline) < new Date());
+  const duplicate = knownIssues.find((issue) => issue.category === category && (!location || issue.location?.toLowerCase() === location.toLowerCase()));
+  const userName = user ? `${user.first_name} ${user.last_name}` : "Admin";
 
-        {/* Background glow effects */}
-        <div className="absolute top-0 right-0 w-96 h-96 bg-blue-500/5 rounded-full blur-3xl -z-10 pointer-events-none"></div>
-        <div className="absolute top-40 left-10 w-72 h-72 bg-emerald-500/5 rounded-full blur-3xl -z-10 pointer-events-none"></div>
-
-        {/* Header Section */}
-        <div className="flex flex-col md:flex-row md:items-end justify-between gap-4">
-          <div>
-            <h1 className="text-3xl md:text-4xl font-extrabold text-[#0f2336] tracking-tight">Support Desk</h1>
-            <p className="text-sm text-gray-500 mt-1 font-medium">Issue resolution and vendor orchestration matrix.</p>
-          </div>
-          <div className="flex items-center gap-3">
-            <div className="relative">
-              <Search size={16} className="absolute left-3 top-3 text-gray-400" />
-              <input 
-                type="text" 
-                placeholder="Search tickets..." 
-                className="w-full sm:w-64 h-11 pl-10 pr-4 rounded-xl border border-gray-200 bg-white/50 backdrop-blur-sm text-sm focus:bg-white focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none transition-all shadow-sm"
-              />
-            </div>
-            <button className="h-11 w-11 flex items-center justify-center bg-white border border-gray-200 hover:border-gray-300 text-gray-700 rounded-xl transition-all shadow-sm active:scale-95">
-              <Filter size={18} />
-            </button>
-            <button 
-              onClick={() => setShowModal(true)}
-              className="h-11 px-6 bg-[#0f2336] hover:bg-[#1a3857] text-white text-sm font-bold rounded-xl transition-all shadow-lg shadow-[#0f2336]/20 active:scale-95 flex items-center gap-2"
-            >
-              <Plus size={18} />
-              Raise Ticket
-            </button>
-          </div>
-        </div>
-
-        {/* Stats Bento */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-5">
-          {/* Active */}
-          <div className="bg-white/80 backdrop-blur-md p-6 rounded-3xl border border-gray-100 shadow-[0_4px_20px_rgba(0,0,0,0.02)] group hover:shadow-[0_8px_30px_rgba(0,0,0,0.04)] transition-all">
-            <div className="flex justify-between items-start mb-4">
-              <div className="p-2.5 bg-blue-50 text-blue-600 rounded-xl group-hover:scale-110 transition-transform">
-                <Wrench size={20} />
-              </div>
-              <span className="text-xs font-bold text-gray-400 uppercase tracking-widest">Active</span>
-            </div>
-            <div className="text-4xl font-extrabold text-[#0f2336]">42</div>
-            <div className="text-xs text-blue-600 font-semibold mt-2 flex items-center gap-1">
-              <span className="w-1.5 h-1.5 rounded-full bg-blue-600 animate-pulse"></span> 12 unassigned
-            </div>
-          </div>
-          
-          {/* SLA Warning */}
-          <div className="bg-white/80 backdrop-blur-md p-6 rounded-3xl border border-orange-100 shadow-[0_4px_20px_rgba(249,115,22,0.05)] group hover:shadow-[0_8px_30px_rgba(249,115,22,0.1)] transition-all relative overflow-hidden">
-            <div className="absolute top-0 right-0 w-32 h-32 bg-orange-500/5 rounded-bl-full -z-10 group-hover:scale-110 transition-transform"></div>
-            <div className="flex justify-between items-start mb-4">
-              <div className="p-2.5 bg-orange-50 text-orange-500 rounded-xl group-hover:scale-110 transition-transform">
-                <Clock size={20} />
-              </div>
-              <span className="text-xs font-bold text-orange-500 uppercase tracking-widest">Warning</span>
-            </div>
-            <div className="text-4xl font-extrabold text-orange-600">8</div>
-            <div className="text-xs text-orange-600/70 font-semibold mt-2">Approaching 24h SLA</div>
-          </div>
-
-          {/* Breached */}
-          <div className="bg-[#1a1a24] p-6 rounded-3xl border border-red-500/20 shadow-[0_4px_20px_rgba(239,68,68,0.15)] group hover:shadow-[0_8px_30px_rgba(239,68,68,0.25)] transition-all relative overflow-hidden">
-            <div className="absolute top-0 right-0 w-32 h-32 bg-red-500/10 rounded-bl-full -z-10 group-hover:scale-110 transition-transform"></div>
-            <div className="flex justify-between items-start mb-4">
-              <div className="p-2.5 bg-red-500/20 text-red-400 rounded-xl group-hover:scale-110 transition-transform shadow-[0_0_15px_rgba(239,68,68,0.2)]">
-                <AlertTriangle size={20} />
-              </div>
-              <span className="text-xs font-bold text-red-400 uppercase tracking-widest animate-pulse">Breached</span>
-            </div>
-            <div className="text-4xl font-extrabold text-white">2</div>
-            <div className="text-xs text-red-400/80 font-semibold mt-2">Requires intervention</div>
-          </div>
-
-          {/* Resolved */}
-          <div className="bg-white/80 backdrop-blur-md p-6 rounded-3xl border border-gray-100 shadow-[0_4px_20px_rgba(0,0,0,0.02)] group hover:shadow-[0_8px_30px_rgba(0,0,0,0.04)] transition-all">
-            <div className="flex justify-between items-start mb-4">
-              <div className="p-2.5 bg-emerald-50 text-emerald-500 rounded-xl group-hover:scale-110 transition-transform">
-                <CheckCircle2 size={20} />
-              </div>
-              <span className="text-xs font-bold text-gray-400 uppercase tracking-widest">Resolved</span>
-            </div>
-            <div className="text-4xl font-extrabold text-[#0f2336]">15</div>
-            <div className="text-xs text-emerald-600 font-semibold mt-2">Today's completion</div>
-          </div>
-        </div>
-
-        {/* Main Grid */}
-        <div className="grid grid-cols-1 xl:grid-cols-12 gap-8">
-          
-          {/* Active Ticket Grid */}
-          <div className="xl:col-span-8 flex flex-col gap-6">
-            <h3 className="text-xl font-bold text-[#0f2336]">Current Pipeline</h3>
-            
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
-              
-              {tickets.map(ticket => (
-              <div key={ticket.id} className="bg-white rounded-3xl p-6 border border-gray-100 shadow-sm hover:shadow-xl hover:shadow-blue-500/5 transition-all duration-300 cursor-pointer group flex flex-col justify-between">
-                <div>
-                  <div className="flex items-center justify-between mb-5">
-                    <div className="flex items-center gap-2">
-                      <div className="w-8 h-8 rounded-full bg-blue-50 flex items-center justify-center text-blue-500">
-                        <Droplet size={14} />
-                      </div>
-                      <span className="text-xs font-bold text-gray-900 uppercase tracking-wider">{ticket.category}</span>
-                    </div>
-                    <span className="px-2.5 py-1 bg-gray-50 border border-gray-100 text-gray-500 text-[10px] font-bold uppercase tracking-wider rounded-lg">#{ticket.id}</span>
-                  </div>
-                  <h4 className="font-extrabold text-lg text-[#0f2336] mb-2 group-hover:text-blue-600 transition-colors leading-tight">{ticket.title || ticket.category}</h4>
-                  <p className="text-sm text-gray-500 line-clamp-2">"{ticket.description}"</p>
-                </div>
-                
-                <div className="mt-6 pt-5 border-t border-gray-100 flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <div className="w-6 h-6 rounded-full bg-gray-200 border-2 border-white flex items-center justify-center text-[10px] font-bold text-gray-600 z-10">{ticket.status === "Resolved" ? "✓" : "!"}</div>
-                    <span className="text-xs font-semibold text-gray-500">{ticket.location || "N/A"} • {ticket.priority}</span>
-                  </div>
-                  <button onClick={() => openResolveModal(ticket)} className="w-8 h-8 rounded-full bg-gray-50 group-hover:bg-blue-50 group-hover:text-blue-600 flex items-center justify-center transition-colors">
-                    <ArrowRight size={14} />
-                  </button>
-                </div>
-              </div>
-              ))}
-
-            </div>
-          </div>
-
-          {/* Escalation Center */}
-          <div className="xl:col-span-4 flex flex-col gap-6">
-            <h3 className="text-xl font-bold text-[#0f2336]">Escalation Center</h3>
-            
-            <div className="bg-[#0f1520] rounded-[2rem] p-1 shadow-2xl relative overflow-hidden h-full flex flex-col">
-              <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-red-900/40 via-[#0f1520] to-[#0f1520]"></div>
-              
-              <div className="bg-[#151b2b]/80 backdrop-blur-md rounded-[1.8rem] border border-white/5 p-6 md:p-8 relative z-10 flex-1 flex flex-col">
-                
-                <div className="flex items-center gap-3 mb-8">
-                  <div className="w-3 h-3 rounded-full bg-red-500 shadow-[0_0_12px_rgba(239,68,68,0.8)] animate-pulse"></div>
-                  <h4 className="text-white font-bold tracking-widest text-sm uppercase">Active Breach</h4>
-                </div>
-                
-                <div className="mb-8">
-                  <div className="text-xs font-mono text-gray-400 mb-2">#TK-875</div>
-                  <h3 className="text-2xl font-extrabold text-white leading-tight mb-4">Power Backup Failure</h3>
-                  <p className="text-sm text-gray-400">Main DG set in clubhouse failed to auto-start during power cut.</p>
-                </div>
-
-                {/* Cyberpunk styled timeline */}
-                <div className="relative border-l border-white/10 ml-3 space-y-8 flex-1">
-                  <div className="relative pl-6">
-                    <span className="absolute -left-[5px] top-1.5 w-2 h-2 rounded-full bg-gray-500 shadow-[0_0_8px_rgba(107,114,128,0.8)]"></span>
-                    <div className="text-[10px] font-bold text-gray-500 tracking-wider mb-1">09:00 AM</div>
-                    <div className="text-sm text-gray-300 font-medium">Ticket Logged</div>
-                  </div>
-                  
-                  <div className="relative pl-6">
-                    <span className="absolute -left-[5px] top-1.5 w-2 h-2 rounded-full bg-red-500 shadow-[0_0_12px_rgba(239,68,68,1)]"></span>
-                    <div className="text-[10px] font-bold text-red-400 tracking-wider mb-1">01:00 PM</div>
-                    <div className="text-sm text-red-200 font-bold">SLA Breached (4hrs)</div>
-                  </div>
-                  
-                  <div className="relative pl-6 opacity-60">
-                    <span className="absolute -left-[6px] top-1 w-3 h-3 rounded-full border border-red-500/50 bg-[#151b2b] flex items-center justify-center">
-                      <div className="w-1 h-1 rounded-full bg-red-500/50"></div>
-                    </span>
-                    <div className="text-[10px] font-bold text-gray-500 tracking-wider mb-1">01:15 PM</div>
-                    <div className="text-sm text-gray-400 italic">Auto-escalated to Committee</div>
-                  </div>
-                </div>
-                
-                <button onClick={() => setShowResolveModal(true)} className="w-full mt-8 py-4 bg-white hover:bg-gray-100 text-[#0f1520] font-extrabold rounded-2xl text-sm transition-transform active:scale-95 flex items-center justify-center gap-2">
-                  <AlertTriangle size={18} />
-                  TAKE ACTION
-                </button>
-              </div>
-            </div>
-          </div>
-
-        </div>
+  return <DashboardLayout sidebarItems={sidebarItems} userRole="Residential Admin" userName={userName}>
+    <div className="p-6 md:p-8 max-w-[1400px] mx-auto space-y-8 relative">
+      {toast && <div className="fixed bottom-6 right-6 bg-[#0f2336] text-white px-6 py-4 rounded-xl shadow-2xl flex gap-3 z-50"><CheckCircle2 className="text-emerald-400" size={20}/><span className="text-sm font-bold">{toast}</span><button onClick={() => setToast("")}><X size={16}/></button></div>}
+      <div className="flex flex-col md:flex-row md:items-end justify-between gap-4"><div><h1 className="text-3xl md:text-4xl font-extrabold text-[#0f2336]">Support Desk</h1><p className="text-sm text-gray-500 mt-1">Issue resolution and vendor orchestration matrix.</p></div><div className="flex gap-3"><div className="relative"><Search size={16} className="absolute left-3 top-3 text-gray-400"/><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search tickets..." className="w-64 h-11 pl-10 pr-4 rounded-xl border bg-white"/></div><button onClick={() => setStatusFilter((value) => value ? "" : "Open")} title="Toggle open-only filter" className={`h-11 w-11 flex items-center justify-center border rounded-xl ${statusFilter ? "bg-[#0f2336] text-white" : "bg-white"}`}><Filter size={18}/></button><button onClick={() => setShowModal(true)} className="h-11 px-6 bg-[#0f2336] text-white text-sm font-bold rounded-xl flex gap-2 items-center"><Plus size={18}/>Raise Ticket</button></div></div>
+      {error && <div className="p-3 bg-red-50 border border-red-100 text-red-600 text-sm font-semibold rounded-xl">{error}</div>}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-5">
+        <Metric icon={Wrench} label="Active" value={stats.active} detail={`${stats.unassigned} unassigned`} />
+        <Metric icon={Clock} label="Warning" value={stats.sla_warning} detail="Approaching SLA" orange />
+        <Metric icon={AlertTriangle} label="Breached" value={stats.breached} detail="Requires intervention" dark />
+        <Metric icon={CheckCircle2} label="Resolved" value={stats.resolved_today} detail="Today's completion" />
+      </div>
+      <div className="grid grid-cols-1 xl:grid-cols-12 gap-8"><div className="xl:col-span-8"><h3 className="text-xl font-bold text-[#0f2336] mb-6">Current Pipeline</h3>{loading && <p className="text-sm text-gray-500">Loading pipeline…</p>}{!loading && tickets.length === 0 && <div className="bg-white rounded-3xl p-8 text-gray-500">No tickets match the current filter.</div>}<div className="grid sm:grid-cols-2 gap-5">{tickets.map((ticket) => <div key={ticket.id} className="bg-white rounded-3xl p-6 border shadow-sm flex flex-col justify-between"><div><div className="flex justify-between mb-5"><span className="text-xs font-bold uppercase flex gap-2"><Droplet size={14}/>{ticket.category}</span><span className="text-[10px] font-bold text-gray-500">#{ticket.id}</span></div><h4 className="font-extrabold text-lg text-[#0f2336] mb-2">{ticket.title || ticket.category}</h4><p className="text-sm text-gray-500 line-clamp-2">{ticket.description}</p></div><div className="mt-6 pt-5 border-t flex justify-between"><span className="text-xs text-gray-500">{ticket.location || "N/A"} • {ticket.priority} • {ticket.status}</span><button onClick={() => openResolve(ticket)} className="w-8 h-8 rounded-full bg-gray-50 flex items-center justify-center"><ArrowRight size={14}/></button></div></div>)}</div></div>
+        <div className="xl:col-span-4"><h3 className="text-xl font-bold text-[#0f2336] mb-6">Escalation Center</h3><div className="bg-[#0f1520] rounded-[2rem] p-8 text-white min-h-80">{breachedTicket ? <><div className="flex gap-3 mb-8"><span className="w-3 h-3 rounded-full bg-red-500 animate-pulse"/><h4 className="font-bold uppercase text-sm">Active Breach</h4></div><div className="text-xs font-mono text-gray-400">#TK-{breachedTicket.id}</div><h3 className="text-2xl font-extrabold my-3">{breachedTicket.title || breachedTicket.category}</h3><p className="text-sm text-gray-400">{breachedTicket.description}</p><p className="text-sm text-red-300 mt-6">SLA deadline: {new Date(breachedTicket.sla_deadline).toLocaleString()}</p><button onClick={() => openResolve(breachedTicket)} className="w-full mt-8 py-4 bg-white text-[#0f1520] font-extrabold rounded-2xl">TAKE ACTION</button></> : <div className="h-full flex flex-col items-center justify-center text-center text-gray-400"><CheckCircle2 size={32} className="text-emerald-400 mb-3"/><p>No active SLA breaches.</p></div>}</div></div>
       </div>
 
-      {/* Modern Modal Overlay */}
-      {showModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-[#0f1a2b]/80 backdrop-blur-md animate-in fade-in duration-200">
-          <div className="bg-white rounded-[2rem] w-full max-w-2xl overflow-hidden shadow-2xl relative animate-in zoom-in-95 duration-200">
-            
-            <div className="px-8 py-6 flex items-center justify-between bg-white relative z-10">
-              <div>
-                <h2 className="text-2xl font-extrabold text-[#0f2336]">Raise Ticket</h2>
-                <p className="text-sm text-gray-500 mt-1">Submit a new maintenance request.</p>
-              </div>
-              <button 
-                onClick={() => setShowModal(false)}
-                className="w-10 h-10 bg-gray-50 hover:bg-gray-100 text-gray-500 rounded-full flex items-center justify-center transition-colors"
-              >
-                <X size={20} />
-              </button>
-            </div>
-            
-            <div className="px-8 pb-8 space-y-6 max-h-[70vh] overflow-y-auto custom-scrollbar relative z-10">
-              
-              {/* Smart Alert */}
-              {category === "Lift / Elevator" && (
-                <div className="bg-orange-50/80 border border-orange-200 rounded-2xl p-5 flex items-start gap-4 animate-in slide-in-from-top-4 shadow-sm relative overflow-hidden">
-                  <div className="absolute top-0 left-0 w-1 h-full bg-orange-500"></div>
-                  <div className="p-2 bg-orange-100 text-orange-600 rounded-xl shrink-0">
-                    <AlertTriangle size={20} />
-                  </div>
-                  <div>
-                    <h4 className="font-bold text-orange-900 mb-1">Potential Duplicate Detected</h4>
-                    <p className="text-sm text-orange-800/80 mb-3 leading-relaxed">A similar issue "Lift Failure - Block A" near your selected location is already being addressed.</p>
-                    <button className="px-3 py-1.5 bg-orange-100 hover:bg-orange-200 text-orange-700 text-xs font-bold rounded-lg transition-colors flex items-center gap-1.5">
-                      VIEW TICKET #882 <ArrowRight size={14} />
-                    </button>
-                  </div>
-                </div>
-              )}
+      {showModal && <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-[#0f1a2b]/80"><div className="bg-white rounded-[2rem] w-full max-w-2xl overflow-hidden"><div className="px-8 py-6 flex justify-between"><div><h2 className="text-2xl font-extrabold text-[#0f2336]">Raise Ticket</h2><p className="text-sm text-gray-500">Submit a new maintenance request.</p></div><button onClick={() => setShowModal(false)}><X size={20}/></button></div><div className="px-8 pb-8 space-y-6">{error && <p className="p-3 bg-red-50 text-red-600 rounded-xl text-sm">{error}</p>}{duplicate && <div className="bg-orange-50 border border-orange-200 rounded-2xl p-5"><h4 className="font-bold text-orange-900">Potential Duplicate Detected</h4><p className="text-sm text-orange-800">{duplicate.title} at {duplicate.location || "common area"} is already open.</p></div>}<div className="grid md:grid-cols-2 gap-6"><select value={category} onChange={(event) => setCategory(event.target.value)} className="h-12 px-4 rounded-xl border bg-gray-50"><option>Lift / Elevator</option><option>Plumbing</option><option>Electrical</option><option>Carpentry</option><option>Other</option></select><textarea value={description} onChange={(event) => setDescription(event.target.value)} placeholder="Provide details" className="h-28 p-4 rounded-xl border bg-gray-50"/><input value={location} onChange={(event) => setLocation(event.target.value)} className="h-12 px-4 rounded-xl border bg-gray-50"/><select value={priority} onChange={(event) => setPriority(event.target.value)} className="h-12 px-4 rounded-xl border bg-gray-50"><option>Normal</option><option>Low</option><option>Medium</option><option>High</option><option>Critical</option></select><input ref={fileRef} type="file" accept="image/jpeg,image/png,image/webp,application/pdf" onChange={(event) => setAttachment(event.target.files?.[0] || null)} className="hidden"/><button onClick={() => fileRef.current?.click()} className="h-20 border-2 border-dashed rounded-xl text-gray-500 flex gap-2 items-center justify-center"><UploadCloud size={20}/>{attachment?.name || "Upload Photo"}</button></div></div><div className="p-6 border-t bg-gray-50 flex justify-end gap-3"><button onClick={() => setShowModal(false)} className="px-6 py-3 font-bold">Cancel</button><button disabled={saving} onClick={handleRaise} className="px-8 py-3 font-bold text-white bg-[#0f2336] rounded-xl">{saving ? "Submitting…" : "Submit Ticket"}</button></div></div></div>}
 
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <div className="space-y-2 relative">
-                  <label className="text-xs font-bold text-gray-500 uppercase tracking-wider ml-1">Category</label>
-                  <select 
-                    value={category}
-                    onChange={(e) => setCategory(e.target.value)}
-                    className="w-full h-12 px-4 rounded-xl border-2 border-gray-100 bg-gray-50 text-sm font-semibold text-[#0f2336] focus:bg-white focus:border-blue-500 outline-none transition-all appearance-none cursor-pointer"
-                  >
-                    <option>Lift / Elevator</option>
-                    <option>Plumbing</option>
-                    <option>Electrical</option>
-                    <option>Carpentry</option>
-                    <option>Other</option>
-                  </select>
-                </div>
-                
-                <div className="space-y-2 md:row-span-2">
-                  <label className="text-xs font-bold text-gray-500 uppercase tracking-wider ml-1">Description</label>
-                  <textarea 
-                    value={description}
-                    onChange={(e) => setDescription(e.target.value)}
-                    placeholder="Provide details about the issue..."
-                    className="w-full h-[120px] p-4 rounded-xl border-2 border-gray-100 bg-gray-50 text-sm font-medium focus:bg-white focus:border-blue-500 outline-none transition-all resize-none"
-                  ></textarea>
-                </div>
-                
-                <div className="space-y-2">
-                  <label className="text-xs font-bold text-gray-500 uppercase tracking-wider ml-1">Location</label>
-                  <input 
-                    type="text" 
-                    value={location}
-                    onChange={(e) => setLocation(e.target.value)}
-                    placeholder="Location"
-                    className="w-full h-12 px-4 rounded-xl border-2 border-gray-100 bg-gray-50 text-sm font-semibold text-[#0f2336] focus:bg-white focus:border-blue-500 outline-none transition-all" 
-                  />
-                </div>
-                
-                <div className="space-y-2">
-                  <label className="text-xs font-bold text-gray-500 uppercase tracking-wider ml-1">Priority Level</label>
-                  <div className="flex bg-gray-50 p-1 rounded-xl border-2 border-gray-100">
-                    <button onClick={() => setPriority("Normal")} className={`flex-1 py-2 text-sm font-bold rounded-lg transition-colors ${priority === "Normal" ? "bg-white text-[#0f2336] shadow-sm" : "text-gray-500 hover:text-gray-900"}`}>Normal</button>
-                    <button onClick={() => setPriority("Critical")} className={`flex-1 py-2 text-sm font-bold rounded-lg transition-colors ${priority === "Critical" ? "bg-white text-[#0f2336] shadow-sm" : "text-gray-500 hover:text-gray-900"}`}>Critical</button>
-                  </div>
-                </div>
-                
-                <div className="space-y-2">
-                  <label className="text-xs font-bold text-gray-500 uppercase tracking-wider ml-1">Attachments</label>
-                  <div className="w-full h-[76px] border-2 border-dashed border-gray-200 rounded-xl bg-gray-50 flex items-center justify-center text-gray-400 hover:bg-gray-100 hover:border-blue-500 hover:text-blue-500 transition-all cursor-pointer group">
-                    <div className="flex items-center gap-2">
-                      <UploadCloud size={20} className="group-hover:-translate-y-1 transition-transform" />
-                      <span className="text-sm font-semibold">Upload Photo</span>
-                    </div>
-                  </div>
-                </div>
-              </div>
+      {showResolveModal && selectedTicket && <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-[#0f1a2b]/80"><div className="bg-white rounded-[2rem] w-full max-w-md p-8 max-h-[85vh] overflow-y-auto relative"><button onClick={() => setShowResolveModal(false)} className="absolute top-6 right-6"><X size={20}/></button><h2 className="text-2xl font-extrabold text-[#0f2336]">Update Ticket</h2><p className="text-sm text-gray-500 mb-6">Assign, escalate, or resolve ticket TK-{selectedTicket.id}.</p><div className="space-y-4">{error && <p className="p-3 bg-red-50 text-red-600 rounded-xl text-sm">{error}</p>}<select value={actionType} onChange={(event) => setActionType(event.target.value)} className="w-full h-12 px-4 rounded-xl border bg-gray-50"><option>Assign to Staff / Vendor</option><option>Mark as Resolved</option><option>Escalate to Committee</option></select>{actionType === "Assign to Staff / Vendor" && <select value={assignee} onChange={(event) => setAssignee(event.target.value)} className="w-full h-12 px-4 rounded-xl border bg-gray-50"><option value="">Select assignee</option>{assignees.map((item) => <option key={item.user_id} value={item.user_id}>{item.name} ({item.staff_type || "Support"}) {item.on_duty ? "• On duty" : "• Off duty"}</option>)}</select>}<textarea value={workOrderNotes} onChange={(event) => setWorkOrderNotes(event.target.value)} placeholder="One required step per line" className="w-full h-24 p-4 rounded-xl border bg-gray-50"/><textarea value={adminNote} onChange={(event) => setAdminNote(event.target.value)} placeholder="Internal admin note" className="w-full h-20 p-4 rounded-xl border bg-gray-50"/>{comments.length > 0 && <div className="max-h-32 overflow-y-auto space-y-2">{comments.map((item) => <div key={item.id} className="p-3 bg-gray-50 rounded-xl text-sm"><strong>{item.author_name}</strong><p>{item.body}</p></div>)}</div>}<button disabled={saving || (actionType === "Assign to Staff / Vendor" && !assignee)} onClick={handleAction} className="w-full py-4 bg-[#0f2336] disabled:opacity-50 text-white font-bold rounded-xl">{saving ? "Saving…" : "Confirm Action"}</button></div></div></div>}
+    </div>
+  </DashboardLayout>;
+}
 
-            </div>
-            
-            <div className="p-6 border-t border-gray-100 bg-gray-50/80 flex justify-end gap-3 relative z-10">
-              <button 
-                onClick={() => setShowModal(false)}
-                className="px-6 py-3 text-sm font-bold text-gray-600 hover:bg-white hover:shadow-sm rounded-xl transition-all"
-              >
-                Cancel
-              </button>
-              <button 
-                className="px-8 py-3 text-sm font-bold text-white bg-[#0f2336] hover:bg-[#1a3857] rounded-xl transition-transform shadow-lg shadow-[#0f2336]/20 active:scale-95"
-                onClick={handleRaise}
-              >
-                Submit Ticket
-              </button>
-            </div>
-            
-          </div>
-        </div>
-      )}
-
-      {/* Resolve Modal Overlay */}
-      {showResolveModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-[#0f1a2b]/80 backdrop-blur-md animate-in fade-in duration-200">
-          <div className="bg-white rounded-[2rem] w-full max-w-md overflow-hidden shadow-2xl relative animate-in zoom-in-95 duration-200">
-            
-            <div className="px-8 py-6 flex items-center justify-between bg-white relative z-10">
-              <div>
-                <h2 className="text-2xl font-extrabold text-[#0f2336]">Update Ticket</h2>
-                <p className="text-sm text-gray-500 mt-1">Assign to vendor or close ticket.</p>
-              </div>
-              <button 
-                onClick={() => setShowResolveModal(false)}
-                className="w-10 h-10 bg-gray-50 hover:bg-gray-100 text-gray-500 rounded-full flex items-center justify-center transition-colors"
-              >
-                <X size={20} />
-              </button>
-            </div>
-            
-            <div className="px-8 pb-8 space-y-6 relative z-10">
-              
-              <div className="space-y-2">
-                <label className="text-xs font-bold text-gray-500 uppercase tracking-wider ml-1">Action</label>
-                <select 
-                  value={actionType}
-                  onChange={(e) => setActionType(e.target.value)}
-                  className="w-full h-12 px-4 rounded-xl border-2 border-gray-100 bg-gray-50 text-sm font-semibold text-[#0f2336] focus:bg-white focus:border-blue-500 outline-none transition-all appearance-none cursor-pointer"
-                >
-                  <option>Assign to Staff / Vendor</option>
-                  <option>Mark as Resolved</option>
-                  <option>Escalate to Committee</option>
-                </select>
-              </div>
-
-              <div className="space-y-2">
-                <label className="text-xs font-bold text-gray-500 uppercase tracking-wider ml-1">Assignee</label>
-                <select 
-                  value={assignee}
-                  onChange={(e) => setAssignee(e.target.value)}
-                  className="w-full h-12 px-4 rounded-xl border-2 border-gray-100 bg-gray-50 text-sm font-semibold text-[#0f2336] focus:bg-white focus:border-blue-500 outline-none transition-all appearance-none cursor-pointer"
-                >
-                  <option value="">Unassigned</option>
-                  <option value="1">Super Admin (User 1)</option>
-                </select>
-              </div>
-              
-              <div className="space-y-2">
-                <label className="text-xs font-bold text-gray-500 uppercase tracking-wider ml-1">Work Order Notes</label>
-                <textarea 
-                  placeholder="Task instructions for staff..."
-                  value={workOrderNotes}
-                  onChange={(e) => setWorkOrderNotes(e.target.value)}
-                  className="w-full h-[60px] p-4 rounded-xl border-2 border-gray-100 bg-gray-50 text-sm font-medium focus:bg-white focus:border-blue-500 outline-none transition-all resize-none"
-                ></textarea>
-              </div>
-
-              <div className="space-y-2">
-                <label className="text-xs font-bold text-gray-500 uppercase tracking-wider ml-1">Admin Notes</label>
-                <textarea 
-                  placeholder="Internal notes..."
-                  value={adminNote}
-                  onChange={(e) => setAdminNote(e.target.value)}
-                  className="w-full h-[60px] p-4 rounded-xl border-2 border-gray-100 bg-gray-50 text-sm font-medium focus:bg-white focus:border-blue-500 outline-none transition-all resize-none"
-                ></textarea>
-              </div>
-
-              {/* Existing Comments */}
-              {comments.length > 0 && (
-                <div className="space-y-2">
-                  <label className="text-xs font-bold text-gray-500 uppercase tracking-wider ml-1">Previous Notes</label>
-                  <div className="space-y-2 max-h-32 overflow-y-auto">
-                    {comments.map((c) => (
-                      <div key={c.id} className="p-3 rounded-xl bg-gray-50 border border-gray-100">
-                        <div className="flex justify-between items-center mb-1">
-                          <span className="text-xs font-bold text-gray-600">{c.author_name}</span>
-                          <span className="text-[10px] text-gray-400">{new Date(c.created_at).toLocaleString()}</span>
-                        </div>
-                        <p className="text-sm text-gray-700">{c.body}</p>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-              
-              <button 
-                className="w-full py-4 text-sm font-bold text-white bg-[#0f2336] hover:bg-[#1a3857] rounded-xl transition-transform shadow-lg shadow-[#0f2336]/20 active:scale-95"
-                onClick={handleResolve}
-              >
-                Confirm Action
-              </button>
-            </div>
-            
-          </div>
-        </div>
-      )}
-    </DashboardLayout>
-  );
+function Metric({ icon: Icon, label, value, detail, orange = false, dark = false }) {
+  return <div className={`${dark ? "bg-[#1a1a24] text-white" : "bg-white/80"} p-6 rounded-3xl border shadow-sm`}><div className="flex justify-between mb-4"><Icon size={20} className={orange ? "text-orange-500" : dark ? "text-red-400" : "text-blue-600"}/><span className="text-xs font-bold uppercase text-gray-400">{label}</span></div><div className={`text-4xl font-extrabold ${orange ? "text-orange-600" : ""}`}>{value}</div><div className="text-xs text-gray-500 font-semibold mt-2">{detail}</div></div>;
 }
