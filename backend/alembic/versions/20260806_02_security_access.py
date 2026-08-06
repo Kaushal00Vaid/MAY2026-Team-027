@@ -1,14 +1,14 @@
 """Security visitors, guest passes, and access audit logs.
 
 Revision ID: 20260806_02_security
-Revises: 20260806_01
+Revises: 20260806_02
 """
 
 import sqlalchemy as sa
 from alembic import op
 
 revision = "20260806_02_security"
-down_revision = "20260806_01"
+down_revision = "20260806_02"
 branch_labels = None
 depends_on = None
 

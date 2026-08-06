@@ -27,7 +27,7 @@ SUPER_ADMIN = {
     "last_name": "Admin",
     "email": "superadmin@societysync.com",
     "phone_number": "+910000000000",  # change before production
-    "password": "ChangeMe@123",       # change immediately after first login
+    "password": "ChangeMe@123",  # change immediately after first login
 }
 
 
@@ -94,10 +94,17 @@ def main():
 
         print("\n🛠️  Seeding Helpdesk demo data...")
         from app.helpdesk.seed import seed_helpdesk
+
         seed_helpdesk(db, role_map, admin)
+
+        print("\n🏘️  Seeding Community demo data...")
+        from app.community.seed import seed_community
+
+        seed_community(db, admin)
 
         print("\n🛡️  Seeding Security demo data...")
         from app.security.seed import seed_security
+
         seed_security(db, role_map)
 
         print("\n✅ Seed completed successfully.\n")
