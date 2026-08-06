@@ -96,6 +96,10 @@ def main():
         from app.helpdesk.seed import seed_helpdesk
         seed_helpdesk(db, role_map, admin)
 
+        print("\n🏘️  Seeding Community demo data...")
+        from app.community.seed import seed_community
+        seed_community(db, admin)
+
         print("\n✅ Seed completed successfully.\n")
     except Exception as exc:
         db.rollback()

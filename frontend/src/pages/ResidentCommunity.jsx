@@ -1,45 +1,70 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import DashboardLayout from "@/components/layout/DashboardLayout";
 import { getResidentSidebarItems } from "@/components/resident/ResidentSidebarConfig";
+import { useAuth } from "@/hooks/useAuth";
+import { communityError, getActivePoll, listEvents, listNotices, listVolunteers, markNoticeRead, signupVolunteer, updateRsvp, votePoll, withdrawVolunteer } from "@/features/community/api";
 import { Megaphone, BarChart3, Calendar, HeartHandshake, ChevronLeft, ChevronRight, Clock, MapPin, X, CheckCircle2 } from "lucide-react";
 
 export default function ResidentCommunity() {
+  const { user } = useAuth();
   const [pollVoted, setPollVoted] = useState(false);
-  const [pollOptions, setPollOptions] = useState([
-    { id: 1, label: "Pickleball Court", val: 45, bg: "bg-blue-200" },
-    { id: 2, label: "Co-working Space Expansion", val: 30, bg: "bg-gray-200" },
-    { id: 3, label: "Community Garden", val: 25, bg: "bg-gray-200" },
-  ]);
+  const [poll, setPoll] = useState(null);
+  const [pollOptions, setPollOptions] = useState([]);
   const [signedUp, setSignedUp] = useState(false);
+  const [opportunity, setOpportunity] = useState(null);
   const [showNoticesModal, setShowNoticesModal] = useState(false);
+  const [notices, setNotices] = useState([]);
+  const [events, setEvents] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+  const [toast, setToast] = useState("");
 
-  const notices = [
-    { target: "Block A & B", time: "Today, 09:00 AM", title: "Scheduled Water Maintenance", desc: "Water supply will be interrupted between 2 PM and 4 PM for routine pump maintenance.", color: "bg-blue-100 text-blue-700 border-blue-500" },
-    { target: "All Blocks", time: "Yesterday", title: "Annual General Meeting Minutes", desc: "The minutes from the AGM held on Oct 15th are now available for review in the document center.", color: "bg-emerald-100 text-emerald-700 border-emerald-500" },
-    { target: "Block C", time: "Oct 18", title: "Elevator Servicing", desc: "Passenger elevator in Block C will be down for 2 hours.", color: "bg-orange-100 text-orange-700 border-orange-500" },
-  ];
+  const applyPoll = (data) => {
+    setPoll(data); setPollVoted(Boolean(data?.selected_option_id));
+    setPollOptions((data?.options || []).map((option) => ({ id: option.id, label: option.label, val: option.percentage, bg: option.id === data.selected_option_id ? "bg-blue-400" : "bg-gray-200" })));
+  };
+  const load = async () => {
+    setLoading(true); setError("");
+    try {
+      const [{ data: noticeData }, { data: eventData }, { data: pollData }, { data: volunteerData }] = await Promise.all([listNotices(), listEvents(), getActivePoll(), listVolunteers()]);
+      setNotices(noticeData.items.map((item, index) => ({ ...item, target: item.target_label, time: new Date(item.published_at).toLocaleString(), desc: item.body, color: ["bg-blue-100 text-blue-700 border-blue-500", "bg-emerald-100 text-emerald-700 border-emerald-500", "bg-orange-100 text-orange-700 border-orange-500"][index % 3] })));
+      setEvents(eventData.map((item, index) => { const start = new Date(item.starts_at); const end = new Date(item.ends_at); return { ...item, month: start.toLocaleString(undefined, { month: "short" }).toUpperCase(), day: String(start.getDate()).padStart(2, "0"), time: `${start.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })} - ${end.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`, loc: item.location, color: index % 2 ? "bg-gray-100 text-gray-600" : "bg-blue-100 text-blue-600" }; }));
+      applyPoll(pollData); const first = volunteerData[0] || null; setOpportunity(first); setSignedUp(Boolean(first?.signed_up));
+    } catch (requestError) { setError(communityError(requestError, "Unable to load Community Hub.")); }
+    finally { setLoading(false); }
+  };
+  useEffect(() => { void Promise.resolve().then(load); }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const events = [
-    { month: "OCT", day: "28", title: "Halloween Mixer", time: "18:00 - 21:00", loc: "Clubhouse", color: "bg-blue-100 text-blue-600" },
-    { month: "NOV", day: "05", title: "Yoga Workshop", time: "07:00 - 08:30", loc: "Central Lawn", color: "bg-gray-100 text-gray-600" },
-  ];
-
-  const handleVote = (id) => {
-    if (pollVoted) return;
-    setPollOptions(pollOptions.map(opt => {
-      if (opt.id === id) {
-        return { ...opt, val: opt.val + 5, bg: "bg-blue-400" };
-      } else {
-        return { ...opt, val: Math.max(0, opt.val - 2) };
-      }
-    }));
-    setPollVoted(true);
+  const handleVote = async (id) => {
+    if (pollVoted || !poll || saving) return; setSaving(true); setError("");
+    try { const { data } = await votePoll(poll.id, id); applyPoll(data); setToast("Vote recorded. Votes are final."); }
+    catch (requestError) { setError(communityError(requestError, "Unable to record your vote.")); }
+    finally { setSaving(false); }
   };
 
+  const toggleVolunteer = async () => {
+    if (!opportunity || saving) return; setSaving(true); setError("");
+    try { const { data } = signedUp ? await withdrawVolunteer(opportunity.id) : await signupVolunteer(opportunity.id); setOpportunity(data); setSignedUp(data.signed_up); setToast(data.signed_up ? "Volunteer signup confirmed." : "Volunteer signup withdrawn."); }
+    catch (requestError) { setError(communityError(requestError, "Unable to update volunteer signup.")); }
+    finally { setSaving(false); }
+  };
+
+  const toggleRsvp = async (event) => {
+    if (saving) return; setSaving(true); setError("");
+    try { const { data } = await updateRsvp(event.id, event.my_status === "going" ? "not_going" : "going"); setEvents((items) => items.map((item) => item.id === event.id ? { ...item, ...data } : item)); setToast(data.my_status === "going" ? "RSVP confirmed." : "RSVP cancelled."); }
+    catch (requestError) { setError(communityError(requestError, "Unable to update RSVP.")); }
+    finally { setSaving(false); }
+  };
+
+  const openNotices = async () => { setShowNoticesModal(true); const unread = notices.filter((item) => !item.is_read); await Promise.allSettled(unread.map((item) => markNoticeRead(item.id))); setNotices((items) => items.map((item) => ({ ...item, is_read: true }))); };
+
   return (
-    <DashboardLayout sidebarItems={getResidentSidebarItems("/resident/community")} userRole="Resident Portal" userName="Ananya">
+    <DashboardLayout sidebarItems={getResidentSidebarItems("/resident/community")} userRole="Resident Portal" userName={user ? `${user.first_name} ${user.last_name}` : "Resident"}>
       <div className="p-6 md:p-8 max-w-7xl mx-auto animate-in fade-in duration-500 relative">
 
+        {toast && <div className="fixed bottom-6 right-6 z-[60] bg-[#0f2336] text-white px-5 py-3 rounded-xl text-sm font-bold">{toast}</div>}
+        {error && <div className="mb-4 p-3 bg-red-50 text-red-600 rounded-xl text-sm font-semibold">{error}</div>}
         {/* Notices Modal */}
         {showNoticesModal && (
           <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center animate-in fade-in duration-200">
@@ -86,10 +111,10 @@ export default function ResidentCommunity() {
                 <Megaphone size={20} className="text-blue-500" />
                 Notice Board
               </h2>
-              <button onClick={() => setShowNoticesModal(true)} className="text-xs font-bold text-gray-500 hover:text-primary transition-colors">View All</button>
+              <button onClick={openNotices} className="text-xs font-bold text-gray-500 hover:text-primary transition-colors">View All</button>
             </div>
 
-            <div className="space-y-6 pl-2">
+            {loading && <p className="text-sm text-gray-500">Loading notices…</p>}{!loading && notices.length === 0 && <p className="text-sm text-gray-500">No active notices.</p>}<div className="space-y-6 pl-2">
               {notices.slice(0, 2).map((n, i) => (
                 <div key={i} className={`relative pl-6 border-l-[3px] ${n.color}`}>
                   <div className="flex flex-wrap items-center justify-between gap-2 mb-2">
@@ -111,8 +136,8 @@ export default function ResidentCommunity() {
             </h2>
 
             <div className="flex-1">
-              <h3 className="font-bold text-[#0f2336] mb-1">New Amenity Addition: Quarter 4</h3>
-              <p className="text-xs text-gray-500 mb-6">Vote for the next community upgrade.</p>
+              <h3 className="font-bold text-[#0f2336] mb-1">{poll?.question || "No active poll"}</h3>
+              <p className="text-xs text-gray-500 mb-6">{poll?.description || "Check back for the next community poll."}</p>
 
               <div className="space-y-3 mb-6">
                 {pollOptions.map((opt) => (
@@ -158,7 +183,7 @@ export default function ResidentCommunity() {
 
             <div className="flex gap-4 overflow-x-auto no-scrollbar pb-2">
               {events.map((ev, i) => (
-                <div key={i} className="min-w-[240px] p-4 rounded-2xl border border-gray-100 bg-gray-50/50 flex gap-4 hover:shadow-sm hover:border-gray-200 transition-all cursor-pointer group">
+                <button key={i} onClick={() => toggleRsvp(ev)} className="text-left min-w-[240px] p-4 rounded-2xl border border-gray-100 bg-gray-50/50 flex gap-4 hover:shadow-sm hover:border-gray-200 transition-all cursor-pointer group">
                   <div className={`w-14 h-16 rounded-xl flex flex-col items-center justify-center shrink-0 ${ev.color}`}>
                     <span className="text-[10px] font-bold uppercase tracking-widest">{ev.month}</span>
                     <span className="text-xl font-extrabold leading-none">{ev.day}</span>
@@ -166,9 +191,9 @@ export default function ResidentCommunity() {
                   <div className="flex flex-col justify-center">
                     <h3 className="font-bold text-[#0f2336] text-sm mb-1 group-hover:text-primary transition-colors">{ev.title}</h3>
                     <div className="flex items-center gap-1.5 text-xs text-gray-500 mb-0.5"><Clock size={12} /> {ev.time}</div>
-                    <div className="flex items-center gap-1.5 text-xs text-gray-500"><MapPin size={12} className="opacity-0 w-0 h-0" /> <span className="ml-0.5">• {ev.loc}</span></div>
+                    <div className="flex items-center gap-1.5 text-xs text-gray-500"><MapPin size={12} className="opacity-0 w-0 h-0" /> <span className="ml-0.5">• {ev.loc}{ev.my_status === "going" ? " • Going" : ""}</span></div>
                   </div>
-                </div>
+                </button>
               ))}
             </div>
           </div>
@@ -184,22 +209,22 @@ export default function ResidentCommunity() {
                 <HeartHandshake size={20} className="text-primary" />
                 Volunteer Board
               </h2>
-              <span className="bg-orange-500 text-white text-[10px] font-bold px-2.5 py-1 rounded-full tracking-wider shadow-sm">{signedUp ? '2 Needed' : '3 Needed'}</span>
+              <span className="bg-orange-500 text-white text-[10px] font-bold px-2.5 py-1 rounded-full tracking-wider shadow-sm">{opportunity ? `${opportunity.spots_remaining} Needed` : "None Open"}</span>
             </div>
 
             <p className="text-sm text-gray-400 mb-6 relative z-10">Give back to the community. Join one of our active resident committees.</p>
 
             <div className={`bg-white/5 backdrop-blur-md border border-white/10 p-5 rounded-2xl relative z-10 flex items-center justify-between gap-4 transition-colors ${signedUp ? 'bg-emerald-500/20 border-emerald-500/50' : 'group-hover:bg-white/10'}`}>
               <div>
-                <h3 className="font-bold text-white text-sm mb-1">Festive Decoration Committee</h3>
-                <p className="text-xs text-gray-400">Help setup lights and displays for the upcoming holidays.</p>
+                <h3 className="font-bold text-white text-sm mb-1">{opportunity?.title || "No active opportunity"}</h3>
+                <p className="text-xs text-gray-400">{opportunity?.description || "New volunteer opportunities will appear here."}</p>
               </div>
               {signedUp ? (
-                <button onClick={() => setSignedUp(false)} className="px-4 py-2 bg-emerald-500/20 hover:bg-emerald-500/40 text-emerald-300 text-xs font-bold rounded-xl transition-colors shrink-0 backdrop-blur-sm flex items-center gap-1">
+                <button disabled={saving} onClick={toggleVolunteer} className="px-4 py-2 bg-emerald-500/20 hover:bg-emerald-500/40 text-emerald-300 text-xs font-bold rounded-xl transition-colors shrink-0 backdrop-blur-sm flex items-center gap-1">
                   <CheckCircle2 size={14} /> Signed Up
                 </button>
               ) : (
-                <button onClick={() => setSignedUp(true)} className="px-4 py-2 bg-white/20 hover:bg-white/30 text-white text-xs font-bold rounded-xl transition-colors shrink-0 backdrop-blur-sm">
+                <button disabled={!opportunity || saving || opportunity.spots_remaining === 0} onClick={toggleVolunteer} className="px-4 py-2 bg-white/20 hover:bg-white/30 disabled:opacity-40 text-white text-xs font-bold rounded-xl transition-colors shrink-0 backdrop-blur-sm">
                   Sign Up
                 </button>
               )}
