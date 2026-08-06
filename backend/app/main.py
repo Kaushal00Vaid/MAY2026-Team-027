@@ -15,6 +15,7 @@ from app.helpdesk.router import router as helpdesk_router
 from app.helpdesk.complaints.router import router as complaints_router
 from app.helpdesk.work_orders.router import router as helpdesk_operations_router
 from app.finance.router import router as finance_router
+from app.security.router import router as security_router
 
 def create_app() -> FastAPI:
     app = FastAPI(
@@ -53,6 +54,7 @@ def create_app() -> FastAPI:
         tags=["Helpdesk - Operations"],
     )
     app.include_router(finance_router, prefix="/api/finance", tags=["Finance"])
+    app.include_router(security_router, prefix="/api/v1/security", tags=["Security & Access"])
 
     # Health check
     @app.get("/", tags=["Health"])

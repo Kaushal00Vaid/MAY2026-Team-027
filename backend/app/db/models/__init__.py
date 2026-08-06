@@ -18,6 +18,7 @@ from app.helpdesk.work_orders.models import (  # noqa: F401
     WorkOrderResolutionPhoto,
 )
 from app.db.models.transaction import Transaction, TransactionType  # noqa: F401
+from app.security.models import AccessLog, GuestPass, Visitor  # noqa: F401
 
 __all__ = [
     "User",
@@ -37,4 +38,7 @@ __all__ = [
     "WorkOrderResolutionPhoto",
     "Transaction",
     "TransactionType",
+    "Visitor",
+    "GuestPass",
+    "AccessLog",
 ]
