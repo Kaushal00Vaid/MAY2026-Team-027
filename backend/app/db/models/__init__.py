@@ -20,6 +20,15 @@ from app.db.models.role import Role, RoleName, UserRole  # noqa: F401
 from app.db.models.token import RefreshToken  # noqa: F401
 from app.db.models.transaction import Transaction, TransactionType  # noqa: F401
 from app.db.models.user import User  # noqa: F401
+from app.finance.models import (  # noqa: F401
+    BulkInvoiceRun,
+    Expense,
+    FundAllocation,
+    Invoice,
+    InvoiceReminder,
+    LedgerEntry,
+    Payment,
+)
 from app.helpdesk.complaints.models import ComplaintAttachment, ComplaintStatusHistory  # noqa: F401
 from app.helpdesk.work_orders.models import (  # noqa: F401
     KnownIssueSubscription,
@@ -62,4 +71,11 @@ __all__ = [
     "DiscussionThread",
     "DiscussionReply",
     "DiscussionLike",
+    "Invoice",
+    "Payment",
+    "LedgerEntry",
+    "Expense",
+    "FundAllocation",
+    "BulkInvoiceRun",
+    "InvoiceReminder",
 ]

@@ -107,6 +107,11 @@ def main():
 
         seed_security(db, role_map)
 
+        print("\n💳 Seeding Finance demo data...")
+        from app.finance.seed import seed_finance
+
+        seed_finance(db)
+
         print("\n✅ Seed completed successfully.\n")
     except Exception as exc:
         db.rollback()
