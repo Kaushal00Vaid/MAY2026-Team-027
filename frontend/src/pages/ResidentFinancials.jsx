@@ -1,247 +1,80 @@
-import { useState, useEffect } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { AlertTriangle, CheckCircle2, CreditCard, Download, Filter, Loader2, X } from "lucide-react";
 import DashboardLayout from "@/components/layout/DashboardLayout";
 import { getResidentSidebarItems } from "@/components/resident/ResidentSidebarConfig";
-import { Download, AlertTriangle, CreditCard, Filter, CheckCircle2, X } from "lucide-react";
-
-const transactions = [
-  { id: "TX-101", date: "2023-10-01", desc: "October HOA Assessment", category: "Maintenance", amount: -1200.00, status: "UNPAID" },
-  { id: "TX-102", date: "2023-10-01", desc: "Late Fee Assessment", category: "Penalty", amount: -45.00, status: "UNPAID" },
-  { id: "TX-103", date: "2023-09-15", desc: "Payment Received - ACH", category: "Payment", amount: 1200.00, status: "CLEARED" },
-  { id: "TX-104", date: "2023-09-01", desc: "September HOA Assessment", category: "Maintenance", amount: -1200.00, status: "SETTLED" },
-  { id: "TX-105", date: "2023-08-20", desc: "Clubhouse Reservation Fee", category: "Amenities", amount: -150.00, status: "SETTLED" },
-  { id: "TX-106", date: "2023-08-15", desc: "Payment Received - Credit Card", category: "Payment", amount: 1350.00, status: "CLEARED" },
-];
+import {
+  completePayment, downloadReceipt, downloadStatement, financeError,
+  getResidentFinance, saveBlob,
+} from "@/features/finance/api";
 
 export default function ResidentFinancials() {
+  const [summary, setSummary] = useState(null);
   const [filter, setFilter] = useState("all");
   const [showPaymentModal, setShowPaymentModal] = useState(false);
-  const [showToast, setShowToast] = useState(false);
-  const [paymentSuccess, setPaymentSuccess] = useState(false);
+  const [method, setMethod] = useState("bank");
+  const [loading, setLoading] = useState(true);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const [toast, setToast] = useState("");
 
+  const load = useCallback(async () => {
+    setLoading(true); setError("");
+    try { setSummary((await getResidentFinance()).data); }
+    catch (requestError) { setError(financeError(requestError, "Unable to load your financial records.")); }
+    finally { setLoading(false); }
+  }, []);
+  // Data fetching intentionally initializes screen state from the API.
+  // eslint-disable-next-line react-hooks/set-state-in-effect
+  useEffect(() => { load(); }, [load]);
   useEffect(() => {
-    let timer;
-    if (showToast) {
-      timer = setTimeout(() => setShowToast(false), 3000);
-    }
+    if (!toast) return undefined;
+    const timer = setTimeout(() => setToast(""), 3500);
     return () => clearTimeout(timer);
-  }, [showToast]);
+  }, [toast]);
 
-  const handlePayment = () => {
-    setPaymentSuccess(true);
-    setTimeout(() => {
+  const payable = summary?.invoices.find((invoice) => ["issued", "overdue"].includes(invoice.status));
+  const entries = useMemo(() => (summary?.ledger || []).filter((row) =>
+    filter === "all" || (filter === "payments" ? row.direction === "credit" : row.direction === "debit")
+  ), [summary, filter]);
+
+  const pay = async () => {
+    if (!payable) return;
+    setBusy(true); setError("");
+    try {
+      const response = await completePayment({ invoice_id: payable.id, method, simulate_failure: false }, crypto.randomUUID());
       setShowPaymentModal(false);
-      setPaymentSuccess(false);
-      setShowToast(true);
-    }, 1500);
+      setToast(`Payment successful. Receipt ${response.data.receipt_number} is ready.`);
+      await load();
+    } catch (requestError) { setError(financeError(requestError, "Payment could not be completed.")); }
+    finally { setBusy(false); }
+  };
+  const statement = async () => {
+    setBusy(true);
+    try { saveBlob(await downloadStatement(), "societysync-statement.pdf"); setToast("Statement downloaded."); }
+    catch (requestError) { setError(financeError(requestError, "Statement download failed.")); }
+    finally { setBusy(false); }
+  };
+  const receipt = async (paymentId) => {
+    setBusy(true);
+    try { saveBlob(await downloadReceipt(paymentId), `societysync-receipt-${paymentId}.pdf`); }
+    catch (requestError) { setError(financeError(requestError, "Receipt download failed.")); }
+    finally { setBusy(false); }
   };
 
-  const getStatusColor = (status) => {
-    switch (status) {
-      case "UNPAID": return "bg-red-100 text-red-700 border border-red-200";
-      case "CLEARED": return "bg-blue-100 text-blue-700 border border-blue-200";
-      case "SETTLED": return "bg-gray-100 text-gray-700 border border-gray-200";
-      default: return "bg-gray-100 text-gray-700";
-    }
-  };
+  return <DashboardLayout sidebarItems={getResidentSidebarItems("/resident/finance")} userRole="Resident Portal">
+    <div className="p-6 md:p-8 max-w-7xl mx-auto animate-in fade-in duration-500 relative">
+      {toast && <div className="fixed bottom-6 right-6 bg-[#0f2336] text-white px-6 py-4 rounded-xl shadow-2xl flex items-center gap-3 z-50"><CheckCircle2 className="text-emerald-400" size={20}/><span className="font-bold text-sm">{toast}</span><button onClick={() => setToast("")}><X size={16}/></button></div>}
+      {showPaymentModal && payable && <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4"><div className="bg-white w-full max-w-md rounded-3xl p-8 shadow-2xl relative"><button onClick={() => setShowPaymentModal(false)} className="absolute top-6 right-6 text-gray-400"><X/></button><div className="w-16 h-16 bg-blue-50 text-blue-500 rounded-2xl flex items-center justify-center mb-6"><CreditCard size={32}/></div><h2 className="text-2xl font-extrabold text-[#0f2336]">Make a Payment</h2><p className="text-gray-500 text-sm mb-6">Secure local demo payment for {payable.invoice_number}.</p><div className="bg-gray-50 p-4 rounded-xl flex justify-between mb-6"><span className="font-semibold">Total Due</span><b className="text-2xl">{payable.amount_display}</b></div><div className="space-y-3 mb-8"><label className={`flex gap-3 p-4 border-2 rounded-xl cursor-pointer ${method==="bank"?"border-blue-500 bg-blue-50":"border-gray-100"}`}><input type="radio" checked={method==="bank"} onChange={() => setMethod("bank")}/><span><b className="block text-sm">Bank Account</b><small className="text-gray-500">Local demo bank adapter</small></span></label><label className={`flex gap-3 p-4 border-2 rounded-xl cursor-pointer ${method==="card"?"border-blue-500 bg-blue-50":"border-gray-100"}`}><input type="radio" checked={method==="card"} onChange={() => setMethod("card")}/><span><b className="block text-sm">Credit Card</b><small className="text-gray-500">Local demo card adapter</small></span></label></div>{error && <p role="alert" className="mb-4 p-3 rounded-xl bg-red-50 text-red-700 text-sm">{error}</p>}<button disabled={busy} onClick={pay} className="w-full py-4 bg-[#0f2336] text-white rounded-xl font-bold disabled:opacity-50">{busy ? "Processing…" : `Confirm Payment of ${payable.amount_display}`}</button></div></div>}
 
-  return (
-    <DashboardLayout sidebarItems={getResidentSidebarItems("/resident/finance")} userRole="Resident Portal" userName="Ananya">
-      <div className="p-6 md:p-8 max-w-7xl mx-auto animate-in fade-in duration-500 relative">
-        
-        {/* Toast Notification */}
-        {showToast && (
-          <div className="fixed bottom-6 right-6 bg-[#0f2336] text-white px-6 py-4 rounded-xl shadow-2xl flex items-center gap-3 animate-in slide-in-from-bottom-5 z-50">
-            <CheckCircle2 className="text-emerald-400" size={20} />
-            <div className="flex flex-col">
-              <span className="font-bold text-sm">Action Successful</span>
-              <span className="text-xs text-gray-300">Your request has been processed.</span>
-            </div>
-            <button onClick={() => setShowToast(false)} className="ml-4 text-gray-400 hover:text-white transition-colors">
-              <X size={16} />
-            </button>
-          </div>
-        )}
-
-        {/* Payment Modal */}
-        {showPaymentModal && (
-          <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center animate-in fade-in duration-200">
-            <div className="bg-white w-full max-w-md rounded-3xl p-8 shadow-2xl relative animate-in zoom-in-95 duration-200">
-              <button onClick={() => setShowPaymentModal(false)} className="absolute top-6 right-6 text-gray-400 hover:text-gray-700">
-                <X size={20} />
-              </button>
-              
-              {!paymentSuccess ? (
-                <>
-                  <div className="w-16 h-16 bg-blue-50 text-blue-500 rounded-2xl flex items-center justify-center mb-6">
-                    <CreditCard size={32} />
-                  </div>
-                  <h2 className="text-2xl font-extrabold text-[#0f2336] mb-2">Make a Payment</h2>
-                  <p className="text-gray-500 text-sm mb-6">You are about to pay the current outstanding balance.</p>
-                  
-                  <div className="bg-gray-50 p-4 rounded-xl border border-gray-100 flex justify-between items-center mb-6">
-                    <span className="font-semibold text-gray-600">Total Due</span>
-                    <span className="text-2xl font-extrabold text-[#0f2336]">$1,245.00</span>
-                  </div>
-                  
-                  <div className="space-y-4 mb-8">
-                    <label className="flex items-center gap-3 p-4 border-2 border-blue-500 bg-blue-50 rounded-xl cursor-pointer">
-                      <input type="radio" name="payment" defaultChecked className="w-4 h-4 text-blue-600" />
-                      <div className="flex flex-col">
-                        <span className="font-bold text-sm text-[#0f2336]">Bank Account (ACH)</span>
-                        <span className="text-xs text-gray-500">Checking ending in 9901</span>
-                      </div>
-                    </label>
-                    <label className="flex items-center gap-3 p-4 border-2 border-gray-100 hover:border-gray-300 bg-white rounded-xl cursor-pointer transition-colors">
-                      <input type="radio" name="payment" className="w-4 h-4 text-blue-600" />
-                      <div className="flex flex-col">
-                        <span className="font-bold text-sm text-[#0f2336]">Credit Card</span>
-                        <span className="text-xs text-gray-500">Visa ending in 4242 (+ 2.9% fee)</span>
-                      </div>
-                    </label>
-                  </div>
-                  
-                  <button onClick={handlePayment} className="w-full py-4 bg-[#0f2336] hover:bg-[#1a365d] text-white rounded-xl font-bold transition-all active:scale-95 shadow-lg shadow-blue-900/20">
-                    Confirm Payment of $1,245.00
-                  </button>
-                </>
-              ) : (
-                <div className="flex flex-col items-center justify-center py-8 text-center animate-in zoom-in-90">
-                  <div className="w-20 h-20 bg-emerald-50 text-emerald-500 rounded-full flex items-center justify-center mb-6">
-                    <CheckCircle2 size={40} />
-                  </div>
-                  <h2 className="text-2xl font-extrabold text-[#0f2336] mb-2">Payment Successful!</h2>
-                  <p className="text-gray-500 text-sm">Your payment of $1,245.00 has been processed.</p>
-                </div>
-              )}
-            </div>
-          </div>
-        )}
-        
-        {/* Header Section */}
-        <div className="flex flex-col md:flex-row md:items-end justify-between gap-4 mb-8">
-          <div>
-            <h1 className="text-3xl font-extrabold text-[#0f2336] tracking-tight">Ledger & Billing</h1>
-            <p className="text-gray-500 mt-2">Manage your unit's financial standing and payment history.</p>
-          </div>
-          <button onClick={() => setShowToast(true)} className="flex items-center gap-2 px-4 py-2 bg-white border border-gray-200 rounded-xl text-sm font-semibold text-gray-700 hover:bg-gray-50 hover:border-gray-300 transition-all shadow-sm active:scale-95">
-            <Download size={16} /> Statement
-          </button>
-        </div>
-
-        {/* Top Cards Grid */}
+      <div className="flex flex-col md:flex-row md:items-end justify-between gap-4 mb-8"><div><h1 className="text-3xl font-extrabold text-[#0f2336]">Ledger & Billing</h1><p className="text-gray-500 mt-2">Manage your unit&apos;s financial standing and payment history.</p></div><button disabled={busy} onClick={statement} className="flex items-center gap-2 px-4 py-2 bg-white border rounded-xl text-sm font-semibold disabled:opacity-50"><Download size={16}/>Statement</button></div>
+      {error && <div role="alert" className="mb-6 p-4 rounded-xl bg-red-50 text-red-700 flex justify-between"><span>{error}</span><button onClick={load} className="font-bold">Retry</button></div>}
+      {loading ? <div className="h-72 flex items-center justify-center text-gray-500"><Loader2 className="animate-spin mr-2"/>Loading your finances…</div> : <>
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 mb-8">
-          
-          {/* Balance Card */}
-          <div className="lg:col-span-4 bg-white p-6 rounded-3xl border border-gray-100 shadow-sm relative overflow-hidden group hover:shadow-md transition-shadow flex flex-col justify-between">
-            <div className="absolute top-0 right-0 w-32 h-32 bg-red-50 rounded-bl-full -z-10 transition-transform duration-500 group-hover:scale-110"></div>
-            
-            <div>
-              <div className="flex items-center justify-between mb-4">
-                <h3 className="text-xs font-bold text-gray-500 uppercase tracking-widest">Current Balance Due</h3>
-                <AlertTriangle size={18} className="text-red-500 animate-pulse" />
-              </div>
-              <div className="text-4xl font-extrabold text-[#0f2336] mb-2">$1,245.00</div>
-              <p className="text-sm text-gray-500">Includes $45.00 late fee from prior cycle.</p>
-            </div>
-            
-            <div className="mt-8 flex items-center justify-between">
-              <span className="text-sm font-bold text-red-500 bg-red-50 px-3 py-1 rounded-lg border border-red-100">Due: Oct 15</span>
-              <button onClick={() => setShowPaymentModal(true)} className="px-5 py-2.5 bg-[#0f2336] hover:bg-[#1a365d] text-white rounded-xl text-sm font-semibold transition-all shadow-lg shadow-blue-900/20 active:scale-95 flex items-center gap-2">
-                <CreditCard size={16} /> Pay Now
-              </button>
-            </div>
-          </div>
-
-          {/* Allocation/Chart Card */}
-          <div className="lg:col-span-8 bg-white p-6 rounded-3xl border border-gray-100 shadow-sm hover:shadow-md transition-shadow relative overflow-hidden">
-             <div className="flex items-center justify-between mb-6">
-                <h3 className="text-xs font-bold text-gray-500 uppercase tracking-widest">Expense Allocation (YTD)</h3>
-                <button className="text-gray-400 hover:text-gray-700">...</button>
-             </div>
-             
-             {/* Creative visual representation instead of generic bar chart */}
-             <div className="flex h-32 items-end gap-3 px-2">
-                {[
-                  { label: "Maintenance", val: 80, color: "bg-blue-500" },
-                  { label: "Amenities", val: 20, color: "bg-emerald-400" },
-                  { label: "Utilities", val: 45, color: "bg-purple-400" },
-                  { label: "Sp. Assmnt", val: 60, color: "bg-orange-400" },
-                  { label: "Parking", val: 30, color: "bg-gray-400" }
-                ].map((item, i) => (
-                  <div key={i} className="flex-1 flex flex-col items-center gap-2 group">
-                    <div className="w-full relative rounded-t-xl bg-gray-50 flex items-end justify-center overflow-hidden h-full group-hover:bg-gray-100 transition-colors">
-                      <div className={`w-full rounded-t-xl ${item.color} transition-all duration-1000 ease-out group-hover:opacity-80`} style={{ height: `${item.val}%` }}></div>
-                      <span className="absolute bottom-2 text-white text-xs font-bold opacity-0 group-hover:opacity-100 transition-opacity">{item.val}%</span>
-                    </div>
-                    <span className="text-[10px] font-semibold text-gray-500 tracking-wider truncate w-full text-center">{item.label}</span>
-                  </div>
-                ))}
-             </div>
-          </div>
+          <div className="lg:col-span-4 bg-white p-6 rounded-3xl border shadow-sm flex flex-col justify-between"><div><div className="flex justify-between mb-4"><h3 className="text-xs font-bold text-gray-500 uppercase tracking-widest">Current Balance Due</h3>{summary.outstanding_paise > 0 && <AlertTriangle size={18} className="text-red-500"/>}</div><div className="text-4xl font-extrabold text-[#0f2336] mb-2">{summary.outstanding_display}</div><p className="text-sm text-gray-500">Includes {summary.late_fee_display} in applicable staggered late fees.</p></div><div className="mt-8 flex items-center justify-between"><span className="text-sm font-bold text-red-500 bg-red-50 px-3 py-1 rounded-lg">{summary.next_due_date ? `Due: ${new Date(`${summary.next_due_date}T00:00:00`).toLocaleDateString("en-IN")}` : "No payment due"}</span><button disabled={!payable} onClick={() => { setError(""); setShowPaymentModal(true); }} className="px-5 py-2.5 bg-[#0f2336] text-white rounded-xl text-sm font-semibold disabled:opacity-40"><CreditCard size={16} className="inline mr-2"/>Pay Now</button></div></div>
+          <div className="lg:col-span-8 bg-white p-6 rounded-3xl border shadow-sm"><h3 className="text-xs font-bold text-gray-500 uppercase tracking-widest mb-6">Expense Allocation</h3><div className="flex h-32 items-end gap-3 px-2">{summary.allocations.map((item) => <div key={item.name} className="flex-1 flex flex-col items-center gap-2 h-full"><div className="w-full bg-gray-50 rounded-t-xl flex items-end h-full"><div className="w-full rounded-t-xl" style={{height:`${item.value}%`,backgroundColor:item.color}}/></div><span className="text-[10px] font-semibold text-gray-500 truncate w-full text-center">{item.name}</span></div>)}</div></div>
         </div>
-
-        {/* Ledger Table */}
-        <div className="bg-white rounded-3xl border border-gray-100 shadow-sm overflow-hidden flex flex-col">
-          <div className="p-6 border-b border-gray-100 flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-gray-50/50">
-            <h2 className="text-lg font-bold text-[#0f2336]">Transaction Ledger</h2>
-            <div className="relative">
-              <Filter size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-              <select 
-                className="pl-9 pr-4 py-2 bg-white border border-gray-200 rounded-xl text-sm font-semibold text-gray-600 focus:outline-none focus:border-primary focus:ring-2 focus:ring-primary/20 appearance-none min-w-[180px] shadow-sm cursor-pointer"
-                value={filter}
-                onChange={(e) => setFilter(e.target.value)}
-              >
-                <option value="all">All Transactions</option>
-                <option value="payments">Payments Only</option>
-                <option value="charges">Charges Only</option>
-              </select>
-            </div>
-          </div>
-          
-          <div className="overflow-x-auto">
-            <table className="w-full text-left border-collapse">
-              <thead>
-                <tr className="bg-gray-50 border-b border-gray-100">
-                  <th className="px-6 py-4 text-xs font-bold text-gray-500 uppercase tracking-wider">Date</th>
-                  <th className="px-6 py-4 text-xs font-bold text-gray-500 uppercase tracking-wider">Description</th>
-                  <th className="px-6 py-4 text-xs font-bold text-gray-500 uppercase tracking-wider">Category</th>
-                  <th className="px-6 py-4 text-xs font-bold text-gray-500 uppercase tracking-wider text-right">Amount</th>
-                  <th className="px-6 py-4 text-xs font-bold text-gray-500 uppercase tracking-wider">Status</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-50">
-                {transactions.map((tx) => (
-                  <tr key={tx.id} className="hover:bg-gray-50/50 transition-colors group">
-                    <td className="px-6 py-4 text-sm font-medium text-gray-600">{tx.date}</td>
-                    <td className="px-6 py-4 text-sm font-bold text-[#0f2336] group-hover:text-primary transition-colors">{tx.desc}</td>
-                    <td className="px-6 py-4 text-sm text-gray-500">{tx.category}</td>
-                    <td className={`px-6 py-4 text-sm font-bold text-right ${tx.amount > 0 ? 'text-emerald-600' : 'text-[#0f2336]'}`}>
-                      {tx.amount > 0 ? '+' : ''}${Math.abs(tx.amount).toFixed(2)}
-                    </td>
-                    <td className="px-6 py-4">
-                      <span className={`px-3 py-1 rounded-full text-[10px] font-bold tracking-widest ${getStatusColor(tx.status)}`}>
-                        {tx.status}
-                      </span>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-          
-          {/* Pagination mockup */}
-          <div className="p-4 border-t border-gray-100 flex items-center justify-between text-sm text-gray-500 bg-gray-50/30">
-            <span>Showing 1 to 6 of 24 entries</span>
-            <div className="flex gap-1">
-              <button className="px-3 py-1 rounded-md bg-white border border-gray-200 hover:bg-gray-50">Prev</button>
-              <button className="px-3 py-1 rounded-md bg-primary text-white font-medium shadow-sm">1</button>
-              <button className="px-3 py-1 rounded-md bg-white border border-gray-200 hover:bg-gray-50">2</button>
-              <button className="px-3 py-1 rounded-md bg-white border border-gray-200 hover:bg-gray-50">Next</button>
-            </div>
-          </div>
-        </div>
-
-      </div>
-    </DashboardLayout>
-  );
+        <div className="bg-white rounded-3xl border shadow-sm overflow-hidden"><div className="p-6 border-b flex flex-col sm:flex-row justify-between gap-4"><h2 className="text-lg font-bold text-[#0f2336]">Transaction Ledger</h2><div className="relative"><Filter size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"/><select value={filter} onChange={(e) => setFilter(e.target.value)} className="pl-9 pr-4 py-2 border rounded-xl text-sm"><option value="all">All Transactions</option><option value="payments">Payments Only</option><option value="charges">Charges Only</option></select></div></div><div className="overflow-x-auto"><table className="w-full text-left"><thead><tr className="bg-gray-50"><th className="px-6 py-4">Date</th><th className="px-6 py-4">Description</th><th className="px-6 py-4">Category</th><th className="px-6 py-4 text-right">Amount</th><th className="px-6 py-4">Status</th></tr></thead><tbody className="divide-y">{entries.map((row) => <tr key={row.id} className="hover:bg-gray-50"><td className="px-6 py-4 text-sm">{new Date(row.date).toLocaleDateString("en-IN")}</td><td className="px-6 py-4 font-bold">{row.description}</td><td className="px-6 py-4 text-gray-500">{row.category}</td><td className={`px-6 py-4 text-right font-bold ${row.direction==="credit"?"text-emerald-600":"text-[#0f2336]"}`}>{row.direction==="credit"?"+":"−"}{row.amount_display}</td><td className="px-6 py-4"><span className={`px-3 py-1 rounded-full text-[10px] font-bold ${row.direction==="credit"?"bg-blue-100 text-blue-700":"bg-gray-100"}`}>{row.direction==="credit"?"CLEARED":"CHARGED"}</span>{row.payment_id && <button disabled={busy} onClick={() => receipt(row.payment_id)} className="ml-2 text-xs text-blue-600 underline">Receipt</button>}</td></tr>)}{!entries.length && <tr><td colSpan="5" className="p-12 text-center text-gray-500">No transactions match this filter.</td></tr>}</tbody></table></div></div>
+      </>}
+    </div>
+  </DashboardLayout>;
 }

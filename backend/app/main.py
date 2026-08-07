@@ -15,6 +15,7 @@ from app.helpdesk.router import router as helpdesk_router
 from app.helpdesk.complaints.router import router as complaints_router
 from app.helpdesk.work_orders.router import router as helpdesk_operations_router
 from app.finance.router import router as finance_router
+from app.finance.router_v1 import router as finance_v1_router
 from app.security.router import router as security_router
 from app.community.router import router as community_router
 
@@ -56,6 +57,7 @@ def create_app() -> FastAPI:
         tags=["Helpdesk - Operations"],
     )
     app.include_router(finance_router, prefix="/api/finance", tags=["Finance"])
+    app.include_router(finance_v1_router, prefix="/api/v1/finance", tags=["Finance v1"])
     app.include_router(community_router, prefix="/api/v1/community", tags=["Community"])
     app.include_router(
         security_router,
