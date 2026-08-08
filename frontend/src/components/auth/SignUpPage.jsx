@@ -10,6 +10,7 @@ import {
   MiniBuilding, SkylineWatermark, FloatingChip, DotGridBg,
 } from "./components/AuthDecorations";
 import * as authApi from "@/api/auth";
+import { initiateGoogleLogin } from "@/api/auth";
 
 function Field({ id, label, icon: Icon, required, children }) {
   return (
@@ -311,7 +312,7 @@ export default function SignUpPage() {
 
                 <div className="mt-5 space-y-4">
                   <DividerOr text="Or sign up with" />
-                  <SocialButton disabled>Sign up with Google (coming soon)</SocialButton>
+                  <SocialButton onClick={initiateGoogleLogin}>Sign up with Google</SocialButton>
                 </div>
 
                 <p className="text-center text-sm text-muted-foreground mt-6">

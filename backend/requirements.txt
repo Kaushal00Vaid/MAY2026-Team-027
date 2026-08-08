@@ -16,3 +16,4 @@ python-multipart
 email-validator
 httpx
 pytest
+tzdata  # required on Windows — system has no IANA timezone database

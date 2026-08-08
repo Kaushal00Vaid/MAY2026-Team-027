@@ -104,6 +104,23 @@ export function AuthProvider({ children }) {
     return profile;
   }, [establishSession]);
 
+  const loginWithGoogleToken = useCallback(async (accessToken) => {
+    // Called by GoogleAuthSuccess and CompleteProfile pages after receiving
+    // a full access token from the backend to hydrate the AuthContext session.
+    const pendingRefresh = refreshPromiseRef.current;
+    if (pendingRefresh) await pendingRefresh.catch(() => null);
+
+    const generation = sessionGenerationRef.current + 1;
+    sessionGenerationRef.current = generation;
+    accessTokenRef.current = null;
+    setAccessToken(null);
+    setUser(null);
+
+    const profile = await establishSession(accessToken, generation);
+    if (!profile) throw new Error("Authentication attempt was superseded.");
+    return profile;
+  }, [establishSession]);
+
   const logoutUser = useCallback(async () => {
     // Remove protected content synchronously. If a refresh is already running,
     // wait for it to rotate its cookie before asking the backend to revoke the
@@ -193,6 +210,7 @@ export function AuthProvider({ children }) {
     isLoading,
     loginWithPassword,
     loginWithOtp,
+    loginWithGoogleToken,
     logout: logoutUser,
     getRoleRedirectPath,
   };

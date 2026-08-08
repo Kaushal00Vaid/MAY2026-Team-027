@@ -29,6 +29,11 @@ class Settings(BaseSettings):
     MEDIA_ROOT: str = "./media"
     HELPDESK_MAX_UPLOAD_BYTES: int = 5 * 1024 * 1024
 
+    # Google OAuth
+    GOOGLE_CLIENT_ID: str = ""
+    GOOGLE_CLIENT_SECRET: str = ""
+    GOOGLE_REDIRECT_URI: str = "http://localhost:8000/auth/google/callback"
+
 
 @lru_cache()
 def get_settings() -> Settings:

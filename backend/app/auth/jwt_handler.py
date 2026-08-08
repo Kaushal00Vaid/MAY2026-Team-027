@@ -42,6 +42,20 @@ def create_refresh_token(user_id: int) -> str:
     return jwt.encode(payload, settings.JWT_SECRET, algorithm=settings.JWT_ALGORITHM)
 
 
+def create_pending_profile_token(user_id: int) -> str:
+    """Create a short-lived (30 min) pending-profile token for Google OAuth users
+    who have not yet completed their profile (e.g. supplied phone number)."""
+    expire = datetime.now(timezone.utc) + timedelta(minutes=30)
+    payload = {
+        "sub": str(user_id),
+        "exp": expire,
+        "iat": datetime.now(timezone.utc),
+        "type": "pending_profile",
+        "jti": uuid.uuid4().hex,
+    }
+    return jwt.encode(payload, settings.JWT_SECRET, algorithm=settings.JWT_ALGORITHM)
+
+
 # ─── Token decoding ───────────────────────────────────────────────────────────
 
 def decode_token(token: str) -> Optional[dict]:
