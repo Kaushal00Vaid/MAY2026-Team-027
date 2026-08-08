@@ -30,6 +30,15 @@ from app.finance.models import (  # noqa: F401
     Payment,
 )
 from app.amenities.models import Amenity, AmenityBooking  # noqa: F401
+from app.operations.models import (  # noqa: F401
+    InventoryItem,
+    InventoryUnit,
+    OperationalTask,
+    ShiftAssignment,
+    StaffAttendance,
+    StockMovement,
+    Vendor,
+)
 from app.helpdesk.complaints.models import ComplaintAttachment, ComplaintStatusHistory  # noqa: F401
 from app.helpdesk.work_orders.models import (  # noqa: F401
     KnownIssueSubscription,
@@ -81,4 +90,11 @@ __all__ = [
     "InvoiceReminder",
     "Amenity",
     "AmenityBooking",
+    "OperationalTask",
+    "InventoryUnit",
+    "Vendor",
+    "InventoryItem",
+    "StockMovement",
+    "ShiftAssignment",
+    "StaffAttendance",
 ]
