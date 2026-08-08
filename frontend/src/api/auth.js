@@ -59,7 +59,7 @@ export const getMe = () => axiosInstance.get("/auth/me");
  * The backend handles the full redirect chain to Google and back.
  */
 export const initiateGoogleLogin = () => {
-  const backendUrl = import.meta.env.VITE_API_BASE_URL || "http://localhost:8000";
+  const backendUrl = import.meta.env.VITE_API_URL || "http://localhost:8000";
   window.location.href = `${backendUrl}/auth/google`;
 };
 

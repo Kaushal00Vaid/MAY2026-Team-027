@@ -35,6 +35,7 @@ import GoogleAuthSuccess from "@/pages/GoogleAuthSuccess";
 const ADMIN_ROLES = ["super_admin", "admin", "committee_member"];
 const RESIDENT_ROLES = ["flat_owner", "resident_rental"];
 const STAFF_ROLES = ["support_staff"];
+const OPERATIONS_ROLES = [...STAFF_ROLES, ...ADMIN_ROLES];
 const SUPER_ADMIN_ROLES = ["super_admin"];
 
 
@@ -124,7 +125,7 @@ function App() {
             <ProtectedRoute allowedRoles={STAFF_ROLES}><StaffInventory /></ProtectedRoute>
           } />
           <Route path="/gate/roster" element={
-            <ProtectedRoute allowedRoles={STAFF_ROLES}><StaffRoster /></ProtectedRoute>
+            <ProtectedRoute allowedRoles={OPERATIONS_ROLES}><StaffRoster /></ProtectedRoute>
           } />
         </Routes>
       </AuthProvider>

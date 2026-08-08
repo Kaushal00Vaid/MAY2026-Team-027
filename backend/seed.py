@@ -117,6 +117,11 @@ def main():
 
         seed_amenities(db, admin)
 
+        print("\n📦 Seeding Staff Operations demo data...")
+        from app.operations.seed import seed_operations
+
+        seed_operations(db, admin)
+
         print("\n✅ Seed completed successfully.\n")
     except Exception as exc:
         db.rollback()

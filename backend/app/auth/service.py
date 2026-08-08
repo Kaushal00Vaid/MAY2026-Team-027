@@ -36,6 +36,7 @@ from app.db.models.user import User
 
 # Helpers
 
+
 def _get_user_role_names(user: User) -> list[str]:
     return [ur.role.role_name.value for ur in user.roles]
 
@@ -78,15 +79,14 @@ def _build_token_pair(
 
 def _assign_default_role(db: Session, user: User) -> None:
     """Assign the flat_owner role to a user (default for all new accounts)."""
-    default_role = (
-        db.query(Role).filter(Role.role_name == RoleName.flat_owner).first()
-    )
+    default_role = db.query(Role).filter(Role.role_name == RoleName.flat_owner).first()
     if default_role:
         user_role = UserRole(user_id=user.user_id, role_id=default_role.role_id)
         db.add(user_role)
 
 
 # Signup
+
 
 def signup_user(db: Session, data: SignupRequest) -> User:
     """Register a new user with default flat_owner role."""
@@ -124,6 +124,7 @@ def signup_user(db: Session, data: SignupRequest) -> User:
 
 # Password login
 
+
 def login_with_password(
     db: Session, email: str, password: str, request: Request
 ) -> tuple[str, str]:
@@ -147,6 +148,7 @@ def login_with_password(
 
 
 # OTP login
+
 
 def request_otp_for_login(db: Session, phone_number: str) -> None:
     """Validate phone exists and dispatch OTP. Raises if user not found."""
@@ -186,6 +188,7 @@ def verify_otp_login(
 
 
 # Token refresh
+
 
 def refresh_access_token(
     db: Session, refresh_token: str, request: Request
@@ -227,7 +230,9 @@ def refresh_access_token(
     # Revoke old token (rotation)
     rt_record.is_revoked = True
     rt_record.revoked_at = datetime.now(timezone.utc)
-    user = db.query(User).filter(User.user_id == user_id, User.is_active.is_(True)).first()
+    user = (
+        db.query(User).filter(User.user_id == user_id, User.is_active.is_(True)).first()
+    )
     if not user:
         db.rollback()
         raise InvalidTokenException()
@@ -237,7 +242,8 @@ def refresh_access_token(
     return token_pair
 
 
-# Logout 
+# Logout
+
 
 def logout_user(db: Session, refresh_token: str) -> None:
     """Revoke the refresh token. Access token expiry is handled client-side."""
@@ -271,6 +277,7 @@ def logout_user(db: Session, refresh_token: str) -> None:
 
 # Google OAuth
 
+
 def handle_google_oauth(db: Session, google_profile: dict) -> tuple[User, bool]:
     """
     Find or create a user account from a Google OAuth profile.
@@ -288,9 +295,7 @@ def handle_google_oauth(db: Session, google_profile: dict) -> tuple[User, bool]:
     verified: bool = google_profile.get("verified_email", False)
 
     # 1. Lookup by google_id
-    user: Optional[User] = (
-        db.query(User).filter(User.google_id == google_id).first()
-    )
+    user: Optional[User] = db.query(User).filter(User.google_id == google_id).first()
 
     if user:
         if not user.is_active:
@@ -318,7 +323,7 @@ def handle_google_oauth(db: Session, google_profile: dict) -> tuple[User, bool]:
         first_name=google_profile.get("given_name", ""),
         last_name=google_profile.get("family_name", ""),
         email=normalized_email,
-        phone_number=None,          # filled in at /complete-profile
+        phone_number=None,  # filled in at /complete-profile
         google_id=google_id,
         profile_picture_url=google_profile.get("picture"),
         is_profile_complete=False,
@@ -361,7 +366,9 @@ def complete_google_profile(
     user.first_name = data.first_name.strip()
     user.last_name = data.last_name.strip()
     user.is_profile_complete = True
-    user.is_phone_verified = True  # phone was manually entered and confirmed
+    # Entering a phone number does not prove ownership. The existing OTP flow
+    # is responsible for setting this flag after successful verification.
+    user.is_phone_verified = False
 
     if data.flat_number is not None:
         user.flat_number = data.flat_number.strip() or None
@@ -377,6 +384,7 @@ def complete_google_profile(
 
 
 # Get current user info
+
 
 def get_user_profile(user: User) -> dict:
     """Build the /auth/me response dict from a User ORM object."""
