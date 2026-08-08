@@ -29,6 +29,7 @@ from app.finance.models import (  # noqa: F401
     LedgerEntry,
     Payment,
 )
+from app.amenities.models import Amenity, AmenityBooking  # noqa: F401
 from app.helpdesk.complaints.models import ComplaintAttachment, ComplaintStatusHistory  # noqa: F401
 from app.helpdesk.work_orders.models import (  # noqa: F401
     KnownIssueSubscription,
@@ -78,4 +79,6 @@ __all__ = [
     "FundAllocation",
     "BulkInvoiceRun",
     "InvoiceReminder",
+    "Amenity",
+    "AmenityBooking",
 ]
