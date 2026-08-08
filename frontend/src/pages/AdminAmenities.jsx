@@ -1,304 +1,33 @@
-import { useState } from "react";
-import {
-  LayoutDashboard,
-  WalletCards,
-  Headset,
-  ShieldCheck,
-  CalendarCheck,
-  Users,
-  BarChart3,
-  ChevronLeft,
-  ChevronRight,
-  CheckCircle2,
-  QrCode,
-  Calendar,
-  Edit2,
-  Clock,
-  MapPin,
-  Plus,
-  X,
-  UserCog
-} from "lucide-react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { BarChart3, Calendar, CalendarCheck, CheckCircle2, ChevronLeft, ChevronRight, Clock, Headset, LayoutDashboard, Loader2, MapPin, Plus, ShieldCheck, UserCog, Users, WalletCards, X } from "lucide-react";
 import DashboardLayout from "@/components/layout/DashboardLayout";
+import { amenitiesError, cancelBooking, createAmenity, getAvailability, listAmenities, listBookings, localDate, updateAmenity } from "@/features/amenities/api";
 
-const sidebarItems = [
-  { label: "Dashboard", icon: LayoutDashboard, active: false, href: "/admin" },
-  { label: "Finance", icon: WalletCards, active: false, href: "/admin/finance" },
-  { label: "Helpdesk", icon: Headset, active: false, href: "/admin/helpdesk" },
-  { label: "Security", icon: ShieldCheck, active: false, href: "/admin/security" },
-  { label: "Amenities", icon: CalendarCheck, active: true, href: "/admin/amenities" },
-  { label: "Community", icon: Users, active: false, href: "/admin/community" },
-  { label: "Analytics", icon: BarChart3, active: false, href: "/admin/analytics" },
-  { label: "User Roles", icon: UserCog, active: false, href: "/admin/users" },
-];
+const sidebarItems = [{ label: "Dashboard", icon: LayoutDashboard, href: "/admin" }, { label: "Finance", icon: WalletCards, href: "/admin/finance" }, { label: "Helpdesk", icon: Headset, href: "/admin/helpdesk" }, { label: "Security", icon: ShieldCheck, href: "/admin/security" }, { label: "Amenities", icon: CalendarCheck, active: true, href: "/admin/amenities" }, { label: "Community", icon: Users, href: "/admin/community" }, { label: "Analytics", icon: BarChart3, href: "/admin/analytics" }, { label: "User Roles", icon: UserCog, href: "/admin/users" }];
+const blank = { name: "", description: "Bookable society facility.", capacity: 10, operating_start: "06:00", operating_end: "22:00", slot_minutes: 60, weekly_limit: 5 };
+const dayAt = (offset = 0) => { const value = new Date(); value.setDate(value.getDate() + offset); value.setHours(0, 0, 0, 0); return value; };
 
 export default function AdminAmenities() {
-  const [amenities, setAmenities] = useState(["Clubhouse", "Tennis Court"]);
-  const [activeTab, setActiveTab] = useState("Clubhouse");
-  const [showAddModal, setShowAddModal] = useState(false);
-  const [newAmenityName, setNewAmenityName] = useState("");
+  const [amenities, setAmenities] = useState([]); const [selectedId, setSelectedId] = useState(null); const [weekOffset, setWeekOffset] = useState(0); const [availability, setAvailability] = useState(null); const [bookings, setBookings] = useState([]);
+  const [selectedBooking, setSelectedBooking] = useState(null); const [showAddModal, setShowAddModal] = useState(false); const [form, setForm] = useState(blank); const [loading, setLoading] = useState(true); const [saving, setSaving] = useState(false); const [error, setError] = useState(""); const [toast, setToast] = useState("");
+  const startDate = localDate(dayAt(weekOffset * 7));
+  const load = useCallback(async () => { setLoading(true); setError(""); try { const amenitiesResponse = await listAmenities(true); const items = amenitiesResponse.data; setAmenities(items); const id = selectedId || items[0]?.id; if (id && !selectedId) setSelectedId(id); if (id) { const [availabilityResponse, bookingsResponse] = await Promise.all([getAvailability(id, startDate), listBookings({ page_size: 100, start_date: startDate })]); setAvailability(availabilityResponse.data); setBookings(bookingsResponse.data.items.filter((item) => item.amenity_id === id)); } } catch (e) { setError(amenitiesError(e, "Unable to load amenity schedule.")); } finally { setLoading(false); } }, [selectedId, startDate]);
+  // eslint-disable-next-line react-hooks/set-state-in-effect
+  useEffect(() => { load(); }, [load]);
+  useEffect(() => { if (!toast) return undefined; const timer = setTimeout(() => setToast(""), 3500); return () => clearTimeout(timer); }, [toast]);
+  const selected = amenities.find((item) => item.id === selectedId); const days = useMemo(() => Array.from({ length: 7 }, (_, i) => dayAt((weekOffset * 7) + i)), [weekOffset]);
+  const times = useMemo(() => [...new Set((availability?.slots || []).map((slot) => new Date(slot.starts_at).toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" })))].slice(0, 8), [availability]);
+  const slotAt = (day, time) => availability?.slots.find((slot) => localDate(slot.starts_at) === localDate(day) && new Date(slot.starts_at).toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" }) === time);
+  const submit = async (event) => { event.preventDefault(); setSaving(true); setError(""); try { const { data } = await createAmenity({ ...form, capacity: Number(form.capacity), slot_minutes: Number(form.slot_minutes), weekly_limit: Number(form.weekly_limit) }); setShowAddModal(false); setForm(blank); setSelectedId(data.id); setToast("Amenity created."); await load(); } catch (e) { setError(amenitiesError(e, "Unable to create amenity.")); } finally { setSaving(false); } };
+  const toggle = async () => { if (!selected) return; setSaving(true); try { await updateAmenity(selected.id, { is_active: !selected.is_active }); setToast(selected.is_active ? "Amenity deactivated." : "Amenity activated."); await load(); } catch (e) { setError(amenitiesError(e, "Unable to update amenity.")); } finally { setSaving(false); } };
+  const cancel = async () => { if (!selectedBooking) return; setSaving(true); try { await cancelBooking(selectedBooking.id); setSelectedBooking(null); setToast("Booking cancelled."); await load(); } catch (e) { setError(amenitiesError(e, "Unable to cancel booking.")); } finally { setSaving(false); } };
 
-  const handleAddAmenity = (e) => {
-    e.preventDefault();
-    if (newAmenityName && !amenities.includes(newAmenityName)) {
-      setAmenities([...amenities, newAmenityName]);
-      setActiveTab(newAmenityName);
-      setNewAmenityName("");
-      setShowAddModal(false);
-    }
-  };
-
-  return (
-    <DashboardLayout sidebarItems={sidebarItems} userRole="Residential Admin">
-      <div className="p-6 md:p-8 max-w-[1400px] mx-auto space-y-8 animate-in fade-in duration-500 relative">
-
-        {/* Subtle background glow */}
-        <div className="absolute top-20 left-1/2 -translate-x-1/2 w-[800px] h-[500px] bg-teal-500/5 rounded-[100%] blur-3xl -z-10 pointer-events-none"></div>
-
-        {/* Header / Nav Section */}
-        <div className="flex flex-col md:flex-row items-center justify-between gap-6 bg-white/80 backdrop-blur-md p-4 px-6 rounded-3xl border border-gray-100 shadow-[0_4px_20px_rgba(0,0,0,0.02)]">
-          <div className="flex bg-gray-50/80 p-1.5 rounded-2xl border border-gray-100 overflow-x-auto max-w-[600px] custom-scrollbar">
-            {amenities.map(amenity => (
-              <button
-                key={amenity}
-                onClick={() => setActiveTab(amenity)}
-                className={`px-8 py-2.5 text-sm font-bold rounded-xl transition-all shrink-0 ${activeTab === amenity ? 'bg-[#5f8787] text-white shadow-md' : 'text-gray-500 hover:text-gray-900 hover:bg-white'}`}
-              >
-                {amenity}
-              </button>
-            ))}
-            <button
-              onClick={() => setShowAddModal(true)}
-              className="px-4 py-2.5 ml-2 text-sm font-bold rounded-xl transition-all shrink-0 bg-white border border-gray-200 text-[#5f8787] hover:bg-teal-50 flex items-center justify-center shadow-sm"
-            >
-              <Plus size={18} />
-            </button>
-          </div>
-
-          <div className="flex items-center gap-4">
-            <button className="w-10 h-10 rounded-xl bg-white border border-gray-100 shadow-sm flex items-center justify-center text-gray-500 hover:text-[#5f8787] hover:border-teal-200 transition-all active:scale-95">
-              <ChevronLeft size={20} />
-            </button>
-            <div className="flex items-center gap-2 px-4 py-2 bg-gray-50 rounded-xl border border-gray-100">
-              <Calendar size={16} className="text-[#5f8787]" />
-              <span className="text-sm font-extrabold text-[#0f2336]">Oct 12 - Oct 18, 2024</span>
-            </div>
-            <button className="w-10 h-10 rounded-xl bg-white border border-gray-100 shadow-sm flex items-center justify-center text-gray-500 hover:text-[#5f8787] hover:border-teal-200 transition-all active:scale-95">
-              <ChevronRight size={20} />
-            </button>
-          </div>
-        </div>
-
-        {/* Main Content Grid */}
-        <div className="grid grid-cols-1 xl:grid-cols-12 gap-8">
-
-          {/* Enhanced Calendar Grid */}
-          <div className="xl:col-span-8 bg-white/80 backdrop-blur-md p-6 md:p-8 rounded-[2.5rem] border border-gray-100 shadow-[0_8px_30px_rgba(0,0,0,0.03)] overflow-x-auto relative">
-            <h3 className="text-xl font-bold text-[#0f2336] mb-6 flex items-center gap-2">
-              <MapPin size={20} className="text-[#5f8787]" />
-              {activeTab} Schedule
-            </h3>
-
-            <div className="min-w-[750px]">
-              {/* Header Row */}
-              <div className="grid grid-cols-8 gap-2 mb-4">
-                <div className="p-3 text-right"></div>
-                {[
-                  { d: 'Mon', n: '12' },
-                  { d: 'Tue', n: '13' },
-                  { d: 'Wed', n: '14', active: true },
-                  { d: 'Thu', n: '15' },
-                  { d: 'Fri', n: '16' },
-                  { d: 'Sat', n: '17' },
-                  { d: 'Sun', n: '18' }
-                ].map((day, i) => (
-                  <div key={i} className={`flex flex-col items-center justify-center p-3 rounded-2xl ${day.active ? 'bg-[#0f2336] text-white shadow-lg' : 'bg-gray-50/50 text-gray-500'}`}>
-                    <span className={`text-[10px] font-bold uppercase tracking-wider ${day.active ? 'text-blue-200' : ''}`}>{day.d}</span>
-                    <span className="text-lg font-extrabold">{day.n}</span>
-                  </div>
-                ))}
-              </div>
-
-              {/* Time Slots */}
-              {['09:00 AM', '10:00 AM', '11:00 AM', '12:00 PM', '01:00 PM'].map((time, rowIdx) => (
-                <div key={time} className="grid grid-cols-8 gap-2 mb-2 group">
-                  <div className="p-3 flex flex-col justify-center items-end">
-                    <span className="text-xs font-bold text-gray-900 group-hover:text-[#5f8787] transition-colors">{time.split(' ')[0]}</span>
-                    <span className="text-[10px] font-bold text-gray-400">{time.split(' ')[1]}</span>
-                  </div>
-
-                  {/* Interactive Slots */}
-                  {[0, 1, 2, 3, 4, 5, 6].map((colIdx) => {
-                    let bgClass = "bg-teal-50/50 border border-teal-100 hover:bg-teal-100 hover:border-teal-300"; // default available
-                    let content = null;
-                    let shadow = "";
-
-                    if (rowIdx === 0 && colIdx === 2) {
-                      bgClass = "bg-[#0f2336] border-transparent";
-                      shadow = "shadow-md shadow-[#0f2336]/20";
-                      content = <span className="text-white text-[11px] font-bold">Apt 402</span>;
-                    } else if (rowIdx === 1 && colIdx === 2) {
-                      bgClass = "bg-[#d87943] border-transparent";
-                      shadow = "shadow-md shadow-[#d87943]/20";
-                      content = <span className="text-white text-[11px] font-bold flex items-center justify-center gap-1">In Process</span>;
-                    } else if (rowIdx === 2 && (colIdx === 3 || colIdx === 4)) {
-                      bgClass = "bg-[#0f2336] border-transparent";
-                      content = <span className="text-white/50 text-[10px] font-bold">Booked</span>;
-                    } else if ((rowIdx === 0 && colIdx === 4) || (rowIdx === 3 && (colIdx === 4 || colIdx === 5))) {
-                      bgClass = "bg-gray-100 border-gray-200 flex items-center justify-center opacity-50 cursor-not-allowed";
-                      content = <div className="w-5 h-5 rounded-full bg-gray-200 text-gray-400 flex items-center justify-center text-[10px] font-bold">/</div>;
-                    }
-
-                    return (
-                      <div key={`${rowIdx}-${colIdx}`} className={`p-3 rounded-2xl h-[72px] transition-all cursor-pointer flex flex-col justify-center items-center ${bgClass} ${shadow} hover:scale-[1.02]`}>
-                        {content}
-                      </div>
-                    );
-                  })}
-                </div>
-              ))}
-            </div>
-          </div>
-
-          {/* Right Panel */}
-          <div className="xl:col-span-4 flex flex-col gap-6">
-
-            {/* Premium Reserve Card */}
-            <div className="bg-white rounded-[2rem] border border-gray-100 shadow-xl shadow-gray-200/40 relative overflow-hidden">
-              <div className="absolute top-0 right-0 w-32 h-32 bg-gradient-to-br from-teal-50 to-transparent rounded-bl-full -z-10"></div>
-
-              <div className="p-8">
-                <div className="flex items-center justify-between mb-8">
-                  <h3 className="text-xl font-extrabold text-[#0f2336]">Reserve Slot</h3>
-                  <span className="px-3 py-1 bg-teal-50 text-teal-600 text-[10px] font-bold uppercase tracking-wider rounded-lg border border-teal-100">{activeTab}</span>
-                </div>
-
-                <div className="bg-[#0f2336] rounded-2xl p-5 flex items-center gap-5 mb-8 shadow-lg shadow-[#0f2336]/10 relative overflow-hidden group cursor-pointer hover:bg-[#16334f] transition-colors">
-                  <div className="absolute right-0 top-0 w-24 h-full bg-white/5 skew-x-12 -mr-10 group-hover:bg-white/10 transition-colors"></div>
-                  <div className="relative w-14 h-14">
-                    <svg className="w-14 h-14 transform -rotate-90 drop-shadow-md">
-                      <circle cx="28" cy="28" r="24" stroke="rgba(255,255,255,0.1)" strokeWidth="6" fill="none" />
-                      <circle cx="28" cy="28" r="24" stroke="#5f8787" strokeWidth="6" fill="none" strokeDasharray="150" strokeDashoffset="50" className="transition-all duration-1000" />
-                    </svg>
-                    <div className="absolute inset-0 flex items-center justify-center text-sm font-extrabold text-white">2/3</div>
-                  </div>
-                  <div>
-                    <div className="font-bold text-white mb-0.5 tracking-wide">Household Quota</div>
-                    <div className="text-xs text-blue-200 font-medium">1 slot remaining this week</div>
-                  </div>
-                </div>
-
-                <div className="space-y-5 mb-8">
-                  <div>
-                    <label className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-2 block ml-1">Date & Time</label>
-                    <div className="flex items-center justify-between p-4 rounded-xl border-2 border-gray-100 bg-gray-50 hover:bg-white hover:border-teal-200 transition-colors cursor-pointer group">
-                      <div className="flex items-center gap-3">
-                        <Clock size={16} className="text-gray-400 group-hover:text-teal-500 transition-colors" />
-                        <span className="text-sm font-extrabold text-[#0f2336]">Wed 14 Oct, 11:00 AM</span>
-                      </div>
-                      <Edit2 size={16} className="text-gray-400 group-hover:text-teal-500 transition-colors" />
-                    </div>
-                  </div>
-                  <div>
-                    <label className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-2 block ml-1">Purpose</label>
-                    <select className="w-full p-4 rounded-xl border-2 border-gray-100 bg-gray-50 hover:bg-white hover:border-teal-200 text-sm font-bold text-[#0f2336] outline-none focus:ring-2 focus:ring-teal-500/20 focus:border-teal-500 transition-all cursor-pointer appearance-none">
-                      <option>Private Event</option>
-                      <option>Society Meeting</option>
-                      <option>Other</option>
-                    </select>
-                  </div>
-                </div>
-
-                <button className="w-full py-4 bg-[#5f8787] hover:bg-[#4a6d6d] text-white font-extrabold tracking-wide rounded-xl text-sm transition-transform shadow-lg shadow-teal-500/30 active:scale-95">
-                  CONFIRM BOOKING
-                </button>
-              </div>
-            </div>
-
-            {/* Generated Token Card */}
-            <div className="bg-gradient-to-b from-[#1a1a24] to-[#0f1520] p-8 rounded-[2rem] border border-white/5 shadow-2xl relative text-center overflow-hidden group cursor-pointer hover:-translate-y-1 transition-transform duration-300">
-
-              {/* CSS Cutouts for ticket look */}
-              <div className="absolute -left-4 top-1/2 -translate-y-1/2 w-8 h-8 bg-[#fafafa] rounded-full shadow-inner"></div>
-              <div className="absolute -right-4 top-1/2 -translate-y-1/2 w-8 h-8 bg-[#fafafa] rounded-full shadow-inner"></div>
-
-              {/* Dotted cut line */}
-              <div className="absolute left-4 right-4 top-1/2 -translate-y-1/2 h-[2px] bg-gradient-to-r from-transparent via-white/20 to-transparent bg-[length:10px_2px] opacity-30"></div>
-
-              <div className="relative z-10">
-                <div className="flex justify-center mb-4">
-                  <div className="w-12 h-12 rounded-full bg-teal-500/20 flex items-center justify-center border border-teal-500/30 shadow-[0_0_15px_rgba(95,135,135,0.4)]">
-                    <CheckCircle2 size={24} className="text-teal-400" />
-                  </div>
-                </div>
-                <h3 className="text-xl font-extrabold text-white mb-1">Booking Confirmed</h3>
-                <p className="text-sm text-gray-400 mb-8">Access token for Flat A-402</p>
-
-                <div className="flex justify-center mb-8 pb-4">
-                  <div className="bg-white rounded-2xl p-3 flex items-center justify-center relative shadow-[0_0_30px_rgba(255,255,255,0.1)] group-hover:scale-105 transition-transform duration-500">
-                    <QrCode size={96} className="text-[#0f1520]" />
-                  </div>
-                </div>
-
-                <div className="pt-6 mt-4 flex items-center justify-between">
-                  <div className="text-left">
-                    <div className="text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-1">Token ID</div>
-                    <div className="text-sm font-mono font-bold text-teal-400">#CG-8492</div>
-                  </div>
-                  <div className="text-right">
-                    <div className="text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-1">Valid On</div>
-                    <div className="text-sm font-bold text-white">12 Oct, 18:00</div>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-          </div>
-
-        </div>
-      </div>
-
-      {/* Add Amenity Modal */}
-      {showAddModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-[#0f1a2b]/80 backdrop-blur-md animate-in fade-in duration-200">
-          <div className="bg-white rounded-[2rem] w-full max-w-sm overflow-hidden shadow-2xl relative animate-in zoom-in-95 duration-200">
-            <div className="px-8 py-6 flex items-center justify-between bg-white relative z-10">
-              <div>
-                <h2 className="text-xl font-extrabold text-[#0f2336]">Add Amenity</h2>
-                <p className="text-sm text-gray-500 mt-1">Create a new bookable facility.</p>
-              </div>
-              <button
-                onClick={() => setShowAddModal(false)}
-                className="w-10 h-10 bg-gray-50 hover:bg-gray-100 text-gray-500 rounded-full flex items-center justify-center transition-colors"
-              >
-                <X size={20} />
-              </button>
-            </div>
-            <div className="px-8 pb-8 space-y-6 relative z-10">
-              <form onSubmit={handleAddAmenity}>
-                <div className="space-y-2 mb-6">
-                  <label className="text-xs font-bold text-gray-500 uppercase tracking-wider ml-1">Amenity Name</label>
-                  <input
-                    type="text"
-                    placeholder="e.g. Swimming Pool"
-                    className="w-full h-12 px-4 rounded-xl border-2 border-gray-100 bg-gray-50 text-sm font-semibold text-[#0f2336] focus:bg-white focus:border-blue-500 outline-none transition-all"
-                    value={newAmenityName}
-                    onChange={(e) => setNewAmenityName(e.target.value)}
-                    autoFocus
-                  />
-                </div>
-                <button
-                  type="submit"
-                  className="w-full py-4 text-sm font-bold text-white bg-[#5f8787] hover:bg-[#4a6d6d] rounded-xl transition-transform shadow-lg shadow-teal-500/20 active:scale-95 flex items-center justify-center gap-2"
-                >
-                  <Plus size={18} /> Create Amenity
-                </button>
-              </form>
-            </div>
-          </div>
-        </div>
-      )}
-
-    </DashboardLayout>
-  );
+  return <DashboardLayout sidebarItems={sidebarItems} userRole="Residential Admin"><div className="p-6 md:p-8 max-w-[1400px] mx-auto space-y-8 animate-in fade-in duration-500 relative">
+    {toast && <div className="fixed bottom-6 right-6 bg-[#0f2336] text-white px-6 py-4 rounded-xl shadow-2xl z-50 flex gap-2"><CheckCircle2 className="text-emerald-400"/>{toast}<button onClick={() => setToast("")}><X size={16}/></button></div>}
+    <div className="flex flex-col md:flex-row items-center justify-between gap-6 bg-white/80 p-4 px-6 rounded-3xl border shadow-sm"><div className="flex bg-gray-50 p-1.5 rounded-2xl overflow-x-auto max-w-[600px]">{amenities.map((amenity) => <button key={amenity.id} onClick={() => { setSelectedId(amenity.id); setSelectedBooking(null); }} className={`px-6 py-2.5 text-sm font-bold rounded-xl shrink-0 ${selectedId === amenity.id ? "bg-[#5f8787] text-white" : "text-gray-500"}`}>{amenity.name}{!amenity.is_active && " (Inactive)"}</button>)}<button onClick={() => { setError(""); setShowAddModal(true); }} className="px-4 ml-2 bg-white border rounded-xl text-[#5f8787]"><Plus/></button></div><div className="flex items-center gap-4"><button disabled={weekOffset === 0} onClick={() => setWeekOffset(weekOffset - 1)} className="w-10 h-10 border rounded-xl disabled:opacity-30"><ChevronLeft className="mx-auto"/></button><div className="px-4 py-2 bg-gray-50 rounded-xl"><Calendar size={16} className="inline mr-2 text-[#5f8787]"/><b>{days[0].toLocaleDateString("en-IN")} – {days[6].toLocaleDateString("en-IN")}</b></div><button onClick={() => setWeekOffset(weekOffset + 1)} className="w-10 h-10 border rounded-xl"><ChevronRight className="mx-auto"/></button></div></div>
+    {error && <div role="alert" className="p-4 bg-red-50 text-red-700 rounded-xl flex justify-between"><span>{error}</span><button onClick={load} className="font-bold">Retry</button></div>}
+    {loading && !amenities.length ? <div className="h-72 flex justify-center items-center"><Loader2 className="animate-spin mr-2"/>Loading schedule…</div> : !amenities.length ? <div className="bg-white rounded-3xl p-12 text-center text-gray-500">No amenities configured. Use + to create one.</div> : <div className="grid grid-cols-1 xl:grid-cols-12 gap-8"><div className="xl:col-span-8 bg-white/80 p-6 md:p-8 rounded-[2.5rem] border shadow-sm overflow-x-auto"><h3 className="text-xl font-bold text-[#0f2336] mb-6"><MapPin className="inline mr-2 text-[#5f8787]"/>{selected?.name} Schedule</h3><div className="min-w-[750px]"><div className="grid grid-cols-8 gap-2 mb-4"><div/>{days.map((day) => <div key={day.toISOString()} className="text-center p-3 rounded-2xl bg-gray-50"><small className="block uppercase">{day.toLocaleDateString("en-IN", { weekday: "short" })}</small><b>{day.getDate()}</b></div>)}</div>{times.map((time) => <div key={time} className="grid grid-cols-8 gap-2 mb-2"><div className="p-3 text-xs font-bold text-right">{time}</div>{days.map((day) => { const slot = slotAt(day, time); const booked = slot && !slot.available; return <button key={day.toISOString()} disabled={!slot || (!slot.booking && booked)} onClick={() => slot?.booking && setSelectedBooking(slot.booking)} className={`h-[58px] rounded-2xl border text-xs font-bold ${slot?.available ? "bg-teal-50 border-teal-100" : slot?.booking ? "bg-[#0f2336] text-white" : "bg-gray-100 text-gray-400"}`}>{slot?.booking ? `${slot.booking.unit || "—"} • ${slot.booking.purpose}` : slot?.available ? "Available" : "Unavailable"}</button>; })}</div>)}</div></div>
+      <div className="xl:col-span-4 flex flex-col gap-6"><div className="bg-white rounded-[2rem] border shadow-xl p-8"><div className="flex justify-between mb-8"><h3 className="text-xl font-extrabold text-[#0f2336]">Facility Rules</h3><span className={`px-3 py-1 rounded-lg text-xs font-bold ${selected?.is_active ? "bg-teal-50 text-teal-600" : "bg-gray-100"}`}>{selected?.is_active ? "ACTIVE" : "INACTIVE"}</span></div><div className="bg-[#0f2336] rounded-2xl p-5 text-white mb-6"><Clock className="inline mr-3"/><b>{selected?.operating_start?.slice(0, 5)} – {selected?.operating_end?.slice(0, 5)}</b></div><dl className="space-y-4 text-sm"><div className="flex justify-between"><dt>Capacity</dt><dd className="font-bold">{selected?.capacity}</dd></div><div className="flex justify-between"><dt>Slot duration</dt><dd className="font-bold">{selected?.slot_minutes} minutes</dd></div><div className="flex justify-between"><dt>Weekly household limit</dt><dd className="font-bold">{selected?.weekly_limit}</dd></div><div className="flex justify-between"><dt>Bookings this view</dt><dd className="font-bold">{bookings.length}</dd></div></dl><button disabled={saving} onClick={toggle} className="w-full mt-7 py-3 border rounded-xl font-bold">{selected?.is_active ? "Deactivate Amenity" : "Activate Amenity"}</button></div>{selectedBooking && <div className="bg-[#0f1520] text-white p-8 rounded-[2rem]"><h3 className="text-xl font-extrabold">Booking Details</h3><p className="text-teal-300 mt-2">{selectedBooking.resident_name} • {selectedBooking.unit}</p><p className="text-gray-400 mt-4">{new Date(selectedBooking.starts_at).toLocaleString("en-IN")}</p><p>{selectedBooking.purpose}</p>{selectedBooking.status === "confirmed" && new Date(selectedBooking.starts_at) > new Date() && <button disabled={saving} onClick={cancel} className="w-full mt-6 py-3 bg-red-500 rounded-xl font-bold">Cancel Booking</button>}</div>}</div></div>}
+    {showAddModal && <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-[#0f1a2b]/80"><form onSubmit={submit} className="bg-white rounded-[2rem] w-full max-w-lg p-8 max-h-[90vh] overflow-y-auto relative"><button type="button" onClick={() => setShowAddModal(false)} className="absolute right-6 top-6"><X/></button><h2 className="text-xl font-extrabold text-[#0f2336] mb-6">Add Amenity</h2><div className="space-y-4"><input required minLength="2" maxLength="150" placeholder="Amenity name" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} className="w-full h-12 px-4 border rounded-xl"/><textarea required value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} className="w-full p-4 border rounded-xl"/><div className="grid grid-cols-2 gap-3"><label className="text-sm">Opening<input required type="time" value={form.operating_start} onChange={(e) => setForm({ ...form, operating_start: e.target.value })} className="block w-full p-3 border rounded-xl"/></label><label className="text-sm">Closing<input required type="time" value={form.operating_end} onChange={(e) => setForm({ ...form, operating_end: e.target.value })} className="block w-full p-3 border rounded-xl"/></label><label className="text-sm">Capacity<input required type="number" min="1" value={form.capacity} onChange={(e) => setForm({ ...form, capacity: e.target.value })} className="block w-full p-3 border rounded-xl"/></label><label className="text-sm">Slot minutes<select value={form.slot_minutes} onChange={(e) => setForm({ ...form, slot_minutes: e.target.value })} className="block w-full p-3 border rounded-xl"><option value="30">30</option><option value="60">60</option><option value="120">120</option></select></label><label className="text-sm col-span-2">Weekly limit<input required type="number" min="1" max="50" value={form.weekly_limit} onChange={(e) => setForm({ ...form, weekly_limit: e.target.value })} className="block w-full p-3 border rounded-xl"/></label></div>{error && <p className="p-3 bg-red-50 text-red-700 rounded-xl">{error}</p>}<button disabled={saving} className="w-full py-4 bg-[#5f8787] text-white font-bold rounded-xl">{saving ? "Creating…" : "Create Amenity"}</button></div></form></div>}
+  </div></DashboardLayout>;
 }
