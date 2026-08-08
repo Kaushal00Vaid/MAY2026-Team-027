@@ -21,7 +21,7 @@ class User(Base):
     first_name = Column(String(75), nullable=False)
     last_name = Column(String(75), nullable=False)
     email = Column(String(255), unique=True, index=True, nullable=True)  # nullable: phone-only signup
-    phone_number = Column(String(20), unique=True, index=True, nullable=False)
+    phone_number = Column(String(20), unique=True, index=True, nullable=True)  # nullable: Google OAuth users supply it at complete-profile
 
     # Auth
     password_hash = Column(Text, nullable=True)  # nullable: OTP-only users
@@ -36,6 +36,10 @@ class User(Base):
     # Status
     is_active = Column(Boolean, nullable=False, server_default="true")
     is_phone_verified = Column(Boolean, nullable=False, server_default="false")
+    is_profile_complete = Column(Boolean, nullable=False, server_default="false")
+
+    # Google OAuth
+    google_id = Column(String(255), unique=True, index=True, nullable=True)
 
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     updated_at = Column(

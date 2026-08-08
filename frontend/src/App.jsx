@@ -28,6 +28,8 @@ import StaffOperations from "@/pages/StaffOperations";
 import StaffInventory from "@/pages/StaffInventory";
 import StaffRoster from "@/pages/StaffRoster";
 import AdminUserManagement from "@/pages/AdminUserManagement";
+import CompleteProfile from "@/pages/CompleteProfile";
+import GoogleAuthSuccess from "@/pages/GoogleAuthSuccess";
 
 // Role constants
 const ADMIN_ROLES = ["super_admin", "admin", "committee_member"];
@@ -45,6 +47,8 @@ function App() {
           <Route path="/" element={<LandingPage />} />
           <Route path="/signin" element={<SignInPage />} />
           <Route path="/signup" element={<SignUpPage />} />
+          <Route path="/complete-profile" element={<CompleteProfile />} />
+          <Route path="/auth/google/success" element={<GoogleAuthSuccess />} />
 
           {/* Unauthorized fallback */}
           <Route

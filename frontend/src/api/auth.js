@@ -51,3 +51,29 @@ export const logout = () => axiosInstance.post("/auth/logout");
  * Requires Authorization header (injected by AuthContext interceptor).
  */
 export const getMe = () => axiosInstance.get("/auth/me");
+
+// Google OAuth
+
+/**
+ * Redirect the browser to the backend's Google OAuth initiation endpoint.
+ * The backend handles the full redirect chain to Google and back.
+ */
+export const initiateGoogleLogin = () => {
+  const backendUrl = import.meta.env.VITE_API_BASE_URL || "http://localhost:8000";
+  window.location.href = `${backendUrl}/auth/google`;
+};
+
+/**
+ * Submit the completed profile form for a Google OAuth user.
+ * Requires the short-lived pending_profile token issued at callback.
+ *
+ * @param {Object} data - { phone_number, first_name, last_name, flat_number?, building_block?, emergency_contact? }
+ * @param {string} pendingToken - the pending_profile JWT from the callback redirect
+ * @returns {{ access_token, token_type, expires_in }}
+ */
+export const completeProfile = (data, pendingToken) =>
+  axiosInstance.post("/auth/complete-profile", data, {
+    headers: { Authorization: `Bearer ${pendingToken}` },
+    _skipAuth: true,
+    _skipRefresh: true,
+  });

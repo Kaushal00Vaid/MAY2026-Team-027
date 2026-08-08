@@ -19,7 +19,7 @@ from app.auth.jwt_handler import (
 )
 from app.auth.otp_service import OTPPurpose, send_otp, verify_otp
 from app.auth.password import hash_password, verify_password
-from app.auth.schemas import SignupRequest
+from app.auth.schemas import SignupRequest, CompleteProfileRequest
 from app.config import settings
 from app.core.exceptions import (
     AccountInactiveException,
@@ -76,6 +76,16 @@ def _build_token_pair(
     return access_token, refresh_token
 
 
+def _assign_default_role(db: Session, user: User) -> None:
+    """Assign the flat_owner role to a user (default for all new accounts)."""
+    default_role = (
+        db.query(Role).filter(Role.role_name == RoleName.flat_owner).first()
+    )
+    if default_role:
+        user_role = UserRole(user_id=user.user_id, role_id=default_role.role_id)
+        db.add(user_role)
+
+
 # Signup
 
 def signup_user(db: Session, data: SignupRequest) -> User:
@@ -99,17 +109,13 @@ def signup_user(db: Session, data: SignupRequest) -> User:
         building_block=data.building_block,
         staff_type=data.staff_type,
         emergency_contact=data.emergency_contact,
+        is_profile_complete=True,  # traditional signup is always complete
     )
     db.add(user)
     db.flush()  # get user_id without committing
 
     # Assign default role: flat_owner (resident member)
-    default_role = (
-        db.query(Role).filter(Role.role_name == RoleName.flat_owner).first()
-    )
-    if default_role:
-        user_role = UserRole(user_id=user.user_id, role_id=default_role.role_id)
-        db.add(user_role)
+    _assign_default_role(db, user)
 
     db.commit()
     db.refresh(user)
@@ -263,6 +269,113 @@ def logout_user(db: Session, refresh_token: str) -> None:
         db.commit()
 
 
+# Google OAuth
+
+def handle_google_oauth(db: Session, google_profile: dict) -> tuple[User, bool]:
+    """
+    Find or create a user account from a Google OAuth profile.
+
+    Lookup order:
+    1. By google_id (fastest, already linked)
+    2. By email (link Google to an existing email+password account)
+    3. Create new account
+
+    Returns:
+        (user, profile_was_already_complete)
+    """
+    google_id: str = google_profile["id"]
+    email: Optional[str] = google_profile.get("email")
+    verified: bool = google_profile.get("verified_email", False)
+
+    # 1. Lookup by google_id
+    user: Optional[User] = (
+        db.query(User).filter(User.google_id == google_id).first()
+    )
+
+    if user:
+        if not user.is_active:
+            raise AccountInactiveException()
+        return user, user.is_profile_complete
+
+    # 2. Lookup by verified email — link Google to existing account
+    if email and verified:
+        normalized = _normalize_email(email)
+        user = db.query(User).filter(func.lower(User.email) == normalized).first()
+        if user:
+            if not user.is_active:
+                raise AccountInactiveException()
+            # Link google_id to the existing account
+            user.google_id = google_id
+            if google_profile.get("picture") and not user.profile_picture_url:
+                user.profile_picture_url = google_profile["picture"]
+            db.commit()
+            db.refresh(user)
+            return user, user.is_profile_complete
+
+    # 3. Create new user — profile incomplete (no phone number yet)
+    normalized_email = _normalize_email(email) if (email and verified) else None
+    user = User(
+        first_name=google_profile.get("given_name", ""),
+        last_name=google_profile.get("family_name", ""),
+        email=normalized_email,
+        phone_number=None,          # filled in at /complete-profile
+        google_id=google_id,
+        profile_picture_url=google_profile.get("picture"),
+        is_profile_complete=False,
+    )
+
+    db.add(user)
+    db.flush()  # get user_id
+
+    # Assign default role: flat_owner (consistent with regular signup)
+    _assign_default_role(db, user)
+
+    db.commit()
+    db.refresh(user)
+    return user, False  # profile NOT complete for brand-new Google users
+
+
+def complete_google_profile(
+    db: Session,
+    user: User,
+    data: CompleteProfileRequest,
+    request: Request,
+) -> tuple[str, str]:
+    """
+    Finalise a Google OAuth user's profile by storing their phone number
+    and any other missing fields.  Issues a full token pair on success.
+    """
+    phone_number = _normalize_phone(data.phone_number)
+
+    # Ensure the phone number is not already taken by another account
+    existing = (
+        db.query(User)
+        .filter(User.phone_number == phone_number, User.user_id != user.user_id)
+        .first()
+    )
+    if existing:
+        raise DuplicatePhoneException()
+
+    # Update profile
+    user.phone_number = phone_number
+    user.first_name = data.first_name.strip()
+    user.last_name = data.last_name.strip()
+    user.is_profile_complete = True
+    user.is_phone_verified = True  # phone was manually entered and confirmed
+
+    if data.flat_number is not None:
+        user.flat_number = data.flat_number.strip() or None
+    if data.building_block is not None:
+        user.building_block = data.building_block.strip() or None
+    if data.emergency_contact is not None:
+        user.emergency_contact = data.emergency_contact.strip() or None
+
+    db.commit()
+    db.refresh(user)
+
+    return _build_token_pair(db, user, request)
+
+
 # Get current user info
 
 def get_user_profile(user: User) -> dict:
@@ -280,6 +393,8 @@ def get_user_profile(user: User) -> dict:
         "emergency_contact": user.emergency_contact,
         "is_active": user.is_active,
         "is_phone_verified": user.is_phone_verified,
+        "is_profile_complete": user.is_profile_complete,
+        "google_id": user.google_id,
         "roles": _get_user_role_names(user),
         "created_at": user.created_at.isoformat(),
     }

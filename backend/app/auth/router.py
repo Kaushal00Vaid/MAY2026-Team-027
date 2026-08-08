@@ -2,10 +2,20 @@
 auth/router.py — All /auth/* API endpoints.
 """
 
-from fastapi import APIRouter, Depends, Request, Response
+import logging
+from urllib.parse import urlencode
+
+from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
+from fastapi.responses import RedirectResponse
 from sqlalchemy.orm import Session
 
 from app.auth import schemas, service
+from app.auth.google_oauth import (
+    exchange_code_for_tokens,
+    get_google_authorization_url,
+    get_google_user_info,
+)
+from app.auth.jwt_handler import create_pending_profile_token, decode_token
 from app.config import settings
 from app.core.security import limiter
 from app.db.database import get_db
@@ -13,6 +23,8 @@ from app.dependencies import get_current_user
 from app.db.models.user import User
 
 router = APIRouter()
+
+logger = logging.getLogger(__name__)
 
 _REFRESH_COOKIE = "ss_refresh_token"
 _COOKIE_MAX_AGE = settings.REFRESH_TOKEN_EXPIRE_DAYS * 24 * 60 * 60  # seconds
@@ -131,7 +143,6 @@ def refresh_token(
     """
     refresh_token_value = request.cookies.get(_REFRESH_COOKIE)
     if not refresh_token_value:
-        from fastapi import HTTPException, status
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="No refresh token found.",
@@ -169,3 +180,151 @@ def get_me(current_user: User = Depends(get_current_user)):
     """Return the authenticated user's profile and roles."""
     profile = service.get_user_profile(current_user)
     return schemas.UserMeResponse(**profile)
+
+
+# Google OAuth
+
+@router.get("/google", include_in_schema=True)
+def google_login():
+    """
+    Initiate Google OAuth flow.
+    Redirects the browser to Google's consent/login page.
+    """
+    url, _state = get_google_authorization_url()
+    return RedirectResponse(url=url, status_code=302)
+
+
+@router.get("/google/callback", include_in_schema=True)
+def google_callback(
+    request: Request,
+    response: Response,
+    db: Session = Depends(get_db),
+    code: str = None,
+    error: str = None,
+    state: str = None,
+):
+    """
+    Handle the OAuth callback from Google.
+
+    - Exchanges the authorization code for tokens.
+    - Looks up or creates the application user.
+    - For new users (profile incomplete): redirects to /complete-profile with
+      a short-lived pending token.
+    - For returning users (profile complete): issues full tokens and redirects
+      to the frontend success page.
+    """
+    frontend = settings.FRONTEND_URL
+
+    # User cancelled or error from Google
+    if error or not code:
+        params = urlencode({"error": error or "oauth_cancelled"})
+        return RedirectResponse(url=f"{frontend}/signin?{params}", status_code=302)
+
+    try:
+        google_tokens = exchange_code_for_tokens(code)
+        google_profile = get_google_user_info(google_tokens["access_token"])
+    except Exception:
+        params = urlencode({"error": "google_auth_failed"})
+        return RedirectResponse(url=f"{frontend}/signin?{params}", status_code=302)
+
+    try:
+        user, is_profile_complete = service.handle_google_oauth(db, google_profile)
+    except Exception:
+        logger.exception("handle_google_oauth failed for profile: %s", google_profile.get("email"))
+        params = urlencode({"error": "account_error"})
+        return RedirectResponse(url=f"{frontend}/signin?{params}", status_code=302)
+
+    if not is_profile_complete:
+        # Issue a short-lived pending token — NOT a full session
+        pending_token = create_pending_profile_token(user.user_id)
+        params = urlencode({
+            "token": pending_token,
+            "first_name": google_profile.get("given_name", ""),
+            "last_name": google_profile.get("family_name", ""),
+            "email": google_profile.get("email", ""),
+            "picture": google_profile.get("picture", ""),
+        })
+        return RedirectResponse(
+            url=f"{frontend}/complete-profile?{params}", status_code=302
+        )
+
+    # Profile complete — issue full access + refresh tokens
+    try:
+        access_token, refresh_token_value = service._build_token_pair(db, user, request)
+    except Exception:
+        params = urlencode({"error": "token_error"})
+        return RedirectResponse(url=f"{frontend}/signin?{params}", status_code=302)
+
+    # Set the refresh token cookie on the redirect response
+    redirect_url = f"{frontend}/auth/google/success?token={access_token}"
+    redirect_response = RedirectResponse(url=redirect_url, status_code=302)
+    redirect_response.set_cookie(
+        key=_REFRESH_COOKIE,
+        value=refresh_token_value,
+        httponly=True,
+        secure=settings.ENVIRONMENT != "development",
+        samesite="lax",
+        max_age=_COOKIE_MAX_AGE,
+        path="/auth",
+    )
+    return redirect_response
+
+
+@router.post("/complete-profile", response_model=schemas.TokenResponse)
+def complete_profile(
+    data: schemas.CompleteProfileRequest,
+    request: Request,
+    response: Response,
+    db: Session = Depends(get_db),
+):
+    """
+    Complete the Google OAuth user's profile.
+
+    Requires a short-lived pending_profile Bearer token (issued at callback).
+    On success, issues a full access + refresh token pair.
+    """
+    from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+    from fastapi import Header
+
+    # Extract the Bearer token from the Authorization header manually
+    auth_header = request.headers.get("Authorization", "")
+    if not auth_header.startswith("Bearer "):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Pending profile token required.",
+        )
+    pending_token = auth_header.removeprefix("Bearer ").strip()
+
+    # Decode and validate the pending_profile token
+    payload = decode_token(pending_token)
+    if not payload or payload.get("type") != "pending_profile":
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid or expired profile completion token.",
+        )
+
+    try:
+        user_id = int(payload["sub"])
+    except (KeyError, TypeError, ValueError):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid profile completion token.",
+        )
+
+    user = db.query(User).filter(
+        User.user_id == user_id, User.is_active.is_(True)
+    ).first()
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="User not found.",
+        )
+
+    access_token, refresh_token_value = service.complete_google_profile(
+        db, user, data, request
+    )
+    _set_refresh_cookie(response, refresh_token_value)
+    return schemas.TokenResponse(
+        access_token=access_token,
+        expires_in=settings.ACCESS_TOKEN_EXPIRE_MINUTES * 60,
+    )

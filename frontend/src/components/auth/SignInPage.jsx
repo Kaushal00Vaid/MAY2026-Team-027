@@ -12,6 +12,7 @@ import {
 } from "./components/AuthDecorations";
 import { useAuth } from "@/hooks/useAuth";
 import * as authApi from "@/api/auth";
+import { initiateGoogleLogin } from "@/api/auth";
 
 // ── Tab definitions ───────────────────────────────────────────────────────────
 const TABS = [
@@ -97,7 +98,12 @@ export default function SignInPage() {
       const user = await loginWithPassword(email, password);
       handleRedirect(user);
     } catch (err) {
-      setError(err?.response?.data?.detail || "Invalid email or password.");
+      const detail = err?.response?.data?.detail;
+      if (Array.isArray(detail)) {
+        setError(detail.map((d) => d.msg).join(" • "));
+      } else {
+        setError(detail || "Invalid email or password.");
+      }
     } finally {
       setLoading(false);
     }
@@ -113,7 +119,12 @@ export default function SignInPage() {
       setOtpStep("verify");
       startCountdown();
     } catch (err) {
-      setError(err?.response?.data?.detail || "Failed to send OTP. Check the number and retry.");
+      const detail = err?.response?.data?.detail;
+      if (Array.isArray(detail)) {
+        setError(detail.map((d) => d.msg).join(" • "));
+      } else {
+        setError(detail || "Failed to send OTP. Check the number and retry.");
+      }
     } finally {
       setLoading(false);
     }
@@ -130,7 +141,12 @@ export default function SignInPage() {
       handleRedirect(user);
     } catch (err) {
       setOtpError(true);
-      setError(err?.response?.data?.detail || "Invalid or expired OTP.");
+      const detail = err?.response?.data?.detail;
+      if (Array.isArray(detail)) {
+        setError(detail.map((d) => d.msg).join(" • "));
+      } else {
+        setError(detail || "Invalid or expired OTP.");
+      }
     } finally {
       setLoading(false);
     }
@@ -423,7 +439,7 @@ export default function SignInPage() {
             {/* Social / Google */}
             <div className="mt-6 space-y-4">
               <DividerOr text="Or continue with" />
-              <SocialButton disabled>Sign in with Google (coming soon)</SocialButton>
+              <SocialButton onClick={initiateGoogleLogin}>Sign in with Google</SocialButton>
             </div>
 
             <p className="text-center text-sm text-muted-foreground mt-6">

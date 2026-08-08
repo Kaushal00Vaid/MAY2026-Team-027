@@ -4,7 +4,7 @@ from typing import Optional
 from pydantic import BaseModel, EmailStr, field_validator, model_validator
 
 
-# ─── Signup ───────────────────────────────────────────────────────────────────
+# Signup
 
 class SignupRequest(BaseModel):
     first_name: str
@@ -57,14 +57,14 @@ class SignupRequest(BaseModel):
         return self
 
 
-# ─── Password login ──────────────────────────────────────────────────────────
+# Password login
 
 class PasswordLoginRequest(BaseModel):
     email: EmailStr
     password: str
 
 
-# ─── OTP ─────────────────────────────────────────────────────────────────────
+# OTP
 
 class OTPRequestSchema(BaseModel):
     phone_number: str
@@ -93,7 +93,7 @@ class OTPVerifyRequest(BaseModel):
         return v
 
 
-# ─── Token responses ──────────────────────────────────────────────────────────
+# Token responses
 
 class TokenResponse(BaseModel):
     access_token: str
@@ -101,14 +101,14 @@ class TokenResponse(BaseModel):
     expires_in: int  # seconds
 
 
-# ─── User responses ───────────────────────────────────────────────────────────
+# User responses
 
 class UserMeResponse(BaseModel):
     user_id: int
     first_name: str
     last_name: str
     email: Optional[str]
-    phone_number: str
+    phone_number: Optional[str]
     profile_picture_url: Optional[str]
     flat_number: Optional[str]
     building_block: Optional[str]
@@ -116,6 +116,8 @@ class UserMeResponse(BaseModel):
     emergency_contact: Optional[str]
     is_active: bool
     is_phone_verified: bool
+    is_profile_complete: bool
+    google_id: Optional[str]
     roles: list[str]
     created_at: str
 
@@ -126,3 +128,34 @@ class SignupResponse(BaseModel):
     message: str
     user_id: int
     phone_number: str
+
+
+# Google OAuth
+
+class CompleteProfileRequest(BaseModel):
+    phone_number: str
+    first_name: str
+    last_name: str
+    flat_number: Optional[str] = None
+    building_block: Optional[str] = None
+    emergency_contact: Optional[str] = None
+
+    @field_validator("phone_number")
+    @classmethod
+    def validate_phone(cls, v: str) -> str:
+        v = v.strip()
+        if not re.match(r"^\+?[1-9]\d{7,14}$", v):
+            raise ValueError(
+                "Invalid phone number. Use international format e.g. +919876543210"
+            )
+        return v
+
+    @field_validator("first_name", "last_name")
+    @classmethod
+    def name_not_empty(cls, v: str) -> str:
+        v = v.strip()
+        if not v:
+            raise ValueError("Name cannot be empty")
+        if len(v) > 75:
+            raise ValueError("Name must be 75 characters or fewer")
+        return v
