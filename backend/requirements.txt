@@ -17,3 +17,4 @@ email-validator
 httpx
 pytest
 tzdata  # required on Windows — system has no IANA timezone database
+apscheduler==3.10.4
