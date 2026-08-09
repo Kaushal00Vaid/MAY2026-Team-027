@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { CalendarClock, CheckCircle2, Clock, FileText, Loader2, Plus, Users, X } from "lucide-react";
 import DashboardLayout from "@/components/layout/DashboardLayout";
+import { useRealtimeRefresh } from "@/features/realtime/useRealtimeRefresh";
 import { getGateSidebarItems } from "@/components/gate/GateSidebarConfig";
 import { useAuth } from "@/hooks/useAuth";
 import { createShift, downloadCsv, getTodayAttendance, listShifts, listStaff, operationsError, saveCsv, toggleAttendance, updateShiftStatus } from "@/features/operations/api";
@@ -11,6 +12,7 @@ export default function StaffRoster(){const{user}=useAuth();const[roster,setRost
 const load=useCallback(async()=>{setLoading(true);setError("");try{const requests=[listShifts(),listStaff()];if(!canManage)requests.push(getTodayAttendance());const responses=await Promise.all(requests);setRoster(responses[0].data);setStaff(responses[1].data);setAttendance(responses[2]?.data||null);}catch(e){setError(operationsError(e,"Unable to load roster."));}finally{setLoading(false);}},[canManage]);
 // eslint-disable-next-line react-hooks/set-state-in-effect
 useEffect(()=>{load();},[load]);useEffect(()=>{if(!toast)return;const t=setTimeout(()=>setToast(""),3000);return()=>clearTimeout(t);},[toast]);
+useRealtimeRefresh(["roster"],load);
 const assign=async(e)=>{e.preventDefault();setSaving(true);setError("");try{await createShift({...form,staff_id:Number(form.staff_id),days_mask:Number(form.days_mask)});setShow(false);setForm(initial);setToast("Shift assigned.");await load();}catch(err){setError(operationsError(err,"Unable to assign shift."));}finally{setSaving(false);}};
 const change=async(item)=>{setSaving(true);try{await updateShiftStatus(item.id,item.status==="active"?"on_leave":"active");setToast("Roster status updated.");await load();}catch(e){setError(operationsError(e,"Unable to update status."));}finally{setSaving(false);}};
 const exportData=async()=>{try{saveCsv(await downloadCsv("shifts/export"),"staff-roster.csv");}catch(e){setError(operationsError(e,"Export failed."));}};

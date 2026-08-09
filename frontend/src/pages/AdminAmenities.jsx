@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { BarChart3, Calendar, CalendarCheck, CheckCircle2, ChevronLeft, ChevronRight, Clock, Headset, LayoutDashboard, Loader2, MapPin, Plus, ShieldCheck, UserCog, Users, WalletCards, X } from "lucide-react";
 import DashboardLayout from "@/components/layout/DashboardLayout";
+import { useRealtimeRefresh } from "@/features/realtime/useRealtimeRefresh";
 import { amenitiesError, cancelBooking, createAmenity, getAvailability, listAmenities, listBookings, localDate, updateAmenity } from "@/features/amenities/api";
 
 const sidebarItems = [{ label: "Dashboard", icon: LayoutDashboard, href: "/admin" }, { label: "Finance", icon: WalletCards, href: "/admin/finance" }, { label: "Helpdesk", icon: Headset, href: "/admin/helpdesk" }, { label: "Security", icon: ShieldCheck, href: "/admin/security" }, { label: "Amenities", icon: CalendarCheck, active: true, href: "/admin/amenities" }, { label: "Community", icon: Users, href: "/admin/community" }, { label: "Analytics", icon: BarChart3, href: "/admin/analytics" }, { label: "User Roles", icon: UserCog, href: "/admin/users" }];
@@ -14,6 +15,7 @@ export default function AdminAmenities() {
   const load = useCallback(async () => { setLoading(true); setError(""); try { const amenitiesResponse = await listAmenities(true); const items = amenitiesResponse.data; setAmenities(items); const id = selectedId || items[0]?.id; if (id && !selectedId) setSelectedId(id); if (id) { const [availabilityResponse, bookingsResponse] = await Promise.all([getAvailability(id, startDate), listBookings({ page_size: 100, start_date: startDate })]); setAvailability(availabilityResponse.data); setBookings(bookingsResponse.data.items.filter((item) => item.amenity_id === id)); } } catch (e) { setError(amenitiesError(e, "Unable to load amenity schedule.")); } finally { setLoading(false); } }, [selectedId, startDate]);
   // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => { load(); }, [load]);
+  useRealtimeRefresh(["amenities"], load);
   useEffect(() => { if (!toast) return undefined; const timer = setTimeout(() => setToast(""), 3500); return () => clearTimeout(timer); }, [toast]);
   const selected = amenities.find((item) => item.id === selectedId); const days = useMemo(() => Array.from({ length: 7 }, (_, i) => dayAt((weekOffset * 7) + i)), [weekOffset]);
   const times = useMemo(() => [...new Set((availability?.slots || []).map((slot) => new Date(slot.starts_at).toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" })))].slice(0, 8), [availability]);

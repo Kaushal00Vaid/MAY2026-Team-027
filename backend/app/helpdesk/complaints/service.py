@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session, joinedload
 from app.db.models.complaint import Complaint
 from app.db.models.complaint_comment import ComplaintComment
 from app.db.models.user import User
+from app.realtime.service import add_notifications, user_ids_for_roles
 from app.helpdesk.complaints.models import ComplaintStatusHistory
 from app.helpdesk.complaints.permissions import ensure_can_create, ensure_operational, is_operational
 from app.helpdesk.complaints.schemas import CommentCreate, ComplaintCreate, ComplaintUpdate
@@ -68,6 +69,7 @@ def create_complaint(db: Session, user: User, data: ComplaintCreate) -> Complain
             note="Complaint created",
         )
     )
+    add_notifications(db, user_ids_for_roles(db, ["super_admin", "admin", "committee_member"]), event_type="complaint.created", title="New helpdesk complaint", message=complaint.title, resource_type="complaint", resource_id=complaint.id, payload={"scope": "helpdesk", "status": complaint.status})
     db.commit()
     db.refresh(complaint)
     return complaint
@@ -193,6 +195,10 @@ def update_complaint(
                 ),
             )
         )
+    recipients = {complaint.user_id}
+    if complaint.assigned_to:
+        recipients.add(complaint.assigned_to)
+    add_notifications(db, recipients, event_type="complaint.changed", title="Complaint updated", message=f"{complaint.title} is now {complaint.status}.", resource_type="complaint", resource_id=complaint.id, payload={"scope": "helpdesk", "status": complaint.status})
     db.commit()
     db.refresh(complaint)
     return complaint
