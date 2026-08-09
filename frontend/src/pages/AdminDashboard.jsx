@@ -20,6 +20,7 @@ import {
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import DashboardLayout from "@/components/layout/DashboardLayout";
 import { getTransactions } from "@/api/finance";
+import { getAdminAnalytics } from "@/api/analytics";
 
 const sidebarItems = [
   { label: "Dashboard", icon: LayoutDashboard, active: true, href: "/admin" },
@@ -32,15 +33,7 @@ const sidebarItems = [
   { label: "User Roles", icon: UserCog, active: false, href: "/admin/users" },
 ];
 
-const revenueData = [
-  { name: 'Jan', value: 4000 },
-  { name: 'Feb', value: 3000 },
-  { name: 'Mar', value: 5000 },
-  { name: 'Apr', value: 4500 },
-  { name: 'May', value: 6000 },
-  { name: 'Jun', value: 5500 },
-  { name: 'Jul', value: 7000 },
-];
+
 
 
 export default function AdminDashboard() {
@@ -48,6 +41,16 @@ export default function AdminDashboard() {
   const [transactions, setTransactions] = useState([]);
   const [txLoading, setTxLoading] = useState(true);
   const [txError, setTxError] = useState(null);
+
+  const [analytics, setAnalytics] = useState(null);
+  const [analyticsLoading, setAnalyticsLoading] = useState(true);
+
+  useEffect(() => {
+    getAdminAnalytics()
+      .then((res) => setAnalytics(res.data))
+      .catch((err) => console.error("Failed to fetch analytics", err))
+      .finally(() => setAnalyticsLoading(false));
+  }, []);
 
   // Re-fetch whenever the active tab changes
   useEffect(() => {
@@ -105,10 +108,10 @@ export default function AdminDashboard() {
               </div>
             </div>
             <div>
-              <div className="text-3xl font-extrabold text-[#0f2336]">$124k</div>
+              <div className="text-3xl font-extrabold text-[#0f2336]">${analytics?.stats?.current_collections?.amount?.toLocaleString() || 0}</div>
               <div className="text-xs text-emerald-600 font-bold mt-2 flex items-center gap-1 bg-emerald-50 w-fit px-2 py-1 rounded-md">
                 <TrendingUp size={14} />
-                +8.2% vs last month
+                +{analytics?.stats?.current_collections?.percentage_change?.toFixed(1) || 0}% vs last month
               </div>
             </div>
           </div>
@@ -122,9 +125,9 @@ export default function AdminDashboard() {
               </div>
             </div>
             <div className="flex items-end justify-between">
-              <div className="text-3xl font-extrabold text-[#0f2336]">12</div>
+              <div className="text-3xl font-extrabold text-[#0f2336]">{analytics?.stats?.active_complaints?.total || 0}</div>
               <div className="mb-1 px-2.5 py-1 bg-red-50 text-red-600 rounded-md text-[10px] font-bold uppercase tracking-wider animate-pulse border border-red-100">
-                2 High Priority
+                {analytics?.stats?.active_complaints?.high_priority || 0} High Priority
               </div>
             </div>
           </div>
@@ -138,7 +141,7 @@ export default function AdminDashboard() {
               </div>
             </div>
             <div>
-              <div className="text-3xl font-extrabold text-[#0f2336]">5</div>
+              <div className="text-3xl font-extrabold text-[#0f2336]">{analytics?.stats?.visitors_at_gate?.awaiting_approval || 0}</div>
               <div className="text-xs text-purple-600 font-bold mt-2 bg-purple-50 w-fit px-2 py-1 rounded-md">
                 Awaiting Approval
               </div>
@@ -156,43 +159,49 @@ export default function AdminDashboard() {
             </div>
             <div className="z-10">
               <div className="text-3xl font-extrabold text-[#0f2336] flex items-baseline gap-2">
-                80% <span className="text-sm font-medium text-gray-400">/ 100 max</span>
+                {Math.round(analytics?.stats?.clubhouse_occupancy?.percentage || 0)}% <span className="text-sm font-medium text-gray-400">/ {analytics?.stats?.clubhouse_occupancy?.capacity || 100} max</span>
               </div>
               <div className="w-full bg-gray-100 rounded-full h-2 mt-3 overflow-hidden">
-                <div className="bg-indigo-500 h-full rounded-full transition-all duration-1000 ease-out" style={{ width: "80%" }}></div>
+                <div className="bg-indigo-500 h-full rounded-full transition-all duration-1000 ease-out" style={{ width: `${analytics?.stats?.clubhouse_occupancy?.percentage || 0}%` }}></div>
               </div>
             </div>
           </div>
         </div>
 
         {/* SLA Alert */}
-        <div className="bg-[#1e1e24] rounded-2xl shadow-lg p-1 relative overflow-hidden">
-          <div className="absolute inset-0 bg-gradient-to-r from-red-500/20 to-transparent"></div>
-          <div className="bg-[#2a2a32]/90 backdrop-blur-sm rounded-xl p-5 sm:p-6 flex flex-col sm:flex-row sm:items-center justify-between gap-4 relative z-10 border border-white/5">
-            <div className="flex items-start gap-4">
-              <div className="w-12 h-12 rounded-xl bg-red-500/20 flex items-center justify-center shrink-0 border border-red-500/30">
-                <AlertTriangle className="text-red-400 drop-shadow-[0_0_8px_rgba(248,113,113,0.5)]" size={24} />
-              </div>
-              <div>
-                <h3 className="text-lg font-bold text-white">SLA Breach Alert</h3>
-                <p className="text-sm text-gray-400 mt-0.5">2 tickets require immediate attention.</p>
-                
-                <div className="mt-4 p-3 bg-black/40 rounded-lg border border-white/10 flex flex-col sm:flex-row sm:items-center justify-between gap-4 min-w-[320px]">
-                  <div>
-                    <div className="text-xs font-mono text-gray-400">#TK-8924</div>
-                    <div className="text-sm font-semibold text-gray-200 mt-0.5">Water Leakage in Block B</div>
-                  </div>
-                  <div className="px-3 py-1.5 bg-red-500/20 text-red-400 text-[11px] font-bold uppercase tracking-wider rounded border border-red-500/30 animate-pulse">
-                    OVERDUE BY 45M
+        {analytics?.sla_alerts?.length > 0 && (
+          <div className="bg-[#1e1e24] rounded-2xl shadow-lg p-1 relative overflow-hidden">
+            <div className="absolute inset-0 bg-gradient-to-r from-red-500/20 to-transparent"></div>
+            <div className="bg-[#2a2a32]/90 backdrop-blur-sm rounded-xl p-5 sm:p-6 flex flex-col sm:flex-row sm:items-center justify-between gap-4 relative z-10 border border-white/5">
+              <div className="flex items-start gap-4">
+                <div className="w-12 h-12 rounded-xl bg-red-500/20 flex items-center justify-center shrink-0 border border-red-500/30">
+                  <AlertTriangle className="text-red-400 drop-shadow-[0_0_8px_rgba(248,113,113,0.5)]" size={24} />
+                </div>
+                <div>
+                  <h3 className="text-lg font-bold text-white">SLA Breach Alert</h3>
+                  <p className="text-sm text-gray-400 mt-0.5">{analytics.sla_alerts.length} ticket(s) require immediate attention.</p>
+                  
+                  <div className="mt-4 flex flex-col gap-2">
+                    {analytics.sla_alerts.map((alert) => (
+                      <div key={alert.ticket_id} className="p-3 bg-black/40 rounded-lg border border-white/10 flex flex-col sm:flex-row sm:items-center justify-between gap-4 min-w-[320px]">
+                        <div>
+                          <div className="text-xs font-mono text-gray-400">{alert.ticket_id}</div>
+                          <div className="text-sm font-semibold text-gray-200 mt-0.5">{alert.title}</div>
+                        </div>
+                        <div className="px-3 py-1.5 bg-red-500/20 text-red-400 text-[11px] font-bold uppercase tracking-wider rounded border border-red-500/30 animate-pulse">
+                          OVERDUE BY {alert.overdue_by_mins}M
+                        </div>
+                      </div>
+                    ))}
                   </div>
                 </div>
               </div>
+              <button className="text-sm font-semibold text-white bg-white/10 hover:bg-white/20 px-4 py-2 rounded-lg transition-colors self-start sm:self-center">
+                Resolve Now
+              </button>
             </div>
-            <button className="text-sm font-semibold text-white bg-white/10 hover:bg-white/20 px-4 py-2 rounded-lg transition-colors self-start sm:self-center">
-              Resolve Now
-            </button>
           </div>
-        </div>
+        )}
 
         {/* Bottom Section */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -213,7 +222,7 @@ export default function AdminDashboard() {
               </div>
               <div className="h-64 w-full">
                 <ResponsiveContainer width="100%" height="100%">
-                  <AreaChart data={revenueData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+                  <AreaChart data={analytics?.revenue_trend || []} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
                     <defs>
                       <linearGradient id="colorRevenue" x1="0" y1="0" x2="0" y2="1">
                         <stop offset="5%" stopColor="#4f46e5" stopOpacity={0.3}/>
@@ -318,44 +327,28 @@ export default function AdminDashboard() {
             </div>
             
             <div className="relative border-l-2 border-gray-100 ml-3 space-y-8 pb-4">
-              <div className="relative pl-6 group">
-                <span className="absolute -left-[9px] top-1 w-4 h-4 rounded-full border-4 border-white bg-blue-500 group-hover:scale-125 transition-transform"></span>
-                <div className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1">Just Now</div>
-                <div className="text-sm text-gray-700 leading-relaxed">
-                  <span className="font-semibold text-gray-900">Main Gate</span> approved visitor entry for Unit B-204.
+              {analytics?.activity_feed?.map((item, idx) => (
+                <div key={idx} className="relative pl-6 group">
+                  {item.type === 'security' && (
+                    <span className="absolute -left-[9px] top-1 w-4 h-4 rounded-full border-4 border-white bg-blue-500 group-hover:scale-125 transition-transform"></span>
+                  )}
+                  {item.type === 'helpdesk' && (
+                    <span className="absolute -left-[11px] top-1 w-5 h-5 rounded-full border-4 border-white bg-emerald-500 flex items-center justify-center group-hover:scale-110 transition-transform">
+                      <CheckCircle2 size={10} className="text-white" />
+                    </span>
+                  )}
+                  {item.type === 'amenities' && (
+                    <span className="absolute -left-[9px] top-1 w-4 h-4 rounded-full border-4 border-white bg-gray-300 group-hover:scale-125 transition-transform"></span>
+                  )}
+                  <div className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1">{item.time_ago}</div>
+                  <div className="text-sm text-gray-700 leading-relaxed">
+                    <span className="font-semibold text-gray-900">{item.title}</span> {item.description}
+                  </div>
                 </div>
-              </div>
-
-              <div className="relative pl-6 group">
-                <span className="absolute -left-[11px] top-1 w-5 h-5 rounded-full border-4 border-white bg-emerald-500 flex items-center justify-center group-hover:scale-110 transition-transform">
-                  <CheckCircle2 size={10} className="text-white" />
-                </span>
-                <div className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1">20 mins ago</div>
-                <div className="text-sm text-gray-700 leading-relaxed">
-                  <span className="font-semibold text-gray-900">Helpdesk</span> resolved ticket #TK-8920 (Electrical).
-                </div>
-                <div className="mt-2 text-xs text-gray-500 bg-gray-50 p-2 rounded-md border border-gray-100">
-                  "Replaced hallway bulb on 4th floor."
-                </div>
-              </div>
-
-              <div className="relative pl-6 group">
-                <span className="absolute -left-[11px] top-1 w-5 h-5 rounded-full border-4 border-white bg-red-500 flex items-center justify-center group-hover:scale-110 transition-transform">
-                  <AlertCircle size={10} className="text-white" />
-                </span>
-                <div className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1">1 hour ago</div>
-                <div className="text-sm text-gray-700 leading-relaxed">
-                  <span className="font-semibold text-red-600">System Alert:</span> SLA breached for ticket #TK-8924.
-                </div>
-              </div>
-
-              <div className="relative pl-6 group">
-                <span className="absolute -left-[9px] top-1 w-4 h-4 rounded-full border-4 border-white bg-gray-300 group-hover:scale-125 transition-transform"></span>
-                <div className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1">3 hours ago</div>
-                <div className="text-sm text-gray-700 leading-relaxed">
-                  Clubhouse booking confirmed for Unit A-101.
-                </div>
-              </div>
+              ))}
+              {(!analytics?.activity_feed || analytics.activity_feed.length === 0) && (
+                <div className="text-sm text-gray-500 pl-6">No recent activity.</div>
+              )}
             </div>
           </div>
         </div>
