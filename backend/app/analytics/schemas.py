@@ -44,3 +44,48 @@ class AdminAnalyticsResponse(BaseModel):
     sla_alerts: List[SlaAlert]
     revenue_trend: List[RevenueTrendData]
     activity_feed: List[ActivityFeedItem]
+
+class ResidentBalance(BaseModel):
+    total_due: float
+    next_due_date: str | None = None
+    latest_invoice_number: str | None = None
+
+class ResidentTicket(BaseModel):
+    id: str
+    title: str
+    status: str
+    type: str
+    updated: str
+    color: str
+
+class ResidentBooking(BaseModel):
+    id: int
+    title: str
+    amenity_name: str
+    starts_at: str
+    ends_at: str
+    is_today: bool
+
+class ResidentEvent(BaseModel):
+    id: int
+    title: str
+    location: str
+    date_str: str
+    time_str: str
+    month: str
+    day: str
+
+class ResidentNotice(BaseModel):
+    id: int
+    title: str
+    desc: str
+    from_author: str
+    time_str: str
+    color: str
+
+class ResidentAnalyticsResponse(BaseModel):
+    balance: ResidentBalance
+    tickets: List[ResidentTicket]
+    bookings: List[ResidentBooking]
+    events: List[ResidentEvent]
+    notices: List[ResidentNotice]

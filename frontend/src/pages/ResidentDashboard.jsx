@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import {
   LayoutDashboard,
   Wallet,
@@ -17,27 +17,45 @@ import {
 } from "lucide-react";
 import DashboardLayout from "@/components/layout/DashboardLayout";
 
-import { getResidentSidebarItems } from "@/components/resident/ResidentSidebarConfig";
-
-const tickets = [
-  { id: "TKT-892", title: "Leaking Pipe in Kitchen", status: "In Progress", type: "Plumbing", updated: "2h ago", icon: Droplet, color: "orange" },
-  { id: "TKT-885", title: "Hallway Light Fix", status: "Resolved", type: "Electrical", updated: "1d ago", icon: Zap, color: "blue" },
-  { id: "TKT-881", title: "Billing Discrepancy", status: "Resolved", type: "Admin", updated: "3d ago", icon: Wallet, color: "gray" },
-];
-
-const notices = [
-  { title: "Water Supply Interruption", from: "Management", time: "Today, 10:00 AM", desc: "Please note there will be a scheduled water supply cut for maintenance from 2 PM to 5 PM.", color: "blue" },
-  { title: "New Visitor System Live", from: "Security", time: "Yesterday", desc: "The new SocietySync visitor approval flow is now active. Please use the app to approve entries.", color: "orange" },
-  { title: "Painting Drive Completed", from: "Committee", time: "2 days ago", desc: "The exterior painting drive for Blocks B and C has concluded. Thanks for your cooperation.", color: "emerald" },
-];
+import { getResidentAnalytics } from "@/api/analytics";
 
 export default function ResidentDashboard() {
   const [ticketFilter, setTicketFilter] = useState("all");
   const [showQRModal, setShowQRModal] = useState(false);
+  const [analytics, setAnalytics] = useState(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const fetchData = async () => {
+      try {
+        const response = await getResidentAnalytics();
+        setAnalytics(response.data);
+      } catch (error) {
+        console.error("Failed to fetch resident analytics", error);
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchData();
+  }, []);
+
+  const getIconForType = (type) => {
+    const t = type?.toLowerCase() || '';
+    if (t.includes('plumb')) return Droplet;
+    if (t.includes('elect')) return Zap;
+    if (t.includes('admin') || t.includes('bill')) return Wallet;
+    return Wrench;
+  };
+
+  const tickets = analytics?.tickets || [];
+  const notices = analytics?.notices || [];
+  const bookings = analytics?.bookings || [];
+  const events = analytics?.events || [];
+  const balance = analytics?.balance || { total_due: 0 };
 
   const filteredTickets = tickets.filter(t => {
-    if (ticketFilter === "open") return t.status !== "Resolved";
-    if (ticketFilter === "resolved") return t.status === "Resolved";
+    if (ticketFilter === "open") return t.status !== "Resolved" && t.status !== "Closed";
+    if (ticketFilter === "resolved") return t.status === "Resolved" || t.status === "Closed";
     return true;
   });
 
@@ -59,12 +77,21 @@ export default function ResidentDashboard() {
             
             <div className="relative z-10 flex justify-between items-start mb-4">
               <div className="text-xs font-bold text-white/70 uppercase tracking-wider">Current Balance</div>
-              <div className="bg-white/10 backdrop-blur-md text-white border border-white/20 px-2.5 py-1 rounded-md text-[10px] font-bold tracking-widest uppercase flex items-center gap-1.5">
-                <AlertCircle size={12} /> Invoice #442
-              </div>
+              {balance.latest_invoice_number && (
+                <div className="bg-white/10 backdrop-blur-md text-white border border-white/20 px-2.5 py-1 rounded-md text-[10px] font-bold tracking-widest uppercase flex items-center gap-1.5">
+                  <AlertCircle size={12} /> {balance.latest_invoice_number}
+                </div>
+              )}
             </div>
-            <div className="relative z-10 text-4xl font-extrabold text-white mb-1">₹4,250<span className="text-xl text-white/60">.00</span></div>
-            <div className="relative z-10 text-sm text-red-300 font-medium mb-6">Due by 15 Nov</div>
+            <div className="relative z-10 text-4xl font-extrabold text-white mb-1">
+              ₹{Math.floor(balance.total_due).toLocaleString()}
+              <span className="text-xl text-white/60">.{(balance.total_due % 1).toFixed(2).substring(2)}</span>
+            </div>
+            {balance.next_due_date ? (
+              <div className="relative z-10 text-sm text-red-300 font-medium mb-6">Due by {balance.next_due_date}</div>
+            ) : (
+              <div className="relative z-10 text-sm text-emerald-300 font-medium mb-6">All clear!</div>
+            )}
             
             <div className="relative z-10 flex gap-3">
               <button className="flex-1 py-3 bg-primary hover:bg-primary/90 text-primary-foreground text-sm font-semibold rounded-xl transition-all shadow-[0_0_20px_rgba(79,70,229,0.3)] hover:shadow-[0_0_25px_rgba(79,70,229,0.5)] active:scale-95 flex items-center justify-center gap-2">
@@ -112,7 +139,10 @@ export default function ResidentDashboard() {
                         t.color === 'blue' ? 'bg-blue-100 text-blue-500' :
                         'bg-gray-200 text-gray-600'
                       }`}>
-                        <t.icon size={18} />
+                        {(() => {
+                          const Icon = getIconForType(t.type);
+                          return <Icon size={18} />;
+                        })()}
                       </div>
                       <div>
                         <div className="font-bold text-[#0f2336] text-sm group-hover:text-primary transition-colors">{t.title}</div>
@@ -120,7 +150,7 @@ export default function ResidentDashboard() {
                       </div>
                     </div>
                     <div className={`px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider ${
-                      t.status === 'Resolved' ? 'bg-[#0f2336] text-white' : 'bg-orange-100 text-orange-700 animate-pulse'
+                      (t.status === 'Resolved' || t.status === 'Closed') ? 'bg-[#0f2336] text-white' : 'bg-orange-100 text-orange-700 animate-pulse'
                     }`}>
                       {t.status}
                     </div>
@@ -174,18 +204,21 @@ export default function ResidentDashboard() {
                 My Bookings
               </h3>
               <div className="relative pl-4 border-l-2 border-emerald-100 space-y-4">
-                <div className="relative">
-                  <span className="absolute -left-[21px] top-1 w-3 h-3 rounded-full border-2 border-emerald-500 bg-white"></span>
-                  <div className="text-[10px] font-bold text-emerald-600 uppercase tracking-widest mb-0.5">Today</div>
-                  <div className="font-bold text-sm text-[#0f2336]">Tennis Court 1</div>
-                  <div className="text-xs text-gray-500 mt-1">17:00 - 18:00</div>
-                </div>
-                <div className="relative opacity-60">
-                  <span className="absolute -left-[21px] top-1 w-3 h-3 rounded-full border-2 border-gray-300 bg-white"></span>
-                  <div className="text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-0.5">Tomorrow</div>
-                  <div className="font-bold text-sm text-[#0f2336]">Clubhouse BBQ Area</div>
-                  <div className="text-xs text-gray-500 mt-1">19:00 - 22:00</div>
-                </div>
+                {bookings.map((b, i) => (
+                  <div key={b.id} className={`relative ${!b.is_today ? 'opacity-60' : ''}`}>
+                    <span className={`absolute -left-[21px] top-1 w-3 h-3 rounded-full border-2 bg-white ${
+                      b.is_today ? 'border-emerald-500' : 'border-gray-300'
+                    }`}></span>
+                    <div className={`text-[10px] font-bold uppercase tracking-widest mb-0.5 ${
+                      b.is_today ? 'text-emerald-600' : 'text-gray-500'
+                    }`}>{b.is_today ? 'Today' : 'Upcoming'}</div>
+                    <div className="font-bold text-sm text-[#0f2336]">{b.title}</div>
+                    <div className="text-xs text-gray-500 mt-1">{b.starts_at} - {b.ends_at}</div>
+                  </div>
+                ))}
+                {bookings.length === 0 && (
+                  <div className="text-sm text-gray-500 italic mt-2">No upcoming bookings.</div>
+                )}
               </div>
             </div>
           </div>
@@ -197,35 +230,27 @@ export default function ResidentDashboard() {
               Upcoming Events
             </h3>
             <div className="space-y-4">
-              <div className="flex gap-4 p-3 rounded-xl hover:bg-gray-50 transition-colors group">
-                <div className="w-14 h-14 bg-purple-50 border border-purple-100 rounded-xl flex flex-col items-center justify-center shrink-0 group-hover:bg-purple-500 group-hover:text-white transition-colors">
-                  <div className="text-[10px] font-bold text-purple-500 group-hover:text-purple-200 uppercase tracking-wider">Nov</div>
-                  <div className="text-xl font-extrabold text-purple-700 group-hover:text-white leading-none mt-0.5">12</div>
+              {events.map((e, index) => (
+                <div key={e.id}>
+                  {index > 0 && <div className="w-full h-px bg-gray-100 my-3"></div>}
+                  <div className="flex gap-4 p-3 rounded-xl hover:bg-gray-50 transition-colors group">
+                    <div className="w-14 h-14 bg-purple-50 border border-purple-100 rounded-xl flex flex-col items-center justify-center shrink-0 group-hover:bg-purple-500 group-hover:text-white transition-colors">
+                      <div className="text-[10px] font-bold text-purple-500 group-hover:text-purple-200 uppercase tracking-wider">{e.month}</div>
+                      <div className="text-xl font-extrabold text-purple-700 group-hover:text-white leading-none mt-0.5">{e.day}</div>
+                    </div>
+                    <div className="flex-1 flex flex-col justify-center">
+                      <div className="font-bold text-sm text-[#0f2336]">{e.title}</div>
+                      <div className="text-xs text-gray-500 mt-1">{e.location} • {e.time_str}</div>
+                      <button className="mt-2 w-fit px-3 py-1 bg-white border border-gray-200 text-gray-700 text-[10px] font-bold uppercase tracking-wider rounded-md hover:bg-gray-50 transition">
+                        RSVP / Info
+                      </button>
+                    </div>
+                  </div>
                 </div>
-                <div className="flex-1 flex flex-col justify-center">
-                  <div className="font-bold text-sm text-[#0f2336]">Diwali Mela 2024</div>
-                  <div className="text-xs text-gray-500 mt-1">Central Lawn • 18:00</div>
-                  <button className="mt-2 w-fit px-3 py-1 bg-white border border-gray-200 text-gray-700 text-[10px] font-bold uppercase tracking-wider rounded-md hover:bg-gray-50 transition">
-                    Volunteer
-                  </button>
-                </div>
-              </div>
-
-              <div className="w-full h-px bg-gray-100"></div>
-
-              <div className="flex gap-4 p-3 rounded-xl hover:bg-gray-50 transition-colors group">
-                <div className="w-14 h-14 bg-gray-50 border border-gray-200 rounded-xl flex flex-col items-center justify-center shrink-0">
-                  <div className="text-[10px] font-bold text-gray-500 uppercase tracking-wider">Nov</div>
-                  <div className="text-xl font-extrabold text-gray-700 leading-none mt-0.5">25</div>
-                </div>
-                <div className="flex-1 flex flex-col justify-center">
-                  <div className="font-bold text-sm text-[#0f2336]">Annual General Meeting</div>
-                  <div className="text-xs text-gray-500 mt-1">Clubhouse Hall • 10:00</div>
-                  <button className="mt-2 w-fit px-3 py-1 bg-gray-100 text-gray-400 text-[10px] font-bold uppercase tracking-wider rounded-md cursor-not-allowed">
-                    RSVP Sent
-                  </button>
-                </div>
-              </div>
+              ))}
+              {events.length === 0 && (
+                <div className="text-sm text-gray-500 italic mt-2">No upcoming events.</div>
+              )}
             </div>
           </div>
         </div>
@@ -239,18 +264,21 @@ export default function ResidentDashboard() {
           
           <div className="flex gap-4 overflow-x-auto pb-4 snap-x no-scrollbar cursor-grab active:cursor-grabbing">
             {notices.map((n, i) => (
-              <div key={i} className={`min-w-[300px] max-w-[300px] p-5 rounded-2xl border snap-start shrink-0 hover:shadow-md transition-shadow
+              <div key={n.id || i} className={`min-w-[300px] max-w-[300px] p-5 rounded-2xl border snap-start shrink-0 hover:shadow-md transition-shadow
                 ${n.color === 'blue' ? 'bg-blue-50/50 border-blue-100' : 
                   n.color === 'orange' ? 'bg-orange-50/50 border-orange-100' : 
                   'bg-emerald-50/50 border-emerald-100'}`}>
                 <div className="flex items-center gap-2 mb-3">
                   <div className="w-2 h-2 rounded-full bg-current" style={{ color: `var(--${n.color}-500)` }}></div>
-                  <div className="text-[10px] font-bold text-gray-500 uppercase tracking-wider">{n.from} • {n.time}</div>
+                  <div className="text-[10px] font-bold text-gray-500 uppercase tracking-wider">{n.from_author} • {n.time_str}</div>
                 </div>
                 <div className="font-bold text-base text-[#0f2336] mb-2 leading-snug">{n.title}</div>
                 <p className="text-xs text-gray-600 line-clamp-3 leading-relaxed">{n.desc}</p>
               </div>
             ))}
+            {notices.length === 0 && (
+              <div className="text-sm text-gray-500 italic px-4 py-2">No new notices.</div>
+            )}
             
             {/* View All Card */}
             <div className="min-w-[150px] p-5 rounded-2xl border border-dashed border-gray-300 bg-gray-50 flex items-center justify-center snap-start shrink-0 hover:bg-gray-100 cursor-pointer transition-colors group">

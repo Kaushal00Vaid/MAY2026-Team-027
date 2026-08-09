@@ -8,3 +8,12 @@ import axiosInstance from "./axiosInstance";
 export const getAdminAnalytics = () => {
   return axiosInstance.get("/api/v1/analytics/admin");
 };
+
+/**
+ * Fetch analytics data for the Resident Dashboard.
+ *
+ * @returns {Promise<AxiosResponse>}
+ */
+export const getResidentAnalytics = () => {
+  return axiosInstance.get("/api/v1/analytics/resident");
+};
