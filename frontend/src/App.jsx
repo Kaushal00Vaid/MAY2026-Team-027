@@ -23,6 +23,7 @@ import ResidentAmenities from "@/pages/ResidentAmenities";
 import ResidentCommunity from "@/pages/ResidentCommunity";
 import ResidentDigitalID from "@/pages/ResidentDigitalID";
 import SecurityDashboard from "@/pages/SecurityDashboard";
+import StaffDashboard from "@/pages/StaffDashboard";
 import StaffMaintenance from "@/pages/StaffMaintenance";
 import StaffOperations from "@/pages/StaffOperations";
 import StaffInventory from "@/pages/StaffInventory";
@@ -112,6 +113,9 @@ function App() {
           } />
 
           {/* Gate / Staff routes */}
+          <Route path="/gate/dashboard" element={
+            <ProtectedRoute allowedRoles={STAFF_ROLES}><StaffDashboard /></ProtectedRoute>
+          } />
           <Route path="/gate" element={
             <ProtectedRoute allowedRoles={STAFF_ROLES}><SecurityDashboard /></ProtectedRoute>
           } />

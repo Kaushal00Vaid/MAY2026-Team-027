@@ -30,3 +30,12 @@ export const getResidentAnalytics = () => {
 export const downloadAnalyticsExport = () => {
   return axiosInstance.get("/api/v1/analytics/export", { responseType: 'blob' });
 };
+
+/**
+ * Fetch analytics data for the Staff Dashboard.
+ *
+ * @returns {Promise<AxiosResponse>}
+ */
+export const getStaffAnalytics = () => {
+  return axiosInstance.get("/api/v1/analytics/staff");
+};

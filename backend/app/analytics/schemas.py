@@ -118,3 +118,27 @@ class AdvancedAnalyticsResponse(BaseModel):
     vendors: List[VendorData]
     financial: FinancialEfficiency
     heatmap: List[HeatmapDay]
+
+class GateActivityAnalytics(BaseModel):
+    total_entries_today: int
+    pending_approvals: int
+
+class EventParticipationAnalytics(BaseModel):
+    id: int
+    title: str
+    rsvp_count: int
+    starts_at: str
+
+class InventoryStatusAnalytics(BaseModel):
+    low_stock_items: int
+    total_items: int
+
+class RosterCoverageAnalytics(BaseModel):
+    active_staff_today: int
+    checked_in_now: int
+
+class StaffAnalyticsResponse(BaseModel):
+    gate_activity: GateActivityAnalytics
+    events: List[EventParticipationAnalytics]
+    inventory: InventoryStatusAnalytics
+    roster: RosterCoverageAnalytics
