@@ -18,6 +18,7 @@ export default function ResidentCommunity() {
   const [showNoticesModal, setShowNoticesModal] = useState(location.state?.view === "notices");
   const [notices, setNotices] = useState([]);
   const [events, setEvents] = useState([]);
+  const [eventPage, setEventPage] = useState(0);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
@@ -37,12 +38,18 @@ export default function ResidentCommunity() {
         setNotices(mappedNotices.map((item) => ({ ...item, is_read: true })));
       } else setNotices(mappedNotices);
       setEvents(eventData.map((item, index) => { const start = new Date(item.starts_at); const end = new Date(item.ends_at); return { ...item, month: start.toLocaleString(undefined, { month: "short" }).toUpperCase(), day: String(start.getDate()).padStart(2, "0"), time: `${start.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })} - ${end.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`, loc: item.location, color: index % 2 ? "bg-gray-100 text-gray-600" : "bg-blue-100 text-blue-600" }; }));
+      setEventPage(0);
       applyPoll(pollData); const first = volunteerData[0] || null; setOpportunity(first); setSignedUp(Boolean(first?.signed_up));
     } catch (requestError) { setError(communityError(requestError, "Unable to load Community Hub.")); }
     finally { setLoading(false); }
   };
   useEffect(() => { void Promise.resolve().then(load); }, []); // eslint-disable-line react-hooks/exhaustive-deps
   useRealtimeRefresh(["community"], load);
+  useEffect(() => {
+    if (!toast) return undefined;
+    const timer = setTimeout(() => setToast(""), 3500);
+    return () => clearTimeout(timer);
+  }, [toast]);
 
   const handleVote = async (id) => {
     if (pollVoted || !poll || saving) return; setSaving(true); setError("");
@@ -66,13 +73,16 @@ export default function ResidentCommunity() {
   };
 
   const openNotices = async () => { setShowNoticesModal(true); const unread = notices.filter((item) => !item.is_read); await Promise.allSettled(unread.map((item) => markNoticeRead(item.id))); setNotices((items) => items.map((item) => ({ ...item, is_read: true }))); };
+  const eventPageSize = 2;
+  const eventPages = Math.max(1, Math.ceil(events.length / eventPageSize));
+  const visibleEvents = events.slice(eventPage * eventPageSize, (eventPage + 1) * eventPageSize);
 
   return (
     <DashboardLayout sidebarItems={getResidentSidebarItems("/resident/community")} userRole="Resident Portal" userName={user ? `${user.first_name} ${user.last_name}` : "Resident"}>
       <div className="p-6 md:p-8 max-w-7xl mx-auto animate-in fade-in duration-500 relative">
 
-        {toast && <div className="fixed bottom-6 right-6 z-[60] bg-[#0f2336] text-white px-5 py-3 rounded-xl text-sm font-bold">{toast}</div>}
-        {error && <div className="mb-4 p-3 bg-red-50 text-red-600 rounded-xl text-sm font-semibold">{error}</div>}
+        {toast && <div role="status" className="fixed bottom-6 right-6 z-[60] bg-[#0f2336] text-white px-5 py-3 rounded-xl text-sm font-bold flex items-center gap-3"><span>{toast}</span><button aria-label="Dismiss notification" onClick={() => setToast("")}><X size={16}/></button></div>}
+        {error && <div role="alert" className="mb-4 p-3 bg-red-50 text-red-600 rounded-xl text-sm font-semibold flex items-center justify-between gap-3"><span>{error}</span><button onClick={load} className="font-bold">Retry</button></div>}
         {/* Notices Modal */}
         {showNoticesModal && (
           <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center animate-in fade-in duration-200">
@@ -149,15 +159,18 @@ export default function ResidentCommunity() {
 
               <div className="space-y-3 mb-6">
                 {pollOptions.map((opt) => (
-                  <div 
+                  <button
+                    type="button"
                     key={opt.id} 
                     onClick={() => handleVote(opt.id)}
-                    className={`relative h-8 bg-gray-50 rounded-lg overflow-hidden flex items-center px-3 border border-gray-100/50 group ${pollVoted ? 'cursor-default' : 'cursor-pointer hover:border-blue-300'}`}
+                    disabled={pollVoted || saving}
+                    aria-pressed={opt.id === poll?.selected_option_id}
+                    className={`relative w-full h-8 bg-gray-50 rounded-lg overflow-hidden flex items-center px-3 border border-gray-100/50 group text-left ${pollVoted ? 'cursor-default' : 'cursor-pointer hover:border-blue-300'}`}
                   >
                     <div className={`absolute top-0 left-0 h-full ${opt.bg} opacity-50 transition-all duration-500`} style={{ width: `${opt.val}%` }}></div>
                     <span className="relative z-10 text-xs font-semibold text-gray-700 flex-1">{opt.label}</span>
                     {pollVoted && <span className="relative z-10 text-xs font-bold text-gray-700">{opt.val}%</span>}
-                  </div>
+                  </button>
                 ))}
               </div>
             </div>
@@ -167,9 +180,9 @@ export default function ResidentCommunity() {
                 <CheckCircle2 size={16} /> Vote Recorded
               </div>
             ) : (
-              <button className="w-full py-2.5 bg-gray-50 hover:bg-gray-100 border border-gray-200 text-[#0f2336] font-bold text-sm rounded-xl transition-colors shadow-sm cursor-not-allowed opacity-50">
+              <div className="w-full py-2.5 bg-gray-50 border border-gray-200 text-gray-500 font-bold text-sm rounded-xl text-center">
                 Select an Option
-              </button>
+              </div>
             )}
           </div>
         </div>
@@ -184,14 +197,14 @@ export default function ResidentCommunity() {
                 Upcoming Events
               </h2>
               <div className="flex gap-2">
-                <button className="p-1.5 rounded-lg border border-gray-200 text-gray-400 hover:bg-gray-50 hover:text-gray-700 transition-colors"><ChevronLeft size={16} /></button>
-                <button className="p-1.5 rounded-lg border border-gray-200 text-gray-400 hover:bg-gray-50 hover:text-gray-700 transition-colors"><ChevronRight size={16} /></button>
+                <button aria-label="Previous events" disabled={eventPage === 0} onClick={() => setEventPage((page) => page - 1)} className="p-1.5 rounded-lg border border-gray-200 text-gray-400 hover:bg-gray-50 hover:text-gray-700 disabled:opacity-30 transition-colors"><ChevronLeft size={16} /></button>
+                <button aria-label="Next events" disabled={eventPage >= eventPages - 1} onClick={() => setEventPage((page) => page + 1)} className="p-1.5 rounded-lg border border-gray-200 text-gray-400 hover:bg-gray-50 hover:text-gray-700 disabled:opacity-30 transition-colors"><ChevronRight size={16} /></button>
               </div>
             </div>
 
             <div className="flex gap-4 overflow-x-auto no-scrollbar pb-2">
-              {events.map((ev, i) => (
-                <button key={i} onClick={() => toggleRsvp(ev)} className="text-left min-w-[240px] p-4 rounded-2xl border border-gray-100 bg-gray-50/50 flex gap-4 hover:shadow-sm hover:border-gray-200 transition-all cursor-pointer group">
+              {visibleEvents.map((ev) => (
+                <button key={ev.id} disabled={saving} onClick={() => toggleRsvp(ev)} className="text-left min-w-[240px] flex-1 p-4 rounded-2xl border border-gray-100 bg-gray-50/50 flex gap-4 hover:shadow-sm hover:border-gray-200 disabled:opacity-60 transition-all cursor-pointer group">
                   <div className={`w-14 h-16 rounded-xl flex flex-col items-center justify-center shrink-0 ${ev.color}`}>
                     <span className="text-[10px] font-bold uppercase tracking-widest">{ev.month}</span>
                     <span className="text-xl font-extrabold leading-none">{ev.day}</span>
@@ -203,6 +216,7 @@ export default function ResidentCommunity() {
                   </div>
                 </button>
               ))}
+              {!loading && events.length === 0 && <p className="text-sm text-gray-500">No upcoming events scheduled.</p>}
             </div>
           </div>
 
@@ -229,7 +243,7 @@ export default function ResidentCommunity() {
               </div>
               {signedUp ? (
                 <button disabled={saving} onClick={toggleVolunteer} className="px-4 py-2 bg-emerald-500/20 hover:bg-emerald-500/40 text-emerald-300 text-xs font-bold rounded-xl transition-colors shrink-0 backdrop-blur-sm flex items-center gap-1">
-                  <CheckCircle2 size={14} /> Signed Up
+                  <CheckCircle2 size={14} /> Withdraw
                 </button>
               ) : (
                 <button disabled={!opportunity || saving || opportunity.spots_remaining === 0} onClick={toggleVolunteer} className="px-4 py-2 bg-white/20 hover:bg-white/30 disabled:opacity-40 text-white text-xs font-bold rounded-xl transition-colors shrink-0 backdrop-blur-sm">
