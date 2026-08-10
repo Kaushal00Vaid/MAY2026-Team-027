@@ -1,136 +1,219 @@
-# SocietySync - Frontend
+# SocietySync — Frontend
 
-This is the frontend web client for **SocietySync**, a modern housing society and community management platform. Built with **React 19** and **Vite**, it provides responsive, role-based dashboards and portals for Admins, Residents, Security Personnel, and Staff.
+React 19 + Vite web client for the **SocietySync** platform. Provides role-based dashboards and portals for Admins, Residents, Security Personnel, and Staff.
 
 ---
 
-## Tech Stack & Technologies Used
+## Tech Stack
 
-- **Framework & Core:** [React 19](https://react.dev/), [React Router v7](https://reactrouter.com/), [Vite](https://vite.dev/)
-- **Styling & UI:** [Tailwind CSS v4](https://tailwindcss.com/), [shadcn/ui](https://ui.shadcn.com/) (`@shadcn/react`, `@base-ui/react`), [Lucide React Icons](https://lucide.dev/), `@fontsource-variable/inter`
-- **Theme & Utilities:** `next-themes` (Dark/Light mode), `clsx`, `tailwind-merge`, `class-variance-authority`, `tw-animate-css`
-- **Data Validation & Forms:** [Zod](https://zod.dev/), `date-fns`, `react-day-picker`, `input-otp`
-- **Charts & Visualizations:** [Recharts](https://recharts.org/)
-- **UI Components & Feedback:** `sonner` (Toast notifications), `embla-carousel-react`, `react-resizable-panels`, `cmdk`
-- **Linting & Code Quality:** ESLint v10, Prettier
+| Category | Libraries |
+|----------|-----------|
+| Framework & Core | React 19, React Router v7, Vite |
+| Styling & UI | Tailwind CSS v4, shadcn/ui (`@shadcn/react`, `@base-ui/react`), Lucide React Icons |
+| Theme & Utilities | next-themes (dark/light mode), clsx, tailwind-merge, class-variance-authority |
+| Data & Forms | Zod, date-fns, react-day-picker, input-otp |
+| Charts | Recharts |
+| HTTP | Axios (with auth interceptors) |
+| Notifications | sonner (toast) |
+| Linting | ESLint v10, Prettier |
 
 ---
 
 ## Prerequisites
 
-Before running the frontend, ensure you have the following installed on your system:
-
-- **Node.js**: `v18.0.0` or higher (v20+ recommended)
-- **npm**: `v9.0.0` or higher (comes bundled with Node.js) or `yarn` / `pnpm`
+- **Node.js** `v18.0.0+` (v20+ recommended)
+- **npm** `v9.0.0+`
+- Backend server running on `http://localhost:8000` (see [`../backend/README.md`](../backend/README.md))
 
 ---
 
-## Getting Started (Installation & Setup)
-
-### 1. Navigate to the Frontend Directory
-
-From the project root folder:
+## Getting Started
 
 ```bash
+# 1. Navigate to frontend directory
 cd frontend
-```
 
-### 2. Install Dependencies
-
-Install all required npm packages:
-
-```bash
+# 2. Install dependencies
 npm install
-```
 
-### 3. Start Development Server
-
-Run the Vite development server with Hot Module Replacement (HMR):
-
-```bash
+# 3. Start development server
 npm run dev
 ```
 
-Once started, open your browser and navigate to:
-```text
-http://localhost:5173
-```
+Open **http://localhost:5173** in your browser.
+
+> The app proxies API requests to the backend via `VITE_API_URL` (defaults to `http://localhost:8000`).
 
 ---
 
 ## Available Scripts
 
-In the `frontend` directory, you can run:
-
 | Command | Description |
-| :--- | :--- |
-| `npm run dev` | Starts the Vite local development server |
-| `npm run build` | Compiles and bundles the project for production in `dist/` |
-| `npm run preview` | Previews the production build locally |
-| `npm run lint` | Runs ESLint to check for syntax and code formatting issues |
+|---------|-------------|
+| `npm run dev` | Start Vite development server with HMR |
+| `npm run build` | Build production bundle to `dist/` |
+| `npm run preview` | Preview production build locally |
+| `npm run lint` | Run ESLint across the codebase |
 
 ---
 
 ## Project Structure
 
-```text
+```
 frontend/
-├── public/                 # Static public assets
+├── public/                          # Static public assets (favicon, icons)
 ├── src/
-│   ├── assets/             # Images and local static assets
-│   ├── components/         # Reusable UI components & shadcn components
-│   │   └── ui/             # Standardized UI primitives
-│   ├── hooks/              # Custom React hooks
-│   ├── lib/                # Utility modules (e.g., utils.js)
-│   ├── pages/              # Application pages & portal modules
-│   ├── App.jsx             # Main Application component & route definitions
-│   ├── App.css             # Main stylesheet & Tailwind import rules
-│   ├── index.css           # Fallback base CSS styles
-│   └── main.jsx            # React entry point
-├── components.json         # shadcn/ui configuration
-├── eslint.config.js        # ESLint configuration
-├── jsconfig.json           # JavaScript path aliases (`@/*` mapping)
-├── package.json            # Dependencies and scripts
-└── vite.config.js          # Vite build & plugin configuration
+│   ├── api/                         # Axios API client modules
+│   │   ├── axiosInstance.js         # Base Axios config, auth interceptors, token refresh
+│   │   ├── auth.js                  # signup, loginWithPassword, requestOtp, verifyOtp,
+│   │   │                            #   refreshAccessToken, logout, getMe,
+│   │   │                            #   initiateGoogleLogin, completeProfile
+│   │   ├── analytics.js             # getAdminAnalytics, getAdminAdvancedAnalytics,
+│   │   │                            #   getResidentAnalytics, getStaffAnalytics,
+│   │   │                            #   downloadAnalyticsExport
+│   │   ├── finance.js               # getTransactions, createTransaction
+│   │   └── users.js                 # User management calls
+│   │
+│   ├── context/
+│   │   └── AuthContext.jsx          # Global auth state, token storage, auto-refresh
+│   │
+│   ├── components/                  # Reusable UI components
+│   │   └── ui/                      # shadcn/ui primitives (Button, Card, Dialog, etc.)
+│   │
+│   ├── features/                    # Feature-scoped UI modules (domain logic)
+│   │   ├── amenities/               # Amenity browsing & booking UI stubs
+│   │   ├── community/               # Notices, events, polls UI stubs
+│   │   ├── finance/                 # Finance dashboard components
+│   │   ├── helpdesk/                # Complaint filing & tracking UI stubs
+│   │   ├── operations/              # Staff operations UI stubs
+│   │   ├── realtime/                # Notification bell (static placeholder)
+│   │   └── security/                # Visitor & guest pass UI stubs
+│   │
+│   ├── hooks/                       # Custom React hooks
+│   ├── lib/                         # Utility helpers (utils.js, date formatting, etc.)
+│   │
+│   ├── pages/                       # Full-page components (one per route)
+│   │   ├── LandingPage.jsx
+│   │   ├── SignInPage.jsx
+│   │   ├── SignUpPage.jsx
+│   │   ├── CompleteProfile.jsx      # Post-Google-OAuth profile completion
+│   │   ├── GoogleAuthSuccess.jsx    # OAuth callback handler
+│   │   ├── AdminDashboard.jsx
+│   │   ├── AdminFinance.jsx
+│   │   ├── AdminHelpdesk.jsx
+│   │   ├── AdminSecurity.jsx
+│   │   ├── AdminAmenities.jsx
+│   │   ├── AdminCommunity.jsx
+│   │   ├── AdminAnalytics.jsx
+│   │   ├── AdminUserManagement.jsx
+│   │   ├── ResidentDashboard.jsx
+│   │   ├── ResidentFinancials.jsx
+│   │   ├── ResidentHelpdesk.jsx
+│   │   ├── ResidentAmenities.jsx
+│   │   ├── ResidentCommunity.jsx
+│   │   ├── ResidentDigitalID.jsx
+│   │   ├── SecurityDashboard.jsx
+│   │   ├── StaffDashboard.jsx
+│   │   ├── StaffMaintenance.jsx
+│   │   ├── StaffOperations.jsx
+│   │   ├── StaffInventory.jsx
+│   │   └── StaffRoster.jsx
+│   │
+│   ├── App.jsx                      # Route definitions & layout wrappers
+│   ├── App.css                      # Global styles & Tailwind import rules
+│   ├── index.css                    # Base CSS reset
+│   └── main.jsx                     # React DOM entry point
+│
+├── components.json                  # shadcn/ui configuration
+├── eslint.config.js                 # ESLint flat config
+├── jsconfig.json                    # JS path aliases (`@/*` → `src/*`)
+├── package.json                     # Dependencies & npm scripts
+├── package-lock.json
+└── vite.config.js                   # Vite plugins & proxy config
 ```
 
 ---
 
-## Application Portals & Routing
+## Application Portals & Routes
 
-The frontend defines full role-based routes for SocietySync:
+### Public Routes
+| Route | Page | Description |
+|-------|------|-------------|
+| `/` | `LandingPage` | Marketing landing page |
+| `/signin` | `SignInPage` | Email/password & OTP login |
+| `/signup` | `SignUpPage` | New user registration |
+| `/auth/google/success` | `GoogleAuthSuccess` | Google OAuth callback |
+| `/complete-profile` | `CompleteProfile` | Post-OAuth profile setup |
 
-- **Public Routes:**
-  - `/` — Landing Page
-  - `/signin` — Sign In Page
-  - `/signup` — Registration Page
+### Admin Portal (`/admin`)
+| Route | Page | Description |
+|-------|------|-------------|
+| `/admin` | `AdminDashboard` | KPI overview, recent activity |
+| `/admin/finance` | `AdminFinance` | Financial transactions & reporting |
+| `/admin/helpdesk` | `AdminHelpdesk` | Support ticket management |
+| `/admin/security` | `AdminSecurity` | Gate logs & visitor oversight |
+| `/admin/amenities` | `AdminAmenities` | Facility booking management |
+| `/admin/community` | `AdminCommunity` | Announcements & discussions |
+| `/admin/analytics` | `AdminAnalytics` | Platform analytics & reports |
+| `/admin/users` | `AdminUserManagement` | User listing & role assignment |
 
-- **Admin Portal (`/admin`):**
-  - `/admin` — Main Admin Dashboard
-  - `/admin/finance` — Financial Management & Ledger
-  - `/admin/helpdesk` — Support Tickets & Issue Resolution
-  - `/admin/security` — Gate Logs & Visitor Oversight
-  - `/admin/amenities` — Facility Booking Management
-  - `/admin/community` — Society Announcements & Discussions
-  - `/admin/analytics` — Platform Analytics & Reports
+### Resident Portal (`/resident`)
+| Route | Page | Description |
+|-------|------|-------------|
+| `/resident` | `ResidentDashboard` | Personal overview & quick actions |
+| `/resident/finance` | `ResidentFinancials` | Maintenance dues & payment receipts |
+| `/resident/helpdesk` | `ResidentHelpdesk` | Raise & track complaints |
+| `/resident/amenities` | `ResidentAmenities` | Book common facilities |
+| `/resident/community` | `ResidentCommunity` | Notices, events & resident forum |
+| `/resident/digital-id` | `ResidentDigitalID` | Digital resident ID & QR pass |
 
-- **Resident Portal (`/resident`):**
-  - `/resident` — Resident Dashboard
-  - `/resident/finance` — Maintenance Dues & Payment Receipts
-  - `/resident/helpdesk` — Raise & Track Helpdesk Complaints
-  - `/resident/amenities` — Book Common Facilities
-  - `/resident/community` — Resident Forum & Notices
-  - `/resident/digital-id` — Digital Resident Pass & Gate Entry QR
+### Staff & Security Portal (`/gate`)
+| Route | Page | Description |
+|-------|------|-------------|
+| `/gate` | `SecurityDashboard` | Visitor gate control |
+| `/gate/staff` | `StaffDashboard` | Staff personal dashboard |
+| `/gate/maintenance` | `StaffMaintenance` | Work orders & maintenance tasks |
+| `/gate/operations` | `StaffOperations` | Daily operations checklist |
+| `/gate/inventory` | `StaffInventory` | Equipment & supply stock |
+| `/gate/roster` | `StaffRoster` | Attendance & duty roster |
 
-- **Security & Staff Portal (`/gate`):**
-  - `/gate` — Security Guard Dashboard & Visitor Gate Control
-  - `/gate/maintenance` — Work Order & Maintenance Status
-  - `/gate/operations` — Daily Operations Checklist
-  - `/gate/inventory` — Equipment & Supply Stock Control
-  - `/gate/roster` — Staff Attendance & Duty Roster
+---
+
+## API Integration Status
+
+| Module | `src/api/` File | Status |
+|--------|----------------|--------|
+| Auth | `auth.js` | ✅ Fully integrated |
+| Analytics | `analytics.js` | ✅ Fully integrated |
+| Finance (legacy) | `finance.js` | ✅ Integrated |
+| Users | `users.js` | ⚠️ Partial |
+| Finance V1 | _(missing)_ | ❌ Not wired |
+| Helpdesk | _(missing)_ | ❌ Not wired |
+| Amenities | _(missing)_ | ❌ Not wired |
+| Community | _(missing)_ | ❌ Not wired |
+| Operations | _(missing)_ | ❌ Not wired |
+| Security | _(missing)_ | ❌ Not wired |
+| Realtime / Notifications | _(missing)_ | ❌ Not wired |
+
+> See [`pending_integrations.md`](../docs/pending_integrations.md) for a full endpoint-by-endpoint breakdown and priority order.
+
+---
+
+## Authentication Flow
+
+1. **Email + Password** — `POST /auth/login/password` → receives `access_token` (Bearer) + `ss_refresh_token` (HttpOnly cookie)
+2. **OTP** — `POST /auth/otp/request` then `POST /auth/otp/verify` → same response shape
+3. **Google OAuth** — redirect to `GET /auth/google`, browser returns to `/auth/google/success?pending_token=...`, then `POST /auth/complete-profile`
+4. **Token Refresh** — axios interceptor catches 401, calls `POST /auth/refresh` using the HttpOnly cookie, retries the original request automatically
+5. **Logout** — `POST /auth/logout` clears the HttpOnly cookie server-side
+
+Auth state is managed globally by `src/context/AuthContext.jsx`.
 
 ---
 
 ## Related Documentation
 
-- Root Project README: [README.md](../README.md)
+- Root Project README: [`../README.md`](../README.md)
+- Backend README: [`../backend/README.md`](../backend/README.md)
+- Database Design: [`../docs/db_design.md`](../docs/db_design.md)
+- OpenAPI Spec: [`../backend/openapi.swagger.yaml`](../backend/openapi.swagger.yaml)
