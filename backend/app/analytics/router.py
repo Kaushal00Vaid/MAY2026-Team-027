@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, Response
+from fastapi import APIRouter, Depends, Query, Response
 from sqlalchemy.orm import Session
 from app.db.database import get_db
 from app.dependencies import require_roles
@@ -23,6 +23,7 @@ def read_staff_analytics(
 
 @router.get("/admin", response_model=AdminAnalyticsResponse)
 def read_admin_analytics(
+    months: int = Query(6, ge=1, le=12),
     db: Session = Depends(get_db),
     current_user: User = Depends(require_roles("super_admin", "admin", "committee_member")),
 ):
@@ -30,7 +31,7 @@ def read_admin_analytics(
     Retrieve aggregated analytics for the Admin Dashboard.
     Requires 'Residential Admin' or 'Super Admin' role.
     """
-    return get_admin_analytics(db)
+    return get_admin_analytics(db, months)
 
 @router.get("/resident", response_model=ResidentAnalyticsResponse)
 def read_resident_analytics(
