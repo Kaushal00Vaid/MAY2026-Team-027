@@ -46,13 +46,14 @@ def read_resident_analytics(
 
 @router.get("/advanced", response_model=AdvancedAnalyticsResponse)
 def read_advanced_analytics(
+    amenity_id: int | None = Query(None, gt=0),
     db: Session = Depends(get_db),
     current_user: User = Depends(require_roles("super_admin", "admin", "committee_member")),
 ):
     """
     Get advanced analytics for the Admin dashboard (Pareto, Vendor, Financials)
     """
-    return get_advanced_analytics(db)
+    return get_advanced_analytics(db, amenity_id)
 
 @router.get("/export")
 def read_export_analytics(
