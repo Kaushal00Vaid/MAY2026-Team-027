@@ -32,6 +32,9 @@ import StaffRoster from "@/pages/StaffRoster";
 import AdminUserManagement from "@/pages/AdminUserManagement";
 import CompleteProfile from "@/pages/CompleteProfile";
 import GoogleAuthSuccess from "@/pages/GoogleAuthSuccess";
+import AccountPage from "@/pages/AccountPage";
+import HelpCenter from "@/pages/HelpCenter";
+import NotFoundPage from "@/pages/NotFoundPage";
 
 // Role constants
 const ADMIN_ROLES = ["super_admin", "admin", "committee_member"];
@@ -67,6 +70,8 @@ function App() {
             }
           />
           <Route path="/unauthorised" element={<Navigate to="/unauthorized" replace />} />
+          <Route path="/account" element={<ProtectedRoute><AccountPage /></ProtectedRoute>} />
+          <Route path="/help" element={<ProtectedRoute><HelpCenter /></ProtectedRoute>} />
 
           {/* Admin routes */}
           <Route path="/admin" element={
@@ -133,6 +138,7 @@ function App() {
           <Route path="/gate/roster" element={
             <ProtectedRoute allowedRoles={OPERATIONS_ROLES}><StaffRoster /></ProtectedRoute>
           } />
+          <Route path="*" element={<NotFoundPage />} />
         </Routes>
         </RealtimeProvider>
       </AuthProvider>
