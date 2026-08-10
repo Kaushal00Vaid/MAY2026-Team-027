@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { AlertTriangle, ArrowRightToLine, ArrowLeftFromLine, CheckCircle2, ScanLine, Truck, XCircle } from "lucide-react";
 import DashboardLayout from "@/components/layout/DashboardLayout";
+import { useRealtimeRefresh } from "@/features/realtime/useRealtimeRefresh";
 import { getGateSidebarItems } from "@/components/gate/GateSidebarConfig";
 import { useAuth } from "@/hooks/useAuth";
 import { createVisitor, listAccessLogs, listVisitors, manualResidentEntry, securityError, verifyGuestPin, visitorEntry, visitorExit } from "@/features/security/api";
@@ -10,6 +11,7 @@ export default function SecurityDashboard(){
  const{user}=useAuth();const[pin,setPin]=useState("");const[visitors,setVisitors]=useState([]);const[logs,setLogs]=useState([]);const[form,setForm]=useState(EMPTY);const[manualUnit,setManualUnit]=useState("");const[showManual,setShowManual]=useState(false);const[loading,setLoading]=useState(true);const[saving,setSaving]=useState(false);const[error,setError]=useState("");const[toast,setToast]=useState("");
  const load=async()=>{setLoading(true);setError("");try{const[{data:v},{data:l}]=await Promise.all([listVisitors({page_size:100}),listAccessLogs(30)]);setVisitors(v.items);setLogs(l);}catch(e){setError(securityError(e,"Unable to load gate operations."));}finally{setLoading(false);}};
  useEffect(()=>{void Promise.resolve().then(load);},[]);
+ useRealtimeRefresh(["security"],load);
  const submitPin=async()=>{if(pin.length!==4||saving)return;setSaving(true);setError("");try{const{data}=await verifyGuestPin(pin);setToast(`Access granted for ${data.guest_name}.`);setPin("");await load();}catch(e){setError(securityError(e,"PIN verification failed."));}finally{setSaving(false);}};
  const request=async()=>{if(saving)return;setSaving(true);setError("");try{await createVisitor(form);setForm(EMPTY);setToast("Resident approval requested.");await load();}catch(e){setError(securityError(e,"Unable to request approval."));}finally{setSaving(false);}};
  const transition=async(item)=>{setSaving(true);setError("");try{item.status==="approved"?await visitorEntry(item.id):await visitorExit(item.id);await load();}catch(e){setError(securityError(e,"Unable to record gate event."));}finally{setSaving(false);}};

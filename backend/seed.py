@@ -122,6 +122,11 @@ def main():
 
         seed_operations(db, admin)
 
+        print("\n🔔 Seeding Realtime demo notifications...")
+        from app.realtime.seed import seed_realtime
+
+        seed_realtime(db)
+
         print("\n✅ Seed completed successfully.\n")
     except Exception as exc:
         db.rollback()

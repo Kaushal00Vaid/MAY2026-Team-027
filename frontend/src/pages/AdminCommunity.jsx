@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { LayoutDashboard, WalletCards, Headset, ShieldCheck, CalendarCheck, Users, BarChart3, Search, MessageSquare, Megaphone, Heart, Plus, CheckCircle2, X, UserCog } from "lucide-react";
 import DashboardLayout from "@/components/layout/DashboardLayout";
+import { useRealtimeRefresh } from "@/features/realtime/useRealtimeRefresh";
 import { useAuth } from "@/hooks/useAuth";
 import { communityError, createNotice, listDirectory, listDiscussions } from "@/features/community/api";
 
@@ -28,6 +29,7 @@ export default function AdminCommunity() {
     finally { if (current === requestId.current) setLoading(false); }
   };
   useEffect(() => { const timer = setTimeout(() => load(search), 250); return () => clearTimeout(timer); }, [search]); // eslint-disable-line react-hooks/exhaustive-deps
+  useRealtimeRefresh(["community"], () => load(search));
   useEffect(() => { if (!toast) return undefined; const timer = setTimeout(() => setToast(""), 3500); return () => clearTimeout(timer); }, [toast]);
 
   const broadcast = async (event) => {

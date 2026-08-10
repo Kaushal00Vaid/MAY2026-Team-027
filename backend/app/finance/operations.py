@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 
 from app.db.models.role import RoleName
 from app.db.models.user import User
+from app.realtime.service import add_notifications
 from app.finance.models import (
     BulkInvoiceRun,
     Expense,
@@ -296,6 +297,16 @@ def pay(db: Session, user: User, data, key: str):
                 description=f"Payment received — {invoice.invoice_number}",
                 amount_paise=amount,
             )
+        )
+        add_notifications(
+            db,
+            [user.user_id],
+            event_type="payment.succeeded",
+            title="Payment successful",
+            message=f"Payment for {invoice.invoice_number} was received successfully.",
+            resource_type="payment",
+            resource_id=payment.id,
+            payload={"scope": "finance", "invoice_id": invoice.id, "amount_paise": amount},
         )
     db.commit()
     db.refresh(payment)
