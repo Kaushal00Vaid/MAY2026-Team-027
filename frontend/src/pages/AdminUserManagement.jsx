@@ -61,7 +61,6 @@ function RoleBadge({ role }) {
 
 function ConfirmDialog({ open, user, newRole, onConfirm, onCancel, loading }) {
   if (!open) return null;
-  const meta = ROLE_META[newRole] || { label: newRole };
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       {/* Backdrop */}
@@ -142,7 +141,12 @@ function RoleSelect({ user, onSelect, disabled }) {
 
       {open && (
         <>
-          <div className="fixed inset-0 z-10" onClick={() => setOpen(false)} />
+          <button
+            type="button"
+            aria-label="Close role menu"
+            className="fixed inset-0 z-10 cursor-default"
+            onClick={() => setOpen(false)}
+          />
           <div className="absolute right-0 top-full mt-1.5 z-20 bg-white border border-gray-100 rounded-2xl shadow-xl overflow-hidden min-w-[180px] py-1.5 animate-in fade-in slide-in-from-top-1 duration-150">
             {ASSIGNABLE_ROLES.map((r) => (
               <button

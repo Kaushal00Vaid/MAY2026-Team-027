@@ -2,14 +2,11 @@ import enum
 
 from sqlalchemy import (
     BigInteger,
-    Boolean,
     Column,
     DateTime,
     Enum as SAEnum,
     ForeignKey,
     SmallInteger,
-    String,
-    Text,
 )
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func

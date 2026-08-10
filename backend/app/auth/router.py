@@ -283,9 +283,6 @@ def complete_profile(
     Requires a short-lived pending_profile Bearer token (issued at callback).
     On success, issues a full access + refresh token pair.
     """
-    from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
-    from fastapi import Header
-
     # Extract the Bearer token from the Authorization header manually
     auth_header = request.headers.get("Authorization", "")
     if not auth_header.startswith("Bearer "):

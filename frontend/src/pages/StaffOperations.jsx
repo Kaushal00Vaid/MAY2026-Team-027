@@ -7,7 +7,7 @@ import { createTask, listInventory, listTasks, operationsError, updateTask } fro
 
 export default function StaffOperations(){const[tasks,setTasks]=useState([]);const[inventory,setInventory]=useState([]);const[showNew,setShowNew]=useState(false);const[form,setForm]=useState({title:"",location:"",category:"General"});const[selected,setSelected]=useState(null);const[notes,setNotes]=useState("");const[loading,setLoading]=useState(true);const[saving,setSaving]=useState(false);const[error,setError]=useState("");const[toast,setToast]=useState("");
 const load=useCallback(async()=>{setLoading(true);setError("");try{const[a,b]=await Promise.all([listTasks(),listInventory()]);setTasks(a.data);setInventory(b.data);}catch(e){setError(operationsError(e,"Unable to load operations."));}finally{setLoading(false);}},[]);
-// eslint-disable-next-line react-hooks/set-state-in-effect
+
 useEffect(()=>{load();},[load]);useEffect(()=>{if(!toast)return;const timer=setTimeout(()=>setToast(""),3000);return()=>clearTimeout(timer);},[toast]);
 useRealtimeRefresh(["operations", "inventory"],load);
 const add=async(e)=>{e.preventDefault();setSaving(true);try{await createTask(form);setShowNew(false);setForm({title:"",location:"",category:"General"});setToast("Task created.");await load();}catch(err){setError(operationsError(err,"Unable to create task."));}finally{setSaving(false);}};

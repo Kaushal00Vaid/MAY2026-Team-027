@@ -117,7 +117,7 @@ export function RealtimeProvider({ children }) {
   return <RealtimeContext.Provider value={{ notifications, unreadCount, isLoading, error, refreshNotifications, markRead, markAllRead }}>{children}</RealtimeContext.Provider>;
 }
 
-// eslint-disable-next-line react-refresh/only-export-components
+
 export function useRealtime() {
   const context = useContext(RealtimeContext);
   if (!context) throw new Error("useRealtime must be used inside RealtimeProvider");

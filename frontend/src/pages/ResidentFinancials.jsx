@@ -27,7 +27,7 @@ export default function ResidentFinancials() {
     finally { setLoading(false); }
   }, []);
   // Data fetching intentionally initializes screen state from the API.
-  // eslint-disable-next-line react-hooks/set-state-in-effect
+
   useEffect(() => { load(); }, [load]);
   useRealtimeRefresh(["finance"], load);
   useEffect(() => {

@@ -1,12 +1,12 @@
 import { useState, useEffect } from "react";
 import { useNavigate, useSearchParams, Link } from "react-router-dom";
 import {
-  User, Phone, Building2, AlertCircle, CheckCircle2, Shield,
+  User, Phone, Building2, AlertCircle, Shield,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import BrandPanel from "@/components/auth/components/BrandPanel";
 import {
-  Sparkle, DiamondDot, HexRing, CircleRing,
+  Sparkle, DiamondDot, HexRing,
   MiniBuilding, SkylineWatermark, FloatingChip, DotGridBg,
 } from "@/components/auth/components/AuthDecorations";
 import * as authApi from "@/api/auth";
