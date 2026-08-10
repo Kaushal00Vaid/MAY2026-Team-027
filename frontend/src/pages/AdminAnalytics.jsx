@@ -11,7 +11,8 @@ import {
   Download,
   CheckCircle2,
   X,
-  UserCog
+  UserCog,
+  Loader2
 } from "lucide-react";
 import { 
   BarChart, 
@@ -27,6 +28,7 @@ import {
   Cell
 } from 'recharts';
 import DashboardLayout from "@/components/layout/DashboardLayout";
+import { getAdminAdvancedAnalytics, downloadAnalyticsExport } from "@/api/analytics";
 
 const sidebarItems = [
   { label: "Dashboard", icon: LayoutDashboard, active: false, href: "/admin" },
@@ -39,23 +41,19 @@ const sidebarItems = [
   { label: "User Roles", icon: UserCog, active: false, href: "/admin/users" },
 ];
 
-const paretoData = [
-  { name: 'Lift Elect.', value: 85 },
-  { name: 'Plumbing Leaks', value: 65 },
-  { name: 'HVAC', value: 45 },
-  { name: 'Pumps', value: 25 },
-  { name: 'Other', value: 10 },
-];
-
-const vendorData = [
-  { id: 1, name: "ElevateTech Inc.", type: "Elevator Maint.", res: "4.2", sla: "Within SLA" },
-  { id: 2, name: "AquaFlow Plumbers", type: "Plumbing", res: "12.5", sla: "Warning (L1)" },
-  { id: 3, name: "CleanSweep Sec.", type: "Housekeeping", res: "2.1", sla: "Within SLA" },
-  { id: 4, name: "VoltMasters", type: "Electrical", res: "24.0+", sla: "Escalated (L3)" },
-];
-
 export default function AdminAnalytics() {
+  const [data, setData] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
   const [showToast, setShowToast] = useState(false);
+  const [exporting, setExporting] = useState(false);
+
+  useEffect(() => {
+    getAdminAdvancedAnalytics()
+      .then(res => setData(res.data))
+      .catch(err => setError("Unable to load analytics."))
+      .finally(() => setLoading(false));
+  }, []);
 
   useEffect(() => {
     let timer;
@@ -65,9 +63,43 @@ export default function AdminAnalytics() {
     return () => clearTimeout(timer);
   }, [showToast]);
 
-  const handleExport = () => {
+  const handleExport = async () => {
+    if (exporting) return;
+    setExporting(true);
     setShowToast(true);
+    try {
+      const response = await downloadAnalyticsExport();
+      const url = window.URL.createObjectURL(new Blob([response.data]));
+      const link = document.createElement('a');
+      link.href = url;
+      link.setAttribute('download', 'analytics_export.csv');
+      document.body.appendChild(link);
+      link.click();
+      link.parentNode.removeChild(link);
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setExporting(false);
+    }
   };
+
+  if (loading) {
+    return (
+      <DashboardLayout sidebarItems={sidebarItems} userRole="Residential Admin">
+        <div className="flex items-center justify-center h-[80vh]">
+          <Loader2 className="animate-spin text-[#0f2336]" size={48} />
+        </div>
+      </DashboardLayout>
+    );
+  }
+
+  if (error || !data) {
+    return (
+      <DashboardLayout sidebarItems={sidebarItems} userRole="Residential Admin">
+        <div className="p-8 text-red-500 font-bold">{error || "Failed to load"}</div>
+      </DashboardLayout>
+    );
+  }
 
   return (
     <DashboardLayout sidebarItems={sidebarItems} userRole="Residential Admin">
@@ -94,10 +126,11 @@ export default function AdminAnalytics() {
             <p className="text-sm text-gray-500 mt-1">Analyze facility utilization and operational efficiency metrics.</p>
           </div>
           <button 
+            disabled={exporting}
             onClick={handleExport}
-            className="inline-flex items-center gap-2 px-5 py-2.5 bg-[#0f2336] hover:bg-[#16334f] text-white text-sm font-semibold rounded-xl transition-all shadow-md active:scale-95"
+            className="inline-flex items-center gap-2 px-5 py-2.5 bg-[#0f2336] disabled:opacity-50 hover:bg-[#16334f] text-white text-sm font-semibold rounded-xl transition-all shadow-md active:scale-95"
           >
-            <Download size={16} />
+            {exporting ? <Loader2 className="animate-spin" size={16} /> : <Download size={16} />}
             Export Report
           </button>
         </div>
@@ -115,43 +148,21 @@ export default function AdminAnalytics() {
               </div>
             </div>
             
-            <div className="flex-1 flex flex-col justify-center">
-              <div className="flex gap-4 mb-4">
-                <div className="w-8 flex items-center justify-end text-xs font-bold text-gray-400">Mon</div>
-                <div className="flex-1 grid grid-cols-7 gap-2">
-                  <div className="h-8 rounded-sm bg-[#5f8787]/10"></div>
-                  <div className="h-8 rounded-sm bg-[#5f8787]/20"></div>
-                  <div className="h-8 rounded-sm bg-[#5f8787]"></div>
-                  <div className="h-8 rounded-sm bg-[#0f2336]"></div>
-                  <div className="h-8 rounded-sm bg-[#5f8787]"></div>
-                  <div className="h-8 rounded-sm bg-[#5f8787]/20"></div>
-                  <div className="h-8 rounded-sm bg-[#5f8787]/10"></div>
+            <div className="flex-1 flex flex-col justify-center gap-4 py-4">
+              {data.heatmap.map((dayData, i) => (
+                <div key={i} className="flex gap-4">
+                  <div className="w-8 flex items-center justify-end text-xs font-bold text-gray-400">{dayData.day}</div>
+                  <div className="flex-1 grid grid-cols-7 gap-2">
+                    {dayData.slots.map((slot, j) => {
+                      let bgColor = "bg-[#5f8787]/10";
+                      if (slot.value === 1) bgColor = "bg-[#5f8787]/30";
+                      if (slot.value === 2) bgColor = "bg-[#5f8787]";
+                      if (slot.value >= 3) bgColor = "bg-[#0f2336]";
+                      return <div key={j} className={`h-8 rounded-sm ${bgColor}`}></div>;
+                    })}
+                  </div>
                 </div>
-              </div>
-              <div className="flex gap-4 mb-4">
-                <div className="w-8 flex items-center justify-end text-xs font-bold text-gray-400">Tue</div>
-                <div className="flex-1 grid grid-cols-7 gap-2">
-                  <div className="h-8 rounded-sm bg-[#5f8787]/10"></div>
-                  <div className="h-8 rounded-sm bg-[#5f8787]/30"></div>
-                  <div className="h-8 rounded-sm bg-[#0f2336]"></div>
-                  <div className="h-8 rounded-sm bg-[#0f2336]"></div>
-                  <div className="h-8 rounded-sm bg-[#0f2336]"></div>
-                  <div className="h-8 rounded-sm bg-[#5f8787]/20"></div>
-                  <div className="h-8 rounded-sm bg-[#5f8787]/10"></div>
-                </div>
-              </div>
-              <div className="flex gap-4">
-                <div className="w-8 flex items-center justify-end text-xs font-bold text-gray-400">Wed</div>
-                <div className="flex-1 grid grid-cols-7 gap-2">
-                  <div className="h-8 rounded-sm bg-[#5f8787]/10"></div>
-                  <div className="h-8 rounded-sm bg-[#5f8787]/20"></div>
-                  <div className="h-8 rounded-sm bg-[#5f8787]"></div>
-                  <div className="h-8 rounded-sm bg-[#0f2336]"></div>
-                  <div className="h-8 rounded-sm bg-[#5f8787]"></div>
-                  <div className="h-8 rounded-sm bg-[#5f8787]/10"></div>
-                  <div className="h-8 rounded-sm bg-[#5f8787]/10"></div>
-                </div>
-              </div>
+              ))}
             </div>
             
             <div className="flex justify-end items-center gap-2 mt-8">
@@ -176,7 +187,7 @@ export default function AdminAnalytics() {
                   innerRadius="70%" 
                   outerRadius="100%" 
                   barSize={16} 
-                  data={[{ name: 'ratio', value: 82, fill: '#0f2336' }]}
+                  data={[{ name: 'ratio', value: data.financial.ratio, fill: '#0f2336' }]}
                   startAngle={90}
                   endAngle={-270}
                 >
@@ -191,7 +202,7 @@ export default function AdminAnalytics() {
                 </RadialBarChart>
               </ResponsiveContainer>
               <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
-                <div className="text-4xl font-extrabold text-[#0f2336]">82%</div>
+                <div className="text-4xl font-extrabold text-[#0f2336]">{data.financial.ratio}%</div>
                 <div className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mt-1">Collection Ratio</div>
               </div>
             </div>
@@ -202,14 +213,14 @@ export default function AdminAnalytics() {
                   <div className="w-2 h-2 rounded-full bg-[#0f2336]"></div>
                   <span className="text-xs font-bold text-gray-500">Collections</span>
                 </div>
-                <div className="font-bold text-sm text-[#0f2336]">$1.2M</div>
+                <div className="font-bold text-sm text-[#0f2336]">{data.financial.collections}</div>
               </div>
               <div>
                 <div className="flex items-center justify-center gap-1.5 mb-1">
                   <div className="w-2 h-2 rounded-full bg-[#5f8787]/30"></div>
                   <span className="text-xs font-bold text-gray-500">OpEx</span>
                 </div>
-                <div className="font-bold text-sm text-[#0f2336]">$280K</div>
+                <div className="font-bold text-sm text-[#0f2336]">{data.financial.opex}</div>
               </div>
             </div>
           </div>
@@ -219,13 +230,13 @@ export default function AdminAnalytics() {
             <h3 className="text-lg font-bold text-[#0f2336] mb-6">Predictive Maintenance (Pareto)</h3>
             <div className="flex-1 w-full h-[250px]">
               <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={paretoData} margin={{ top: 10, right: 0, left: -20, bottom: 0 }}>
+                <BarChart data={data.pareto} margin={{ top: 10, right: 0, left: -20, bottom: 0 }}>
                   <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f3f4f6" />
                   <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: '#6b7280' }} dy={10} interval={0} />
                   <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: '#6b7280' }} />
                   <Tooltip cursor={{ fill: '#f9fafb' }} contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 4px 20px rgba(0,0,0,0.08)' }} />
                   <Bar dataKey="value" radius={[4, 4, 0, 0]}>
-                    {paretoData.map((entry, index) => (
+                    {data.pareto.map((entry, index) => (
                       <Cell key={`cell-${index}`} fill={index === 0 ? '#0f2336' : index === 1 ? '#4a6572' : index === 2 ? '#5f8787' : index === 3 ? '#a8c0c0' : '#e5e7eb'} />
                     ))}
                   </Bar>
@@ -252,7 +263,7 @@ export default function AdminAnalytics() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-50">
-                  {vendorData.map((v) => (
+                  {data.vendors.map((v) => (
                     <tr key={v.id} className={`transition-colors ${
                       v.sla.includes('Warning') ? 'bg-orange-50/30' :
                       v.sla.includes('Escalated') ? 'bg-red-50/30' : 'hover:bg-gray-50/50'

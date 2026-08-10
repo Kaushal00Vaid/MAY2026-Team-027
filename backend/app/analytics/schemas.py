@@ -89,3 +89,32 @@ class ResidentAnalyticsResponse(BaseModel):
     bookings: List[ResidentBooking]
     events: List[ResidentEvent]
     notices: List[ResidentNotice]
+
+class ParetoData(BaseModel):
+    name: str
+    value: int
+
+class VendorData(BaseModel):
+    id: int
+    name: str
+    type: str
+    res: str
+    sla: str
+
+class FinancialEfficiency(BaseModel):
+    ratio: int
+    collections: str
+    opex: str
+
+class HeatmapSlot(BaseModel):
+    value: int # 0 to 4 intensity
+
+class HeatmapDay(BaseModel):
+    day: str
+    slots: List[HeatmapSlot]
+
+class AdvancedAnalyticsResponse(BaseModel):
+    pareto: List[ParetoData]
+    vendors: List[VendorData]
+    financial: FinancialEfficiency
+    heatmap: List[HeatmapDay]
