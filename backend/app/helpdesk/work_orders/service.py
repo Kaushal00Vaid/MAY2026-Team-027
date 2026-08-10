@@ -12,6 +12,7 @@ from app.config import settings
 from app.db.models.complaint import Complaint
 from app.db.models.role import Role, RoleName, UserRole
 from app.db.models.user import User
+from app.realtime.service import add_notifications
 from app.helpdesk.attachments.validation import ALLOWED_MIME_TYPES, matches_declared_type
 from app.helpdesk.complaints.models import ComplaintAttachment, ComplaintStatusHistory
 from app.helpdesk.complaints.permissions import ensure_operational, is_operational
@@ -251,6 +252,7 @@ def complete_work_order(
                 note=notes,
             )
         )
+        add_notifications(db, [complaint.user_id], event_type="task.resolved", title="Complaint resolved", message=f"{complaint.title} has been resolved.", resource_type="complaint", resource_id=complaint.id, payload={"scope": "helpdesk", "status": "Resolved"})
         db.commit()
         db.refresh(order)
         return work_order_response(order)

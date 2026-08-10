@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { CheckCircle2, FileText, Loader2, PackageSearch, Plus, Search, TreePine, Wrench, X } from "lucide-react";
 import DashboardLayout from "@/components/layout/DashboardLayout";
+import { useRealtimeRefresh } from "@/features/realtime/useRealtimeRefresh";
 import { getGateSidebarItems } from "@/components/gate/GateSidebarConfig";
 import { createInventoryItem, downloadCsv, inventoryOptions, listInventory, operationsError, recordMovement, saveCsv } from "@/features/operations/api";
 
@@ -8,6 +9,7 @@ const empty={name:"",category:"Gardening",unit_symbol:"kg",initial_quantity:"0",
 export default function StaffInventory(){const[items,setItems]=useState([]);const[options,setOptions]=useState({units:[],vendors:[]});const[search,setSearch]=useState("");const[selected,setSelected]=useState(null);const[showAdd,setShowAdd]=useState(false);const[form,setForm]=useState(empty);const[movement,setMovement]=useState({movement_type:"received",quantity:"",note:""});const[loading,setLoading]=useState(true);const[saving,setSaving]=useState(false);const[error,setError]=useState("");const[toast,setToast]=useState("");
 const load=useCallback(async()=>{setLoading(true);setError("");try{const[a,b]=await Promise.all([listInventory(search),inventoryOptions()]);setItems(a.data);setOptions(b.data);}catch(e){setError(operationsError(e,"Unable to load inventory."));}finally{setLoading(false);}},[search]);
 useEffect(()=>{const timer=setTimeout(load,250);return()=>clearTimeout(timer);},[load]);useEffect(()=>{if(!toast)return;const timer=setTimeout(()=>setToast(""),3000);return()=>clearTimeout(timer);},[toast]);
+useRealtimeRefresh(["inventory"],load);
 const add=async(e)=>{e.preventDefault();setSaving(true);setError("");try{await createInventoryItem({...form,initial_quantity:Number(form.initial_quantity),reorder_threshold:Number(form.reorder_threshold),vendor_id:form.vendor_id?Number(form.vendor_id):null});setShowAdd(false);setForm(empty);setToast("Inventory item added.");await load();}catch(err){setError(operationsError(err,"Unable to add item."));}finally{setSaving(false);}};
 const move=async(e)=>{e.preventDefault();setSaving(true);setError("");try{await recordMovement(selected.id,{...movement,quantity:Number(movement.quantity)});setSelected(null);setMovement({movement_type:"received",quantity:"",note:""});setToast("Stock movement recorded.");await load();}catch(err){setError(operationsError(err,"Unable to update stock."));}finally{setSaving(false);}};
 const exportData=async()=>{try{saveCsv(await downloadCsv("inventory-export"),"inventory.csv");}catch(e){setError(operationsError(e,"Export failed."));}};

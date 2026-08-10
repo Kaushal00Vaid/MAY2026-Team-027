@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { LayoutDashboard, WalletCards, Headset, ShieldCheck, CalendarCheck, Users, BarChart3, Search, CheckCircle2, XCircle, Clock, Radio, UserCog, LogIn, LogOut } from "lucide-react";
 import DashboardLayout from "@/components/layout/DashboardLayout";
+import { useRealtimeRefresh } from "@/features/realtime/useRealtimeRefresh";
 import { useAuth } from "@/hooks/useAuth";
 import { decideVisitor, listVisitors, securityError, visitorEntry, visitorExit } from "@/features/security/api";
 
@@ -10,6 +11,7 @@ export default function AdminSecurity() {
   const { user } = useAuth(); const sequence = useRef(0); const [visitors,setVisitors]=useState([]); const [search,setSearch]=useState(""); const [selected,setSelected]=useState(null); const [loading,setLoading]=useState(true); const [saving,setSaving]=useState(false); const [error,setError]=useState(""); const [toast,setToast]=useState("");
   const load=async(query=search)=>{const id=++sequence.current;setLoading(true);setError("");try{const{data}=await listVisitors({search:query.trim()||undefined,page_size:100});if(id===sequence.current)setVisitors(data.items);}catch(e){if(id===sequence.current)setError(securityError(e,"Unable to load visitor log."));}finally{if(id===sequence.current)setLoading(false);}};
   useEffect(()=>{const timer=setTimeout(()=>load(search),250);return()=>clearTimeout(timer);},[search]); // eslint-disable-line react-hooks/exhaustive-deps
+  useRealtimeRefresh(["security"], () => load(search));
   useEffect(()=>{if(!toast)return undefined;const timer=setTimeout(()=>setToast(""),3000);return()=>clearTimeout(timer);},[toast]);
   const act=async(action)=>{if(!selected||saving)return;setSaving(true);setError("");try{if(action==="approved"||action==="denied")await decideVisitor(selected.id,action,selected.version);else if(action==="entry")await visitorEntry(selected.id);else await visitorExit(selected.id);setSelected(null);setToast(`Visitor ${action} recorded.`);await load();}catch(e){setError(securityError(e,"Unable to update visitor."));}finally{setSaving(false);}};
   const userName=user?`${user.first_name} ${user.last_name}`:"Admin";

@@ -12,6 +12,7 @@ from sqlalchemy.orm import Session
 from app.config import settings
 from app.db.models.user import User
 from app.security.models import AccessLog, GuestPass, Visitor
+from app.realtime.service import add_notifications
 from app.security.permissions import (
     ensure_gate,
     ensure_resident,
@@ -162,6 +163,16 @@ def create_visitor(db: Session, actor: User, data):
             details=item.purpose,
         )
     )
+    add_notifications(
+        db,
+        [resident.user_id],
+        event_type="visitor.approval_requested",
+        title="Visitor approval requested",
+        message=f"{item.visitor_name} is waiting for your approval.",
+        resource_type="visitor",
+        resource_id=item.id,
+        payload={"scope": "security", "status": "pending"},
+    )
     db.commit()
     db.refresh(item)
     return visitor_dict(db, item)
@@ -229,6 +240,16 @@ def decide(db, user, visitor_id, decision, version, note=None):
             details=note,
         )
     )
+    add_notifications(
+        db,
+        [item.requested_by, item.resident_id],
+        event_type=f"visitor.{decision}",
+        title=f"Visitor {decision}",
+        message=f"{item.visitor_name}'s visit was {decision}.",
+        resource_type="visitor",
+        resource_id=item.id,
+        payload={"scope": "security", "status": decision},
+    )
     db.commit()
     db.refresh(item)
     return visitor_dict(db, item)
@@ -259,6 +280,16 @@ def gate_transition(db, user, visitor_id, action):
             subject_name=item.visitor_name,
             unit=resident.flat_number,
         )
+    )
+    add_notifications(
+        db,
+        [item.resident_id],
+        event_type=f"visitor.{action}",
+        title=f"Visitor {action}",
+        message=f"{item.visitor_name} recorded {action} at the gate.",
+        resource_type="visitor",
+        resource_id=item.id,
+        payload={"scope": "security", "status": item.status},
     )
     db.commit()
     db.refresh(item)
