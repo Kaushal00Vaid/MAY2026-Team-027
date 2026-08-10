@@ -91,7 +91,7 @@ export default function ResidentHelpdesk() {
     if (!target) return;
     deepLinkHandled.current = true;
     // Resolve the dashboard deep link after its ticket is present in the API result.
-    // eslint-disable-next-line react-hooks/set-state-in-effect
+
     void openDetails(target);
   }, [location.state?.ticketId, tickets]);
 

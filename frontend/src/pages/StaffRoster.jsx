@@ -10,7 +10,7 @@ const initial={staff_id:"",role_label:"Security",start_time:"06:00",end_time:"14
 const days=(mask)=>["Mon","Tue","Wed","Thu","Fri","Sat","Sun"].filter((_,i)=>mask&(1<<i)).join("-");
 export default function StaffRoster(){const{user}=useAuth();const[roster,setRoster]=useState([]);const[staff,setStaff]=useState([]);const[attendance,setAttendance]=useState(null);const[show,setShow]=useState(false);const[form,setForm]=useState(initial);const[loading,setLoading]=useState(true);const[saving,setSaving]=useState(false);const[error,setError]=useState("");const[toast,setToast]=useState("");const canManage=user?.roles?.some(r=>["super_admin","admin","committee_member"].includes(r));
 const load=useCallback(async()=>{setLoading(true);setError("");try{const requests=[listShifts(),listStaff()];if(!canManage)requests.push(getTodayAttendance());const responses=await Promise.all(requests);setRoster(responses[0].data);setStaff(responses[1].data);setAttendance(responses[2]?.data||null);}catch(e){setError(operationsError(e,"Unable to load roster."));}finally{setLoading(false);}},[canManage]);
-// eslint-disable-next-line react-hooks/set-state-in-effect
+
 useEffect(()=>{load();},[load]);useEffect(()=>{if(!toast)return;const t=setTimeout(()=>setToast(""),3000);return()=>clearTimeout(t);},[toast]);
 useRealtimeRefresh(["roster"],load);
 const assign=async(e)=>{e.preventDefault();setSaving(true);setError("");try{await createShift({...form,staff_id:Number(form.staff_id),days_mask:Number(form.days_mask)});setShow(false);setForm(initial);setToast("Shift assigned.");await load();}catch(err){setError(operationsError(err,"Unable to assign shift."));}finally{setSaving(false);}};

@@ -23,7 +23,7 @@ export function useResidentPass(enabled = true) {
   useEffect(() => {
     if (!enabled) return undefined;
     // Fetching initializes and periodically rotates the server-issued credential.
-    // eslint-disable-next-line react-hooks/set-state-in-effect
+
     void refresh();
     const timer = window.setInterval(refresh, 25_000);
     return () => window.clearInterval(timer);
