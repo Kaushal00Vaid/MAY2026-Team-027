@@ -4,6 +4,7 @@ from io import StringIO
 from sqlalchemy.orm import Session
 from sqlalchemy import func
 from datetime import datetime, timezone, timedelta
+from zoneinfo import ZoneInfo
 
 from app.analytics.schemas import (
     AdminAnalyticsResponse,
@@ -43,6 +44,8 @@ from app.amenities.models import AmenityBooking, Amenity
 from app.community.models import CommunityEvent, Notice, EventRsvp
 from app.helpdesk.work_orders.models import MaintenanceWorkOrder
 from app.operations.models import InventoryItem, ShiftAssignment, StaffAttendance
+
+IST = ZoneInfo("Asia/Kolkata")
 
 def time_ago_str(dt: datetime) -> str:
     if not dt:
@@ -90,6 +93,16 @@ def _format_inr_compact(amount_paise: int) -> str:
 
 def _as_utc(value: datetime) -> datetime:
     return value if value.tzinfo else value.replace(tzinfo=timezone.utc)
+
+
+def _local_day_window(now: datetime, local_timezone=IST):
+    local_now = _as_utc(now).astimezone(local_timezone)
+    local_start = local_now.replace(hour=0, minute=0, second=0, microsecond=0)
+    return (
+        local_start.astimezone(timezone.utc),
+        (local_start + timedelta(days=1)).astimezone(timezone.utc),
+        local_now.date(),
+    )
 
 
 def _heatmap_slots(amenity: Amenity, bookings: list[AmenityBooking], week_start):
@@ -532,10 +545,13 @@ def export_analytics_csv(db: Session) -> str:
 
 def get_staff_analytics(db: Session) -> StaffAnalyticsResponse:
     now = datetime.now(timezone.utc)
-    start_of_today = now.replace(hour=0, minute=0, second=0, microsecond=0)
+    start_of_today, end_of_today, today_date = _local_day_window(now)
     
     # 1. Gate Activity
-    total_entries_today = db.query(AccessLog).filter(AccessLog.occurred_at >= start_of_today).count()
+    total_entries_today = db.query(AccessLog).filter(
+        AccessLog.occurred_at >= start_of_today,
+        AccessLog.occurred_at < end_of_today,
+    ).count()
     pending_approvals = db.query(Visitor).filter(Visitor.status == 'pending').count()
     gate_activity = GateActivityAnalytics(
         total_entries_today=total_entries_today,
@@ -573,20 +589,28 @@ def get_staff_analytics(db: Session) -> StaffAnalyticsResponse:
     )
     
     # 4. Roster Coverage
-    today_date = now.date()
     # Mask logic: 1 << today.weekday()
     day_mask_bit = 1 << today_date.weekday()
     
-    active_staff_today = db.query(ShiftAssignment).filter(
+    active_staff_today = db.query(
+        func.count(func.distinct(ShiftAssignment.staff_id))
+    ).filter(
         ShiftAssignment.status == 'active',
         ShiftAssignment.days_mask.op('&')(day_mask_bit) > 0
-    ).count()
+    ).scalar() or 0
     
-    checked_in_now = db.query(StaffAttendance).filter(
+    checked_in_now = db.query(
+        func.count(func.distinct(StaffAttendance.staff_id))
+    ).join(
+        ShiftAssignment,
+        ShiftAssignment.staff_id == StaffAttendance.staff_id,
+    ).filter(
         StaffAttendance.attendance_date == today_date,
         StaffAttendance.check_in_at.isnot(None),
-        StaffAttendance.check_out_at.is_(None)
-    ).count()
+        StaffAttendance.check_out_at.is_(None),
+        ShiftAssignment.status == 'active',
+        ShiftAssignment.days_mask.op('&')(day_mask_bit) > 0,
+    ).scalar() or 0
     
     roster = RosterCoverageAnalytics(
         active_staff_today=active_staff_today,
