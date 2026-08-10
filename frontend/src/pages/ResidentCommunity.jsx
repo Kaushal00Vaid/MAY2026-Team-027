@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useLocation } from "react-router-dom";
 import DashboardLayout from "@/components/layout/DashboardLayout";
 import { useRealtimeRefresh } from "@/features/realtime/useRealtimeRefresh";
 import { getResidentSidebarItems } from "@/components/resident/ResidentSidebarConfig";
@@ -7,13 +8,14 @@ import { communityError, getActivePoll, listEvents, listNotices, listVolunteers,
 import { Megaphone, BarChart3, Calendar, HeartHandshake, ChevronLeft, ChevronRight, Clock, MapPin, X, CheckCircle2 } from "lucide-react";
 
 export default function ResidentCommunity() {
+  const location = useLocation();
   const { user } = useAuth();
   const [pollVoted, setPollVoted] = useState(false);
   const [poll, setPoll] = useState(null);
   const [pollOptions, setPollOptions] = useState([]);
   const [signedUp, setSignedUp] = useState(false);
   const [opportunity, setOpportunity] = useState(null);
-  const [showNoticesModal, setShowNoticesModal] = useState(false);
+  const [showNoticesModal, setShowNoticesModal] = useState(location.state?.view === "notices");
   const [notices, setNotices] = useState([]);
   const [events, setEvents] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -29,7 +31,11 @@ export default function ResidentCommunity() {
     setLoading(true); setError("");
     try {
       const [{ data: noticeData }, { data: eventData }, { data: pollData }, { data: volunteerData }] = await Promise.all([listNotices(), listEvents(), getActivePoll(), listVolunteers()]);
-      setNotices(noticeData.items.map((item, index) => ({ ...item, target: item.target_label, time: new Date(item.published_at).toLocaleString(), desc: item.body, color: ["bg-blue-100 text-blue-700 border-blue-500", "bg-emerald-100 text-emerald-700 border-emerald-500", "bg-orange-100 text-orange-700 border-orange-500"][index % 3] })));
+      const mappedNotices = noticeData.items.map((item, index) => ({ ...item, target: item.target_label, time: new Date(item.published_at).toLocaleString(), desc: item.body, color: ["bg-blue-100 text-blue-700 border-blue-500", "bg-emerald-100 text-emerald-700 border-emerald-500", "bg-orange-100 text-orange-700 border-orange-500"][index % 3] }));
+      if (location.state?.view === "notices") {
+        await Promise.allSettled(mappedNotices.filter((item) => !item.is_read).map((item) => markNoticeRead(item.id)));
+        setNotices(mappedNotices.map((item) => ({ ...item, is_read: true })));
+      } else setNotices(mappedNotices);
       setEvents(eventData.map((item, index) => { const start = new Date(item.starts_at); const end = new Date(item.ends_at); return { ...item, month: start.toLocaleString(undefined, { month: "short" }).toUpperCase(), day: String(start.getDate()).padStart(2, "0"), time: `${start.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })} - ${end.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`, loc: item.location, color: index % 2 ? "bg-gray-100 text-gray-600" : "bg-blue-100 text-blue-600" }; }));
       applyPoll(pollData); const first = volunteerData[0] || null; setOpportunity(first); setSignedUp(Boolean(first?.signed_up));
     } catch (requestError) { setError(communityError(requestError, "Unable to load Community Hub.")); }
