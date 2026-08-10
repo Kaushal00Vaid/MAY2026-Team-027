@@ -9,6 +9,7 @@ from sqlalchemy import func, or_, select
 
 from app.db.models.role import Role, RoleName, UserRole
 from app.db.models.user import User
+from app.realtime.service import add_notifications, user_ids_for_roles
 from app.operations.models import (
     InventoryItem,
     InventoryUnit,
@@ -143,6 +144,8 @@ def create_task(db, user, data):
         created_by=user.user_id,
     )
     db.add(item)
+    db.flush()
+    add_notifications(db, [assigned], event_type="task.assigned", title="New task assigned", message=item.title, resource_type="operational_task", resource_id=item.id, payload={"scope": "operations", "status": item.status})
     db.commit()
     db.refresh(item)
     return _task(db, item)
@@ -175,6 +178,7 @@ def update_task(db, user, task_id, data):
     item.completed_at = (
         datetime.now(timezone.utc) if data.status == "completed" else None
     )
+    add_notifications(db, [item.assigned_to], event_type="task.changed", title="Task updated", message=f"{item.title} is now {item.status.replace('_', ' ')}.", resource_type="operational_task", resource_id=item.id, payload={"scope": "operations", "status": item.status})
     db.commit()
     db.refresh(item)
     return _task(db, item)
@@ -259,6 +263,9 @@ def movement(db, user, item_id, data):
         recorded_by=user.user_id,
     )
     db.add(entry)
+    if result <= Decimal(item.reorder_threshold):
+        recipients = user_ids_for_roles(db, ["super_admin", "admin", "committee_member", "support_staff"])
+        add_notifications(db, recipients, event_type="inventory.low_stock", title="Low stock alert", message=f"{item.name} is at {result} {db.get(InventoryUnit, item.unit_id).symbol}.", resource_type="inventory_item", resource_id=item.id, payload={"scope": "inventory", "quantity": str(result)})
     db.commit()
     db.refresh(item)
     return _item(db, item)
@@ -328,6 +335,8 @@ def create_shift(db, user, data):
             )
     item = ShiftAssignment(**data.model_dump(), assigned_by=user.user_id)
     db.add(item)
+    db.flush()
+    add_notifications(db, [item.staff_id], event_type="roster.assigned", title="Shift assigned", message=f"A {item.role_label} shift was added to your roster.", resource_type="shift", resource_id=item.id, payload={"scope": "roster", "status": item.status})
     db.commit()
     db.refresh(item)
     return _shift(db, item)
@@ -339,6 +348,7 @@ def shift_status(db, user, shift_id, data):
     if not item:
         raise HTTPException(status_code=404, detail="Shift not found.")
     item.status = data.status
+    add_notifications(db, [item.staff_id], event_type="roster.changed", title="Shift status updated", message=f"Your shift is now {item.status.replace('_', ' ')}.", resource_type="shift", resource_id=item.id, payload={"scope": "roster", "status": item.status})
     db.commit()
     db.refresh(item)
     return _shift(db, item)

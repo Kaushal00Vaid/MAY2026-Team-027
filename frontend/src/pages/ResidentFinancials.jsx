@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { AlertTriangle, CheckCircle2, CreditCard, Download, Filter, Loader2, X } from "lucide-react";
 import DashboardLayout from "@/components/layout/DashboardLayout";
+import { useRealtimeRefresh } from "@/features/realtime/useRealtimeRefresh";
 import { getResidentSidebarItems } from "@/components/resident/ResidentSidebarConfig";
 import {
   completePayment, downloadReceipt, downloadStatement, financeError,
@@ -26,6 +27,7 @@ export default function ResidentFinancials() {
   // Data fetching intentionally initializes screen state from the API.
   // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => { load(); }, [load]);
+  useRealtimeRefresh(["finance"], load);
   useEffect(() => {
     if (!toast) return undefined;
     const timer = setTimeout(() => setToast(""), 3500);

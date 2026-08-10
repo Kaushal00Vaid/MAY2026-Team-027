@@ -1,7 +1,7 @@
-from fastapi import APIRouter, Depends, HTTPException, Response
+from fastapi import APIRouter, Depends, Response
 from sqlalchemy.orm import Session
 from app.db.database import get_db
-from app.auth.dependencies import get_current_active_user, get_current_user_with_roles
+from app.dependencies import require_roles
 from app.db.models.user import User
 from app.analytics.schemas import AdminAnalyticsResponse, ResidentAnalyticsResponse, AdvancedAnalyticsResponse, StaffAnalyticsResponse
 from app.analytics.service import get_admin_analytics, get_resident_analytics, get_advanced_analytics, export_analytics_csv, get_staff_analytics
@@ -11,7 +11,9 @@ router = APIRouter()
 @router.get("/staff", response_model=StaffAnalyticsResponse)
 def read_staff_analytics(
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user_with_roles(["support_staff", "super_admin", "admin", "committee_member"])),
+    current_user: User = Depends(
+        require_roles("support_staff", "super_admin", "admin", "committee_member")
+    ),
 ):
     """
     Retrieve aggregated analytics for the Staff Dashboard.
@@ -22,7 +24,7 @@ def read_staff_analytics(
 @router.get("/admin", response_model=AdminAnalyticsResponse)
 def read_admin_analytics(
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user_with_roles(["Residential Admin", "Super Admin"])),
+    current_user: User = Depends(require_roles("super_admin", "admin", "committee_member")),
 ):
     """
     Retrieve aggregated analytics for the Admin Dashboard.
@@ -33,7 +35,7 @@ def read_admin_analytics(
 @router.get("/resident", response_model=ResidentAnalyticsResponse)
 def read_resident_analytics(
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_active_user),
+    current_user: User = Depends(require_roles("flat_owner", "resident_rental")),
 ):
     """
     Retrieve personalized analytics for the Resident Dashboard.
@@ -44,7 +46,7 @@ def read_resident_analytics(
 @router.get("/advanced", response_model=AdvancedAnalyticsResponse)
 def read_advanced_analytics(
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user_with_roles(["Residential Admin", "Super Admin"])),
+    current_user: User = Depends(require_roles("super_admin", "admin", "committee_member")),
 ):
     """
     Get advanced analytics for the Admin dashboard (Pareto, Vendor, Financials)
@@ -54,7 +56,7 @@ def read_advanced_analytics(
 @router.get("/export")
 def read_export_analytics(
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user_with_roles(["Residential Admin", "Super Admin"])),
+    current_user: User = Depends(require_roles("super_admin", "admin", "committee_member")),
 ):
     """
     Export analytics as CSV

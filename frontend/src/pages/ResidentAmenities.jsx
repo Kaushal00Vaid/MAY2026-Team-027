@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { ArrowRight, CheckCircle2, Loader2, X } from "lucide-react";
 import DashboardLayout from "@/components/layout/DashboardLayout";
+import { useRealtimeRefresh } from "@/features/realtime/useRealtimeRefresh";
 import { getResidentSidebarItems } from "@/components/resident/ResidentSidebarConfig";
 import { amenitiesError, cancelBooking, createBooking, getAvailability, listAmenities, listBookings, localDate } from "@/features/amenities/api";
 
@@ -16,6 +17,7 @@ export default function ResidentAmenities() {
   const load = useCallback(async () => { setLoading(true); setError(""); try { const amenityResponse = await listAmenities(); const items = amenityResponse.data; setAmenities(items); const id = selectedId || items[0]?.id; if (id && !selectedId) setSelectedId(id); if (id) { const [availableResponse, bookingResponse] = await Promise.all([getAvailability(id, startDate), listBookings({ page_size: 100 })]); setAvailability(availableResponse.data); setBookings(bookingResponse.data.items); } } catch (e) { setError(amenitiesError(e, "Unable to load amenities.")); } finally { setLoading(false); } }, [selectedId, startDate]);
   // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => { load(); }, [load]);
+  useRealtimeRefresh(["amenities"], load);
   useEffect(() => { if (!toast) return undefined; const timer = setTimeout(() => setToast(""), 3500); return () => clearTimeout(timer); }, [toast]);
   const selected = amenities.find((item) => item.id === selectedId);
   const days = useMemo(() => { const result = []; for (let i = 0; i < 7; i += 1) { const date = dayStart((weekOffset * 7) + i); result.push(date); } return result; }, [weekOffset]);
