@@ -30,7 +30,11 @@ from app.db.models.user import User
 
 def _mock_resident():
     """Simulates a regular flat-owner (resident)."""
-    return User(
+    from app.db.models.role import Role, UserRole, RoleName
+    role = Role(role_id=4, role_name=RoleName.flat_owner)
+    assignment = UserRole(user_id=1, role_id=4)
+    assignment.role = role
+    user = User(
         user_id=1,
         first_name="Alice",
         last_name="Resident",
@@ -38,18 +42,19 @@ def _mock_resident():
         email="alice@test.com",
         is_active=True,
         is_phone_verified=True,
-        roles=[],
     )
+    user.roles = [assignment]
+    return user
 
 
 def _mock_admin():
     """Simulates an admin user (for finance / user management)."""
     from app.db.models.role import Role, UserRole, RoleName
     role = Role(role_id=2, role_name=RoleName.admin)
-    ur = UserRole(user_id=99, role_id=2)
+    ur = UserRole(user_id=1, role_id=2)
     ur.role = role
     u = User(
-        user_id=99,
+        user_id=1,
         first_name="Bob",
         last_name="Admin",
         phone_number="+919999999999",
@@ -65,10 +70,10 @@ def _mock_super_admin():
     """Simulates a super-admin user."""
     from app.db.models.role import Role, UserRole, RoleName
     role = Role(role_id=1, role_name=RoleName.super_admin)
-    ur = UserRole(user_id=100, role_id=1)
+    ur = UserRole(user_id=1, role_id=1)
     ur.role = role
     u = User(
-        user_id=100,
+        user_id=1,
         first_name="Carl",
         last_name="Super",
         phone_number="+918888888888",
@@ -245,12 +250,12 @@ class TestPasswordLogin:
 
 class TestOTP:
     def test_otp_request_unknown_phone(self, unauth_client):
-        """TC-AUTH-11: POST /auth/otp/request for non-existent phone -> 404."""
+        """TC-AUTH-11: Unknown phones receive a generic 401 to prevent enumeration."""
         resp = unauth_client.post(
             "/auth/otp/request",
             json={"phone_number": "+919000000000"},
         )
-        assert resp.status_code in (404, 422, 429)
+        assert resp.status_code == 401
 
     def test_otp_verify_invalid_code_format(self, unauth_client):
         """TC-AUTH-12: POST /auth/otp/verify with non-numeric OTP -> 422."""
@@ -377,8 +382,8 @@ class TestHelpdesk:
         resp = resident_client.get("/api/helpdesk/complaints/99999")
         assert resp.status_code == 404
 
-    def test_update_complaint_status(self, resident_client):
-        """TC-HD-06: PATCH /api/helpdesk/complaints/{id} status update -> 200."""
+    def test_resident_cannot_update_complaint_status(self, resident_client):
+        """TC-HD-06: Residents cannot perform operational status transitions."""
         create = resident_client.post(
             "/api/helpdesk/complaints",
             json={"category": "Maintenance", "description": "Lift not working"},
@@ -386,27 +391,12 @@ class TestHelpdesk:
         cid = create.json()["id"]
         resp = resident_client.patch(
             f"/api/helpdesk/complaints/{cid}",
-            json={"status": "In Progress"},
+            json={"status": "In Progress", "expected_version": create.json()["version"]},
         )
-        assert resp.status_code == 200
-        assert resp.json()["status"] == "In Progress"
+        assert resp.status_code == 403
 
     def test_update_complaint_invalid_status(self, resident_client):
-        """
-        TC-HD-07 [EXPECTED FAILURE - Edge Case Bug]:
-        PATCH with invalid status 'Done' should return 400.
-
-        BUG: ComplaintUpdate.status is typed as Optional[str] with NO Pydantic
-        enum constraint. Only the service layer validates allowed statuses
-        ['Open', 'In Progress', 'Resolved', 'Closed']. This means:
-        - The schema accepts any string for status (no Pydantic-level guard).
-        - The only protection is in service.py's if-statement.
-        This test demonstrates how testing reveals that schema-level validation
-        is missing, leaving a potential gap if the service check is ever removed.
-
-        Expected: 400 Bad Request
-        Actual: 400 (currently passes via service check, but schema is unguarded)
-        """
+        """TC-HD-07: Invalid statuses are rejected by the API schema."""
         create = resident_client.post(
             "/api/helpdesk/complaints",
             json={"category": "Security", "description": "CCTV offline"},
@@ -414,21 +404,14 @@ class TestHelpdesk:
         cid = create.json()["id"]
         resp = resident_client.patch(
             f"/api/helpdesk/complaints/{cid}",
-            json={"status": "Done"},  # invalid status not in allowed list
+            json={"status": "Done", "expected_version": create.json()["version"]},
         )
-        # This FAILS (returns 400) but only because the service validates it.
-        # If we send a borderline value like status="" (empty string):
+        assert resp.status_code == 422
         resp2 = resident_client.patch(
             f"/api/helpdesk/complaints/{cid}",
-            json={"status": ""},  # empty string — service checks valid_statuses
+            json={"status": "", "expected_version": create.json()["version"]},
         )
-        # Expected: 400 from service validation
-        # Actual: 400 (service rejects it) BUT schema allows empty string through
-        # Demonstrating the schema gap: Pydantic should enforce enum at schema level
-        assert resp2.status_code == 400, (
-            f"FAIL: Expected 400 for empty status, got {resp2.status_code}. "
-            "Schema gap: ComplaintUpdate.status should use Literal type, not str."
-        )
+        assert resp2.status_code == 422
 
     def test_create_complaint_unauthenticated(self, unauth_client):
         """TC-HD-08: POST /api/helpdesk/complaints without auth -> 403."""
