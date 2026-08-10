@@ -5,8 +5,8 @@ import axiosInstance from "./axiosInstance";
  *
  * @returns {Promise<AxiosResponse>}
  */
-export const getAdminAnalytics = () => {
-  return axiosInstance.get("/api/v1/analytics/admin");
+export const getAdminAnalytics = ({ months = 6 } = {}) => {
+  return axiosInstance.get("/api/v1/analytics/admin", { params: { months } });
 };
 
 export const getAdminAdvancedAnalytics = () => {

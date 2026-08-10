@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { useNavigate } from "react-router-dom";
 import {
   LayoutDashboard,
   WalletCards,
@@ -12,15 +13,15 @@ import {
   Building,
   UserCheck,
   CheckCircle2,
-  AlertCircle,
   TrendingUp,
   ArrowRight,
-  UserCog
+  UserCog,
+  Loader2
 } from "lucide-react";
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import DashboardLayout from "@/components/layout/DashboardLayout";
 import { getTransactions } from "@/api/finance";
-import { getAdminAnalytics } from "@/api/analytics";
+import { downloadAnalyticsExport, getAdminAnalytics } from "@/api/analytics";
 
 const sidebarItems = [
   { label: "Dashboard", icon: LayoutDashboard, active: true, href: "/admin" },
@@ -44,18 +45,36 @@ export default function AdminDashboard() {
 
   const [analytics, setAnalytics] = useState(null);
   const [analyticsLoading, setAnalyticsLoading] = useState(true);
+  const [analyticsError, setAnalyticsError] = useState("");
+  const [months, setMonths] = useState(6);
+  const [exporting, setExporting] = useState(false);
+  const [exportMessage, setExportMessage] = useState("");
+  const navigate = useNavigate();
 
   useEffect(() => {
-    getAdminAnalytics()
+    getAdminAnalytics({ months })
       .then((res) => setAnalytics(res.data))
-      .catch((err) => console.error("Failed to fetch analytics", err))
+      .catch(() => setAnalyticsError("Unable to load dashboard analytics."))
       .finally(() => setAnalyticsLoading(false));
-  }, []);
+  }, [months]);
+
+  const exportReport = async () => {
+    if (exporting) return;
+    setExporting(true); setExportMessage("");
+    try {
+      const response = await downloadAnalyticsExport();
+      const url = URL.createObjectURL(response.data);
+      const anchor = document.createElement("a");
+      anchor.href = url; anchor.download = "societysync-analytics.csv";
+      document.body.appendChild(anchor); anchor.click(); anchor.remove(); URL.revokeObjectURL(url);
+      setExportMessage("Analytics report downloaded.");
+    } catch {
+      setExportMessage("Report download failed. Please try again.");
+    } finally { setExporting(false); }
+  };
 
   // Re-fetch whenever the active tab changes
   useEffect(() => {
-    setTxLoading(true);
-    setTxError(null);
     getTransactions({ type: activeTab, limit: 10 })
       .then((res) => {
         // Map API shape → table shape
@@ -66,8 +85,8 @@ export default function AdminDashboard() {
           type: tx.type,
           amount:
             tx.type === "income"
-              ? `+$${parseFloat(tx.amount).toFixed(2)}`
-              : `-$${parseFloat(tx.amount).toFixed(2)}`,
+              ? `+₹${parseFloat(tx.amount).toLocaleString("en-IN", { minimumFractionDigits: 2 })}`
+              : `-₹${parseFloat(tx.amount).toLocaleString("en-IN", { minimumFractionDigits: 2 })}`,
           date: new Date(tx.transaction_date).toLocaleString("en-IN", {
             dateStyle: "medium",
             timeStyle: "short",
@@ -91,16 +110,20 @@ export default function AdminDashboard() {
             <h1 className="text-3xl font-extrabold text-[#0f2336] tracking-tight">Society Overview</h1>
             <p className="text-sm text-gray-500 mt-1">Real-time metrics for Green Valley Residency.</p>
           </div>
-          <button className="inline-flex items-center gap-2 px-5 py-2.5 bg-white border border-gray-200 hover:border-gray-300 hover:bg-gray-50 hover:shadow-sm text-gray-700 text-sm font-semibold rounded-xl transition-all active:scale-95">
-            <Download size={16} />
-            Export Report
+          <button disabled={exporting} onClick={exportReport} className="inline-flex items-center gap-2 px-5 py-2.5 bg-white border border-gray-200 hover:border-gray-300 hover:bg-gray-50 hover:shadow-sm disabled:opacity-50 text-gray-700 text-sm font-semibold rounded-xl transition-all active:scale-95">
+            {exporting ? <Loader2 className="animate-spin" size={16}/> : <Download size={16} />}
+            {exporting ? "Exporting…" : "Export Report"}
           </button>
         </div>
+
+        {analyticsError && <div role="alert" className="p-4 rounded-xl bg-red-50 border border-red-100 text-sm font-semibold text-red-600">{analyticsError}</div>}
+        {exportMessage && <div role="status" className={`p-4 rounded-xl border text-sm font-semibold ${exportMessage.includes("failed") ? "bg-red-50 border-red-100 text-red-600" : "bg-emerald-50 border-emerald-100 text-emerald-700"}`}>{exportMessage}</div>}
+        {analyticsLoading && <div role="status" className="flex items-center gap-2 text-sm text-gray-500"><Loader2 className="animate-spin" size={16}/>Refreshing dashboard metrics…</div>}
 
         {/* Stats Row */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
           {/* Card 1 */}
-          <div className="bg-white p-5 rounded-2xl border border-gray-100 shadow-sm hover:shadow-md hover:-translate-y-1 transition-all duration-300 group cursor-pointer flex flex-col justify-between">
+          <button type="button" onClick={() => navigate("/admin/finance")} className="bg-white p-5 rounded-2xl border border-gray-100 shadow-sm hover:shadow-md hover:-translate-y-1 transition-all duration-300 group cursor-pointer flex flex-col justify-between text-left">
             <div className="flex justify-between items-start mb-2">
               <div className="text-xs font-bold text-gray-400 uppercase tracking-wider">Current Collections</div>
               <div className="p-2 bg-blue-50 text-blue-500 rounded-lg group-hover:bg-blue-500 group-hover:text-white transition-colors">
@@ -108,16 +131,16 @@ export default function AdminDashboard() {
               </div>
             </div>
             <div>
-              <div className="text-3xl font-extrabold text-[#0f2336]">${analytics?.stats?.current_collections?.amount?.toLocaleString() || 0}</div>
+              <div className="text-3xl font-extrabold text-[#0f2336]">₹{analytics?.stats?.current_collections?.amount?.toLocaleString("en-IN") || 0}</div>
               <div className="text-xs text-emerald-600 font-bold mt-2 flex items-center gap-1 bg-emerald-50 w-fit px-2 py-1 rounded-md">
                 <TrendingUp size={14} />
-                +{analytics?.stats?.current_collections?.percentage_change?.toFixed(1) || 0}% vs last month
+                {(analytics?.stats?.current_collections?.percentage_change || 0) > 0 ? "+" : ""}{analytics?.stats?.current_collections?.percentage_change?.toFixed(1) || 0}% vs last month
               </div>
             </div>
-          </div>
+          </button>
 
           {/* Card 2 */}
-          <div className="bg-white p-5 rounded-2xl border border-gray-100 shadow-sm hover:shadow-md hover:-translate-y-1 transition-all duration-300 group cursor-pointer flex flex-col justify-between">
+          <button type="button" onClick={() => navigate("/admin/helpdesk")} className="bg-white p-5 rounded-2xl border border-gray-100 shadow-sm hover:shadow-md hover:-translate-y-1 transition-all duration-300 group cursor-pointer flex flex-col justify-between text-left">
             <div className="flex justify-between items-start mb-2">
               <div className="text-xs font-bold text-gray-400 uppercase tracking-wider">Active Complaints</div>
               <div className="p-2 bg-orange-50 text-orange-500 rounded-lg group-hover:bg-orange-500 group-hover:text-white transition-colors">
@@ -130,10 +153,10 @@ export default function AdminDashboard() {
                 {analytics?.stats?.active_complaints?.high_priority || 0} High Priority
               </div>
             </div>
-          </div>
+          </button>
 
           {/* Card 3 */}
-          <div className="bg-white p-5 rounded-2xl border border-gray-100 shadow-sm hover:shadow-md hover:-translate-y-1 transition-all duration-300 group cursor-pointer flex flex-col justify-between">
+          <button type="button" onClick={() => navigate("/admin/security")} className="bg-white p-5 rounded-2xl border border-gray-100 shadow-sm hover:shadow-md hover:-translate-y-1 transition-all duration-300 group cursor-pointer flex flex-col justify-between text-left">
             <div className="flex justify-between items-start mb-2">
               <div className="text-xs font-bold text-gray-400 uppercase tracking-wider">Visitors at Gate</div>
               <div className="p-2 bg-purple-50 text-purple-500 rounded-lg group-hover:bg-purple-500 group-hover:text-white transition-colors">
@@ -146,26 +169,26 @@ export default function AdminDashboard() {
                 Awaiting Approval
               </div>
             </div>
-          </div>
+          </button>
 
           {/* Card 4 */}
-          <div className="bg-white p-5 rounded-2xl border border-gray-100 shadow-sm hover:shadow-md hover:-translate-y-1 transition-all duration-300 group cursor-pointer flex flex-col justify-between relative overflow-hidden">
+          <button type="button" onClick={() => navigate("/admin/amenities")} className="bg-white p-5 rounded-2xl border border-gray-100 shadow-sm hover:shadow-md hover:-translate-y-1 transition-all duration-300 group cursor-pointer flex flex-col justify-between relative overflow-hidden text-left">
             <div className="absolute top-0 right-0 w-32 h-32 bg-gradient-to-br from-indigo-50 to-transparent rounded-bl-full -z-10"></div>
             <div className="flex justify-between items-start mb-4">
-              <div className="text-xs font-bold text-gray-400 uppercase tracking-wider z-10">Clubhouse Occupancy</div>
+              <div className="text-xs font-bold text-gray-400 uppercase tracking-wider z-10">Amenity Utilization</div>
               <div className="p-2 bg-indigo-50 text-indigo-500 rounded-lg group-hover:bg-indigo-500 group-hover:text-white transition-colors z-10">
                 <CalendarCheck size={18} />
               </div>
             </div>
             <div className="z-10">
               <div className="text-3xl font-extrabold text-[#0f2336] flex items-baseline gap-2">
-                {Math.round(analytics?.stats?.clubhouse_occupancy?.percentage || 0)}% <span className="text-sm font-medium text-gray-400">/ {analytics?.stats?.clubhouse_occupancy?.capacity || 100} max</span>
+                {Math.round(analytics?.stats?.clubhouse_occupancy?.percentage || 0)}% <span className="text-sm font-medium text-gray-400">{analytics?.stats?.clubhouse_occupancy?.booked || 0}/{analytics?.stats?.clubhouse_occupancy?.capacity || 0} slots</span>
               </div>
               <div className="w-full bg-gray-100 rounded-full h-2 mt-3 overflow-hidden">
                 <div className="bg-indigo-500 h-full rounded-full transition-all duration-1000 ease-out" style={{ width: `${analytics?.stats?.clubhouse_occupancy?.percentage || 0}%` }}></div>
               </div>
             </div>
-          </div>
+          </button>
         </div>
 
         {/* SLA Alert */}
@@ -196,7 +219,7 @@ export default function AdminDashboard() {
                   </div>
                 </div>
               </div>
-              <button className="text-sm font-semibold text-white bg-white/10 hover:bg-white/20 px-4 py-2 rounded-lg transition-colors self-start sm:self-center">
+              <button onClick={() => navigate("/admin/helpdesk")} className="text-sm font-semibold text-white bg-white/10 hover:bg-white/20 px-4 py-2 rounded-lg transition-colors self-start sm:self-center">
                 Resolve Now
               </button>
             </div>
@@ -213,11 +236,11 @@ export default function AdminDashboard() {
               <div className="flex items-center justify-between mb-6">
                 <div>
                   <h3 className="text-lg font-bold text-[#0f2336]">Revenue Trend</h3>
-                  <p className="text-xs text-gray-500 mt-1">Monthly collection overview (last 6 months)</p>
+                  <p className="text-xs text-gray-500 mt-1">Monthly collection overview (last {months} months)</p>
                 </div>
-                <select className="bg-gray-50 border border-gray-200 text-sm rounded-lg px-3 py-1.5 outline-none focus:ring-2 focus:ring-primary/20 cursor-pointer">
-                  <option>This Year</option>
-                  <option>Last 6 Months</option>
+                <select value={months} onChange={(event) => { setAnalyticsError(""); setAnalyticsLoading(true); setMonths(Number(event.target.value)); }} className="bg-gray-50 border border-gray-200 text-sm rounded-lg px-3 py-1.5 outline-none focus:ring-2 focus:ring-primary/20 cursor-pointer">
+                  <option value={12}>Last 12 Months</option>
+                  <option value={6}>Last 6 Months</option>
                 </select>
               </div>
               <div className="h-64 w-full">
@@ -231,11 +254,11 @@ export default function AdminDashboard() {
                     </defs>
                     <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f3f4f6" />
                     <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: '#6b7280' }} dy={10} />
-                    <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: '#6b7280' }} tickFormatter={(value) => `$${value/1000}k`} />
+                    <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: '#6b7280' }} tickFormatter={(value) => `₹${value/1000}k`} />
                     <Tooltip 
                       contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 4px 20px rgba(0,0,0,0.08)' }}
                       itemStyle={{ color: '#0f2336', fontWeight: 600 }}
-                      formatter={(value) => [`$${value}`, 'Revenue']}
+                      formatter={(value) => [`₹${Number(value).toLocaleString("en-IN")}`, 'Revenue']}
                     />
                     <Area type="monotone" dataKey="value" stroke="#4f46e5" strokeWidth={3} fillOpacity={1} fill="url(#colorRevenue)" />
                   </AreaChart>
@@ -253,7 +276,7 @@ export default function AdminDashboard() {
                   {["all", "income", "expenses"].map((tab) => (
                     <button
                       key={tab}
-                      onClick={() => setActiveTab(tab)}
+                      onClick={() => { setTxLoading(true); setTxError(null); setActiveTab(tab); }}
                       className={`px-4 py-1.5 text-xs font-semibold rounded-md capitalize transition-all ${
                         activeTab === tab ? "bg-white text-gray-900 shadow-sm" : "text-gray-500 hover:text-gray-700"
                       }`}
@@ -321,7 +344,7 @@ export default function AdminDashboard() {
           <div className="bg-white p-6 rounded-2xl border border-gray-100 shadow-sm h-fit sticky top-24">
             <div className="flex items-center justify-between mb-8">
               <h3 className="text-lg font-bold text-[#0f2336]">Activity Feed</h3>
-              <button className="text-blue-600 hover:text-blue-700 text-sm font-semibold flex items-center gap-1 group">
+              <button onClick={() => navigate("/admin/analytics")} className="text-blue-600 hover:text-blue-700 text-sm font-semibold flex items-center gap-1 group">
                 View All <ArrowRight size={14} className="group-hover:translate-x-1 transition-transform" />
               </button>
             </div>

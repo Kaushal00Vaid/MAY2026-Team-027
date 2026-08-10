@@ -1,7 +1,6 @@
 from sqlalchemy.orm import Session
-from sqlalchemy import func, case
+from sqlalchemy import func
 from datetime import datetime, timezone, timedelta
-from typing import List
 
 from app.analytics.schemas import (
     AdminAnalyticsResponse,
@@ -58,7 +57,23 @@ def time_ago_str(dt: datetime) -> str:
     else:
         return f"{int(diff.total_seconds() // 86400)} days ago"
 
-def get_admin_analytics(db: Session) -> AdminAnalyticsResponse:
+def _shift_month(month_start: datetime, offset: int) -> datetime:
+    month_index = month_start.year * 12 + month_start.month - 1 + offset
+    return month_start.replace(year=month_index // 12, month=month_index % 12 + 1)
+
+
+def _daily_slots(amenity: Amenity, day) -> int:
+    operating_minutes = int(
+        (
+            datetime.combine(day, amenity.operating_end)
+            - datetime.combine(day, amenity.operating_start)
+        ).total_seconds()
+        // 60
+    )
+    return max(operating_minutes // amenity.slot_minutes, 0)
+
+
+def get_admin_analytics(db: Session, months: int = 6) -> AdminAnalyticsResponse:
     now = datetime.now(timezone.utc)
     
     # 1. Current Collections
@@ -81,12 +96,12 @@ def get_admin_analytics(db: Session) -> AdminAnalyticsResponse:
         Payment.created_at < start_of_month
     ).scalar() or 0
     
-    curr_amount_dollars = curr_month_total / 100
-    prev_amount_dollars = prev_month_total / 100
+    curr_amount = curr_month_total / 100
+    prev_amount = prev_month_total / 100
     
     pct_change = 0.0
-    if prev_amount_dollars > 0:
-        pct_change = ((curr_amount_dollars - prev_amount_dollars) / prev_amount_dollars) * 100
+    if prev_amount > 0:
+        pct_change = ((curr_amount - prev_amount) / prev_amount) * 100
 
     # 2. Active Complaints
     active_complaints_query = db.query(Complaint).filter(Complaint.status.not_in(['Resolved', 'Closed']))
@@ -95,22 +110,23 @@ def get_admin_analytics(db: Session) -> AdminAnalyticsResponse:
 
     # 3. Visitors at Gate
     total_visitors = db.query(Visitor).filter(Visitor.status == 'pending').count()
-    # To match UI style, total and awaiting_approval might just be the same for the mock
     visitors = VisitorsAtGate(total=total_visitors, awaiting_approval=total_visitors)
 
-    # 4. Amenities (Clubhouse Occupancy for today)
+    # 4. Today's amenity slot utilization. Booking counts and person capacity
+    # are different units, so utilization is calculated against configured slots.
     start_of_today = now.replace(hour=0, minute=0, second=0, microsecond=0)
     end_of_today = start_of_today + timedelta(days=1)
     
-    total_capacity = db.query(func.sum(Amenity.capacity)).filter(Amenity.is_active == True).scalar() or 100
+    active_amenities = db.query(Amenity).filter(Amenity.is_active).all()
+    total_slots = sum(_daily_slots(amenity, start_of_today.date()) for amenity in active_amenities)
+    amenity_ids = [amenity.id for amenity in active_amenities]
     booked_slots = db.query(AmenityBooking).filter(
-        AmenityBooking.status == 'confirmed',
+        AmenityBooking.amenity_id.in_(amenity_ids),
+        AmenityBooking.status.in_(['confirmed', 'completed']),
         AmenityBooking.starts_at >= start_of_today,
         AmenityBooking.starts_at < end_of_today
-    ).count()
-    
-    # Just an approximation: 
-    percentage = (booked_slots / total_capacity) * 100 if total_capacity > 0 else 0
+    ).count() if amenity_ids else 0
+    percentage = (booked_slots / total_slots) * 100 if total_slots > 0 else 0
 
     # 5. SLA Alerts
     overdue_complaints = active_complaints_query.filter(
@@ -126,19 +142,11 @@ def get_admin_analytics(db: Session) -> AdminAnalyticsResponse:
             overdue_by_mins=max(diff_mins, 0)
         ))
 
-    # 6. Revenue Trend (last 6 months)
+    # 6. Revenue trend using exact calendar-month boundaries.
     revenue_trend = []
-    for i in range(5, -1, -1):
-        # Calculate month start and end
-        # this logic can be simplified but let's do a reliable backstep
-        m_date = now - timedelta(days=30 * i)
-        m_start = m_date.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
-        
-        if m_start.month == 12:
-            m_end = m_start.replace(year=m_start.year + 1, month=1)
-        else:
-            m_end = m_start.replace(month=m_start.month + 1)
-            
+    for offset in range(-(months - 1), 1):
+        m_start = _shift_month(start_of_month, offset)
+        m_end = _shift_month(m_start, 1)
         month_total = db.query(func.sum(Payment.amount_paise)).filter(
             Payment.status == 'succeeded',
             Payment.created_at >= m_start,
@@ -146,7 +154,7 @@ def get_admin_analytics(db: Session) -> AdminAnalyticsResponse:
         ).scalar() or 0
         
         revenue_trend.append(RevenueTrendData(
-            name=m_start.strftime("%b"),
+            name=m_start.strftime("%b %y") if months > 6 else m_start.strftime("%b"),
             value=month_total / 100
         ))
 
@@ -201,7 +209,7 @@ def get_admin_analytics(db: Session) -> AdminAnalyticsResponse:
     return AdminAnalyticsResponse(
         stats=AdminDashboardStats(
             current_collections=CurrentCollections(
-                amount=curr_amount_dollars,
+                amount=curr_amount,
                 percentage_change=pct_change
             ),
             active_complaints=ActiveComplaints(
@@ -212,7 +220,7 @@ def get_admin_analytics(db: Session) -> AdminAnalyticsResponse:
             clubhouse_occupancy=ClubhouseOccupancy(
                 percentage=percentage,
                 booked=booked_slots,
-                capacity=total_capacity
+                capacity=total_slots
             )
         ),
         sla_alerts=sla_alerts,
@@ -286,7 +294,7 @@ def get_resident_analytics(db: Session, user_id: int) -> ResidentAnalyticsRespon
     # 4. Events
     upcoming_events = db.query(CommunityEvent).filter(
         CommunityEvent.starts_at >= now,
-        CommunityEvent.is_active == True
+        CommunityEvent.is_active
     ).order_by(CommunityEvent.starts_at.asc()).limit(3).all()
     
     events = []
@@ -303,7 +311,7 @@ def get_resident_analytics(db: Session, user_id: int) -> ResidentAnalyticsRespon
         
     # 5. Notices
     active_notices = db.query(Notice).filter(
-        Notice.is_active == True
+        Notice.is_active
     ).order_by(Notice.published_at.desc()).limit(5).all()
     
     # Simple target filtering logic could go here, but assuming 'all' for dashboard display
@@ -441,7 +449,7 @@ def get_staff_analytics(db: Session) -> StaffAnalyticsResponse:
     # 2. Event Participation (Top 3 upcoming)
     upcoming_events = db.query(CommunityEvent).filter(
         CommunityEvent.starts_at > now,
-        CommunityEvent.is_active == True
+        CommunityEvent.is_active
     ).order_by(CommunityEvent.starts_at.asc()).limit(3).all()
     
     events_data = []
@@ -458,9 +466,9 @@ def get_staff_analytics(db: Session) -> StaffAnalyticsResponse:
         ))
         
     # 3. Inventory Status
-    total_items = db.query(InventoryItem).filter(InventoryItem.is_active == True).count()
+    total_items = db.query(InventoryItem).filter(InventoryItem.is_active).count()
     low_stock_items = db.query(InventoryItem).filter(
-        InventoryItem.is_active == True,
+        InventoryItem.is_active,
         InventoryItem.quantity <= InventoryItem.reorder_threshold
     ).count()
     inventory = InventoryStatusAnalytics(
