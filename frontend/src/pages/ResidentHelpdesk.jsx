@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import DashboardLayout from "@/components/layout/DashboardLayout";
+import { useRealtimeRefresh } from "@/features/realtime/useRealtimeRefresh";
 import { getResidentSidebarItems } from "@/components/resident/ResidentSidebarConfig";
 import { useAuth } from "@/hooks/useAuth";
 import {
@@ -63,6 +64,7 @@ export default function ResidentHelpdesk() {
   };
 
   useEffect(() => { void Promise.resolve().then(load); }, []);
+  useRealtimeRefresh(["helpdesk"], load);
   useEffect(() => {
     if (!toast) return undefined;
     const timer = setTimeout(() => setToast(""), 3000);

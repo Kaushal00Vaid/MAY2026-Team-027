@@ -23,6 +23,7 @@ from app.community.permissions import ensure_community_member, ensure_operationa
 from app.community.schemas import NoticeCreate
 from app.db.models.role import Role, RoleName, UserRole
 from app.db.models.user import User
+from app.realtime.service import add_notifications
 
 
 def _now() -> datetime:
@@ -72,6 +73,16 @@ def create_notice(db: Session, user: User, data: NoticeCreate) -> dict:
     db.add_all(
         NoticeDelivery(notice_id=notice.id, user_id=recipient.user_id)
         for recipient in recipients
+    )
+    add_notifications(
+        db,
+        (recipient.user_id for recipient in recipients),
+        event_type="notification.delivery",
+        title=notice.title,
+        message=notice.body,
+        resource_type="notice",
+        resource_id=notice.id,
+        payload={"scope": "community", "target_type": notice.target_type},
     )
     db.commit()
     db.refresh(notice)

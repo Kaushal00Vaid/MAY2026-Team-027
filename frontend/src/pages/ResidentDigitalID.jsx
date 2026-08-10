@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import DashboardLayout from "@/components/layout/DashboardLayout";
+import { useRealtimeRefresh } from "@/features/realtime/useRealtimeRefresh";
 import { getResidentSidebarItems } from "@/components/resident/ResidentSidebarConfig";
 import { useAuth } from "@/hooks/useAuth";
 import { ShieldCheck, Share, LogIn, LogOut, Users, RefreshCw, CheckCircle2, XCircle } from "lucide-react";
@@ -9,6 +10,7 @@ export default function ResidentDigitalID(){
  const{user}=useAuth();const[guestName,setGuestName]=useState("");const[passes,setPasses]=useState([]);const[pending,setPending]=useState([]);const[logs,setLogs]=useState([]);const[createdPin,setCreatedPin]=useState("");const[residentToken,setResidentToken]=useState("");const[countdown,setCountdown]=useState(30);const[loading,setLoading]=useState(true);const[saving,setSaving]=useState(false);const[error,setError]=useState("");const[toast,setToast]=useState("");
  const load=async()=>{setLoading(true);setError("");try{const[{data:p},{data:v},{data:l},{data:id}]=await Promise.all([listGuestPasses(),listVisitors({status:"pending",page_size:100}),listAccessLogs(100),getResidentId()]);setPasses(p);setPending(v.items);setLogs(l);setResidentToken(id.token);setCountdown(Math.max(1,Math.ceil((new Date(id.expires_at)-Date.now())/1000)));}catch(e){setError(securityError(e,"Unable to load identity and access."));}finally{setLoading(false);}};
  useEffect(()=>{void Promise.resolve().then(load);const timer=setInterval(()=>setCountdown(v=>{if(v<=1){getResidentId().then(({data})=>{setResidentToken(data.token);setCountdown(30);}).catch(()=>{});return 30;}return v-1;}),1000);return()=>clearInterval(timer);},[]);
+ useRealtimeRefresh(["security"],load);
  useEffect(()=>{if(!toast)return undefined;const timer=setTimeout(()=>setToast(""),3500);return()=>clearTimeout(timer);},[toast]);
  const createPass=async()=>{if(!guestName.trim()||saving)return;setSaving(true);setError("");try{const{data}=await createGuestPass({guest_name:guestName,purpose:"Guest / Friend",valid_hours:6});setCreatedPin(data.pin);setGuestName("");setToast("Guest pass created. Share the PIN securely.");await load();}catch(e){setError(securityError(e,"Unable to create guest pass."));}finally{setSaving(false);}};
  const decide=async(item,decision)=>{setSaving(true);setError("");try{await decideVisitor(item.id,decision,item.version);setToast(`Visitor ${decision}.`);await load();}catch(e){setError(securityError(e,"Unable to update visitor request."));}finally{setSaving(false);}};

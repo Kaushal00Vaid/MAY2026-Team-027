@@ -1,8 +1,9 @@
 import { useRef, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { Search, Bell, Settings, LogOut, HelpCircle } from "lucide-react";
+import { Search, Settings, LogOut, HelpCircle } from "lucide-react";
 import { motion, useScroll, useMotionValueEvent } from "framer-motion";
 import { useAuth } from "@/hooks/useAuth";
+import NotificationMenu from "@/features/realtime/NotificationMenu";
 
 export default function DashboardLayout({
   sidebarItems,
@@ -122,10 +123,7 @@ export default function DashboardLayout({
           <div className="flex items-center gap-4 ml-auto">
             <div className="font-semibold text-sm hidden sm:block text-gray-700">{userName}</div>
             <div className="h-5 w-px bg-gray-200 mx-1 hidden sm:block"></div>
-            <button className="relative p-2 text-gray-400 hover:text-gray-600 rounded-full hover:bg-gray-100 transition-all">
-              <Bell size={18} />
-              <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-red-500 rounded-full border-2 border-white"></span>
-            </button>
+            <NotificationMenu />
             <button className="p-2 text-gray-400 hover:text-gray-600 rounded-full hover:bg-gray-100 transition-all">
               <Settings size={18} />
             </button>

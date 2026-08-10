@@ -14,6 +14,7 @@ from app.amenities.permissions import (
     is_operational,
 )
 from app.db.models.user import User
+from app.realtime.service import add_notifications, user_ids_for_roles
 
 IST = ZoneInfo("Asia/Kolkata")
 
@@ -303,6 +304,17 @@ def create_booking(db: Session, user: User, data, key: str) -> dict:
         idempotency_key=key,
     )
     db.add(item)
+    db.flush()
+    add_notifications(
+        db,
+        {user.user_id} | user_ids_for_roles(db, ["super_admin", "admin", "committee_member"]),
+        event_type="booking.created",
+        title="Amenity booking confirmed",
+        message=f"{amenity.name} has been booked for {local:%d %b, %I:%M %p}.",
+        resource_type="booking",
+        resource_id=item.id,
+        payload={"scope": "amenities", "status": "confirmed"},
+    )
     try:
         db.commit()
     except IntegrityError as exc:
@@ -360,6 +372,17 @@ def cancel_booking(db: Session, user: User, booking_id: int) -> dict:
     item.status = "cancelled"
     item.cancelled_at = datetime.now(timezone.utc)
     item.cancelled_by = user.user_id
+    amenity = db.get(Amenity, item.amenity_id)
+    add_notifications(
+        db,
+        {item.resident_id} | user_ids_for_roles(db, ["super_admin", "admin", "committee_member"]),
+        event_type="booking.cancelled",
+        title="Amenity booking cancelled",
+        message=f"The {amenity.name if amenity else 'amenity'} booking was cancelled.",
+        resource_type="booking",
+        resource_id=item.id,
+        payload={"scope": "amenities", "status": "cancelled"},
+    )
     db.commit()
     db.refresh(item)
     return _booking_dict(db, item)
