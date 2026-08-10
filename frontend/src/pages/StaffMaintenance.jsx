@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import DashboardLayout from "@/components/layout/DashboardLayout";
+import { useRealtimeRefresh } from "@/features/realtime/useRealtimeRefresh";
 import { getGateSidebarItems } from "@/components/gate/GateSidebarConfig";
 import { useAuth } from "@/hooks/useAuth";
 import {
@@ -59,6 +60,7 @@ export default function StaffMaintenance() {
   };
 
   useEffect(() => { void Promise.resolve().then(() => loadTasks(filter)); }, [filter]); // eslint-disable-line react-hooks/exhaustive-deps
+  useRealtimeRefresh(["helpdesk"], () => loadTasks(filter));
   useEffect(() => {
     if (!toastMessage) return undefined;
     const timer = setTimeout(() => setToastMessage(""), 3000);

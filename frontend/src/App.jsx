@@ -3,6 +3,7 @@ import "./App.css";
 
 // Auth context
 import { AuthProvider } from "@/context/AuthContext";
+import { RealtimeProvider } from "@/features/realtime/RealtimeContext";
 import ProtectedRoute from "@/components/auth/ProtectedRoute";
 
 // Pages
@@ -43,6 +44,7 @@ function App() {
   return (
     <BrowserRouter>
       <AuthProvider>
+        <RealtimeProvider>
         <Routes>
           {/* Public routes */}
           <Route path="/" element={<LandingPage />} />
@@ -128,6 +130,7 @@ function App() {
             <ProtectedRoute allowedRoles={OPERATIONS_ROLES}><StaffRoster /></ProtectedRoute>
           } />
         </Routes>
+        </RealtimeProvider>
       </AuthProvider>
     </BrowserRouter>
   );

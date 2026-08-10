@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import DashboardLayout from "@/components/layout/DashboardLayout";
+import { useRealtimeRefresh } from "@/features/realtime/useRealtimeRefresh";
 import { getResidentSidebarItems } from "@/components/resident/ResidentSidebarConfig";
 import { useAuth } from "@/hooks/useAuth";
 import { communityError, getActivePoll, listEvents, listNotices, listVolunteers, markNoticeRead, signupVolunteer, updateRsvp, votePoll, withdrawVolunteer } from "@/features/community/api";
@@ -35,6 +36,7 @@ export default function ResidentCommunity() {
     finally { setLoading(false); }
   };
   useEffect(() => { void Promise.resolve().then(load); }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  useRealtimeRefresh(["community"], load);
 
   const handleVote = async (id) => {
     if (pollVoted || !poll || saving) return; setSaving(true); setError("");

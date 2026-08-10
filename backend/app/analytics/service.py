@@ -15,7 +15,8 @@ from app.analytics.schemas import (
     ActivityFeedItem
 )
 from app.finance.models import Payment
-from app.db.models.complaint import Complaint, ComplaintStatusHistory
+from app.db.models.complaint import Complaint
+from app.helpdesk.complaints.models import ComplaintStatusHistory
 from app.security.models import Visitor, AccessLog
 from app.amenities.models import AmenityBooking, Amenity
 

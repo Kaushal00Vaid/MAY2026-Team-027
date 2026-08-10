@@ -6,6 +6,7 @@ import {
 } from "lucide-react";
 import { Cell, Pie, PieChart, ResponsiveContainer, Tooltip } from "recharts";
 import DashboardLayout from "@/components/layout/DashboardLayout";
+import { useRealtimeRefresh } from "@/features/realtime/useRealtimeRefresh";
 import {
   downloadAnnualAudit, financeError, generateBulkInvoices, getAdminFinance,
   getFinanceLedger, saveBlob,
@@ -59,6 +60,7 @@ export default function AdminFinance() {
   // Data fetching intentionally initializes screen state from the API.
   // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => { load(); }, [load]);
+  useRealtimeRefresh(["finance"], load);
   useEffect(() => {
     if (!toast) return undefined;
     const timer = setTimeout(() => setToast(""), 3500);
