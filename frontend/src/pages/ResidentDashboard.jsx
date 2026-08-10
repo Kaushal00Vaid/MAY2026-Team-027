@@ -1,6 +1,5 @@
 import { useState, useEffect } from "react";
 import {
-  LayoutDashboard,
   Wallet,
   Wrench,
   CalendarDays,
@@ -12,32 +11,54 @@ import {
   CreditCard,
   Download,
   AlertCircle,
-  Bell,
-  Megaphone
+  Megaphone,
+  Loader2,
+  RefreshCw
 } from "lucide-react";
 import DashboardLayout from "@/components/layout/DashboardLayout";
-
+import { getResidentSidebarItems } from "@/components/resident/ResidentSidebarConfig";
 import { getResidentAnalytics } from "@/api/analytics";
+import { useAuth } from "@/hooks/useAuth";
+
+const QR_PATTERN = [
+  true, true, false, true,
+  true, false, true, false,
+  false, true, true, true,
+  true, false, true, true,
+];
 
 export default function ResidentDashboard() {
   const [ticketFilter, setTicketFilter] = useState("all");
   const [showQRModal, setShowQRModal] = useState(false);
   const [analytics, setAnalytics] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+  const [requestKey, setRequestKey] = useState(0);
+  const { user } = useAuth();
 
   useEffect(() => {
+    let active = true;
+
     const fetchData = async () => {
       try {
         const response = await getResidentAnalytics();
-        setAnalytics(response.data);
-      } catch (error) {
-        console.error("Failed to fetch resident analytics", error);
+        if (active) setAnalytics(response.data);
+      } catch {
+        if (active) setError("We couldn't load your dashboard right now.");
       } finally {
-        setLoading(false);
+        if (active) setLoading(false);
       }
     };
+
     fetchData();
-  }, []);
+    return () => { active = false; };
+  }, [requestKey]);
+
+  const retry = () => {
+    setError("");
+    setLoading(true);
+    setRequestKey((key) => key + 1);
+  };
 
   const getIconForType = (type) => {
     const t = type?.toLowerCase() || '';
@@ -52,6 +73,8 @@ export default function ResidentDashboard() {
   const bookings = analytics?.bookings || [];
   const events = analytics?.events || [];
   const balance = analytics?.balance || { total_due: 0 };
+  const residentName = user?.first_name?.trim() || "Resident";
+  const fullName = [user?.first_name, user?.last_name].filter(Boolean).join(" ") || "Resident";
 
   const filteredTickets = tickets.filter(t => {
     if (ticketFilter === "open") return t.status !== "Resolved" && t.status !== "Closed";
@@ -60,13 +83,37 @@ export default function ResidentDashboard() {
   });
 
   return (
-    <DashboardLayout sidebarItems={getResidentSidebarItems("/resident")} userRole="Resident Portal" userName="Ananya">
+    <DashboardLayout sidebarItems={getResidentSidebarItems("/resident")} userRole="Resident Portal" userName={fullName}>
+      {loading && (
+        <div className="min-h-[70vh] flex items-center justify-center p-6" role="status" aria-live="polite">
+          <div className="flex items-center gap-3 text-sm font-semibold text-gray-500">
+            <Loader2 className="animate-spin text-primary" size={22} />
+            Loading your dashboard…
+          </div>
+        </div>
+      )}
+
+      {!loading && error && (
+        <div className="min-h-[70vh] flex items-center justify-center p-6">
+          <div className="w-full max-w-md bg-white p-7 rounded-2xl border border-red-100 shadow-sm text-center" role="alert">
+            <AlertCircle className="mx-auto text-red-500 mb-3" size={28} />
+            <h1 className="text-lg font-bold text-[#0f2336]">Unable to load dashboard</h1>
+            <p className="text-sm text-gray-500 mt-2">{error} Please check your connection and try again.</p>
+            <button onClick={retry} className="mt-5 inline-flex items-center justify-center gap-2 px-5 py-2.5 bg-[#0f2336] text-white text-sm font-semibold rounded-xl hover:bg-[#16334f] transition-colors">
+              <RefreshCw size={15} /> Retry
+            </button>
+          </div>
+        </div>
+      )}
+
+      {!loading && !error && (
+      <>
       <div className="p-6 md:p-8 max-w-7xl mx-auto animate-in fade-in duration-500">
         
         {/* Top Header & Balance */}
         <div className="flex flex-col lg:flex-row lg:items-end justify-between gap-6 mb-8">
           <div>
-            <h1 className="text-3xl md:text-4xl font-extrabold text-[#0f2336] tracking-tight">Welcome back, Ananya!</h1>
+            <h1 className="text-3xl md:text-4xl font-extrabold text-[#0f2336] tracking-tight">Welcome back, {residentName}!</h1>
             <p className="text-gray-500 mt-2 text-base">Here's what's happening in Green Valley today.</p>
           </div>
 
@@ -204,7 +251,7 @@ export default function ResidentDashboard() {
                 My Bookings
               </h3>
               <div className="relative pl-4 border-l-2 border-emerald-100 space-y-4">
-                {bookings.map((b, i) => (
+                {bookings.map((b) => (
                   <div key={b.id} className={`relative ${!b.is_today ? 'opacity-60' : ''}`}>
                     <span className={`absolute -left-[21px] top-1 w-3 h-3 rounded-full border-2 bg-white ${
                       b.is_today ? 'border-emerald-500' : 'border-gray-300'
@@ -313,8 +360,8 @@ export default function ResidentDashboard() {
                 
                 {/* Mock QR Content */}
                 <div className="w-full h-full bg-gray-200 grid grid-cols-4 grid-rows-4 gap-1 p-1">
-                  {[...Array(16)].map((_, i) => (
-                    <div key={i} className={`rounded-sm ${Math.random() > 0.4 ? 'bg-[#0f2336]' : 'bg-transparent'}`}></div>
+                  {QR_PATTERN.map((filled, index) => (
+                    <div key={index} className={`rounded-sm ${filled ? 'bg-[#0f2336]' : 'bg-transparent'}`}></div>
                   ))}
                 </div>
               </div>
@@ -328,6 +375,8 @@ export default function ResidentDashboard() {
             </div>
           </div>
         </div>
+      )}
+      </>
       )}
     </DashboardLayout>
   );
