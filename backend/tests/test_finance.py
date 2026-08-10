@@ -4,10 +4,12 @@ tests/test_finance.py — Tests for GET/POST /api/finance/transactions.
 Uses the same dependency-override pattern as test_helpdesk.py.
 """
 
+import pytest
 from fastapi.testclient import TestClient
 from app.main import app
 from app.dependencies import get_current_user
 from app.db.models.user import User
+from app.db.models.role import Role, RoleName, UserRole
 
 client = TestClient(app)
 
@@ -15,16 +17,25 @@ client = TestClient(app)
 # ── Auth override (simulates an admin user) ──────────────────────────────────
 
 def _mock_admin():
-    return User(
+    user = User(
         user_id=1,
         first_name="Admin",
         last_name="User",
         phone_number="9999999999",
         email="admin@test.com",
     )
+    role = Role(role_id=2, role_name=RoleName.admin)
+    assignment = UserRole(user_id=1, role_id=2)
+    assignment.role = role
+    user.roles = [assignment]
+    return user
 
 
-app.dependency_overrides[get_current_user] = _mock_admin
+@pytest.fixture(autouse=True)
+def _isolated_admin_override():
+    app.dependency_overrides[get_current_user] = _mock_admin
+    yield
+    app.dependency_overrides.clear()
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────

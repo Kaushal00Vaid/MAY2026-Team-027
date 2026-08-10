@@ -1,15 +1,25 @@
+import pytest
 from fastapi.testclient import TestClient
 from app.main import app
 from app.dependencies import get_current_user
 from app.db.models.user import User
+from app.db.models.role import Role, RoleName, UserRole
 
 client = TestClient(app)
 
 def override_get_current_user():
     user = User(user_id=1, first_name="Test", last_name="User", phone_number="1234567890", email="test@test.com")
+    role = Role(role_id=4, role_name=RoleName.flat_owner)
+    assignment = UserRole(user_id=1, role_id=4)
+    assignment.role = role
+    user.roles = [assignment]
     return user
 
-app.dependency_overrides[get_current_user] = override_get_current_user
+@pytest.fixture(autouse=True)
+def _isolated_resident_override():
+    app.dependency_overrides[get_current_user] = override_get_current_user
+    yield
+    app.dependency_overrides.clear()
 
 def test_create_complaint():
     response = client.post(
@@ -35,7 +45,7 @@ def test_get_complaints():
     if len(data) > 0:
         assert "id" in data[0]
 
-def test_update_complaint():
+def test_resident_cannot_update_complaint_status():
     # First create one
     create_resp = client.post(
         "/api/helpdesk/complaints",
@@ -50,7 +60,6 @@ def test_update_complaint():
     # Update it
     update_resp = client.patch(
         f"/api/helpdesk/complaints/{complaint_id}",
-        json={"status": "In Progress"}
+        json={"status": "In Progress", "expected_version": create_resp.json()["version"]}
     )
-    assert update_resp.status_code == 200
-    assert update_resp.json()["status"] == "In Progress"
+    assert update_resp.status_code == 403
