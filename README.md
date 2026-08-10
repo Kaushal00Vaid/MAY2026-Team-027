@@ -62,6 +62,7 @@ The backend is built with FastAPI, uses Pydantic for data validation, and connec
     python -m venv venv
     OR
     uv venv venv
+    ```
 2. Activate your virtual environment:
 * Windows: venv\Scripts\activate
 * Mac/Linux: source venv/bin/activate
@@ -75,3 +76,25 @@ The backend is built with FastAPI, uses Pydantic for data validation, and connec
     ```bash
     uvicorn main:app --reload
     ```
+
+### Scheduled worker
+
+Scheduled work runs as a separate long-lived process and must not be embedded in
+the web server. After applying Alembic migrations, start exactly one worker
+service per environment from the `backend` directory:
+
+```bash
+.venv/bin/python scheduler.py
+```
+
+The worker performs targeted notice fan-out, invoice overdue processing and
+payment reminders, visitor/pass expiry, and amenity booking completion. Jobs use
+PostgreSQL advisory locks, so an accidentally duplicated worker skips overlapping
+runs safely. Configure its timezone, retry policy, intervals, late fee, startup
+catch-up, and misfire grace period with the `SCHEDULER_*` variables documented in
+`backend/.env.example`.
+
+In production, supervise the process independently from Uvicorn and configure
+automatic restart plus log collection. Readiness should only be declared after
+`alembic upgrade head` succeeds; the worker exits job attempts visibly on database
+errors so monitoring can alert on `job_failed`, `job_error`, or `job_missed` logs.

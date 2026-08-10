@@ -1,3 +1,4 @@
+from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from functools import lru_cache
 
@@ -28,6 +29,17 @@ class Settings(BaseSettings):
     ENVIRONMENT: str = "development"
     MEDIA_ROOT: str = "./media"
     HELPDESK_MAX_UPLOAD_BYTES: int = 5 * 1024 * 1024
+
+    # Scheduled work (run as a separate process: python scheduler.py)
+    SCHEDULER_TIMEZONE: str = "Asia/Kolkata"
+    SCHEDULER_RUN_ON_STARTUP: bool = True
+    SCHEDULER_MAX_ATTEMPTS: int = Field(default=3, ge=1, le=10)
+    SCHEDULER_RETRY_DELAY_SECONDS: float = Field(default=1.0, ge=0, le=60)
+    SCHEDULER_MISFIRE_GRACE_SECONDS: int = Field(default=300, ge=1)
+    SCHEDULER_FANOUT_INTERVAL_SECONDS: int = Field(default=60, ge=10)
+    SCHEDULER_EXPIRY_INTERVAL_SECONDS: int = Field(default=60, ge=10)
+    SCHEDULER_BOOKING_INTERVAL_SECONDS: int = Field(default=60, ge=10)
+    SCHEDULER_LATE_FEE_PAISE: int = Field(default=50_000, ge=0)
 
     # Google OAuth
     GOOGLE_CLIENT_ID: str = ""
