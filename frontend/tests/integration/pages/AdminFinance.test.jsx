@@ -2,7 +2,7 @@
 
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import AdminFinance from "./AdminFinance";
+import AdminFinance from "@/pages/AdminFinance";
 
 const api = vi.hoisted(() => ({
   downloadAnnualAudit: vi.fn(), generateBulkInvoices: vi.fn(), getAdminFinance: vi.fn(),

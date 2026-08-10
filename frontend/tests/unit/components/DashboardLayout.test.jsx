@@ -4,7 +4,7 @@ import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { Headphones, LayoutDashboard } from "lucide-react";
-import DashboardLayout from "./DashboardLayout";
+import DashboardLayout from "@/components/layout/DashboardLayout";
 
 const logout = vi.fn().mockResolvedValue(undefined);
 

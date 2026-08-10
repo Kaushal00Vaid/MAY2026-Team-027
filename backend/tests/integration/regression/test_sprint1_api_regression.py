@@ -95,7 +95,7 @@ def resident_client():
     app.dependency_overrides[get_current_user] = _mock_resident
     client = TestClient(app)
     yield client
-    app.dependency_overrides.clear()
+    app.dependency_overrides.pop(get_current_user, None)
 
 
 @pytest.fixture
@@ -104,7 +104,7 @@ def admin_client():
     app.dependency_overrides[get_current_user] = _mock_admin
     client = TestClient(app)
     yield client
-    app.dependency_overrides.clear()
+    app.dependency_overrides.pop(get_current_user, None)
 
 
 @pytest.fixture
@@ -113,13 +113,13 @@ def super_admin_client():
     app.dependency_overrides[get_current_user] = _mock_super_admin
     client = TestClient(app)
     yield client
-    app.dependency_overrides.clear()
+    app.dependency_overrides.pop(get_current_user, None)
 
 
 @pytest.fixture
 def unauth_client():
     """TestClient with no auth overrides (simulates unauthenticated requests)."""
-    app.dependency_overrides.clear()
+    app.dependency_overrides.pop(get_current_user, None)
     return TestClient(app)
 
 

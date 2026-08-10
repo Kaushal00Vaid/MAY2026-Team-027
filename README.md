@@ -84,6 +84,9 @@ MAY2026-Team-027/
 │   │   ├── App.jsx                 # Route definitions
 │   │   └── main.jsx                # React entry point
 │   ├── package.json
+│   ├── tests/
+│   │   ├── unit/                   # API clients, hooks, and isolated components
+│   │   └── integration/            # Rendered page/API interaction tests
 │   └── vite.config.js
 ├── docs/                           # Architecture & design documentation
 │   ├── db_design.md                # Database schema design document
@@ -189,6 +192,17 @@ uv run python -m pytest tests/ -v
 
 # Run with short output
 uv run python -m pytest tests/ -q --tb=short
+
+cd ../frontend
+
+# Frontend unit and integration suites
+npm run test:unit
+npm run test:integration
+
+# All frontend tests, lint, and production compilation
+npm test
+npm run lint
+npm run build
 ```
 
 ---

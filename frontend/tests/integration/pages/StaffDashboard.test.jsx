@@ -2,7 +2,7 @@
 
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import StaffDashboard from "./StaffDashboard";
+import StaffDashboard from "@/pages/StaffDashboard";
 
 const getStaffAnalytics = vi.fn();
 const navigate = vi.fn();

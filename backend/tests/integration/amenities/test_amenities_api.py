@@ -14,7 +14,6 @@ Run from backend/:
 """
 from datetime import date, datetime, timezone, timedelta
 
-import pytest
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -133,9 +132,7 @@ class TestAmenitiesUpdate:
 class TestAmenitiesAvailability:
     def test_availability_returns_200(self, resident_client):
         """TC-AME-15: GET /api/v1/amenities/{id}/availability → 200."""
-        # Create an amenity first
-        amenity_resp = admin_client_fixture = None
-        # We'll just test with a likely existing amenity or expect 404
+        # Seed data may or may not include the conventional first amenity.
         resp = resident_client.get(
             f"/api/v1/amenities/1/availability?start_date={date.today()}&days=7"
         )
@@ -164,7 +161,7 @@ class TestBookings:
         return {
             "amenity_id": amenity_id,
             "starts_at": (datetime.now(timezone.utc) + timedelta(days=1)).isoformat(),
-            "purpose": "Exercise",
+            "purpose": "Fitness",
         }
 
     def test_list_bookings_returns_paginated_response(self, resident_client):

@@ -235,7 +235,7 @@ backend/
 ## Running Tests
 
 ```bash
-# Unit tests — no database required, runs in ~0.5s
+# Unit tests — isolated rules, schemas, analytics helpers, and scheduler behavior
 uv run python -m pytest tests/unit/ -v
 
 # Integration tests — requires PostgreSQL running with .env configured
@@ -252,8 +252,9 @@ uv run python -m pytest tests/integration/auth/ -v
 
 - **`conftest.py`** — provides 6 role-based `TestClient` fixtures:
   `resident_client`, `admin_client`, `super_admin_client`, `committee_client`, `staff_client`, `unauth_client`
-- **Unit tests** — test schemas, business logic, permission functions in isolation (147 tests, all pass)
-- **Integration tests** — test full HTTP request/response cycle via `FastAPI TestClient` with `dependency_overrides` for auth bypass (~200 test cases across 10 modules)
+- **Unit tests** — schemas, business logic, analytics helpers, permissions, and scheduler behavior under `tests/unit/`
+- **Integration tests** — complete HTTP request/response cycles under `tests/integration/`, organized by API domain; legacy Sprint 1 regressions remain preserved in named regression files
+- **`pytest.ini`** — fixes test discovery at `tests/` and declares strict `unit`/`integration` markers for future selective tagging
 
 ---
 

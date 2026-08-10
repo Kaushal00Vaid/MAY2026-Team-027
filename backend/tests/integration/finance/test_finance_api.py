@@ -11,7 +11,6 @@ Run from backend/:
     uv run pytest tests/integration/finance/ -v
 """
 
-import pytest
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -187,17 +186,17 @@ class TestFinanceV1AdminSummary:
 
 
 class TestFinanceV1Ledger:
-    def test_ledger_returns_paginated_response(self, resident_client):
+    def test_ledger_returns_paginated_response(self, admin_client):
         """TC-FINv1-06: GET /api/v1/finance/ledger → 200 with paginated ledger."""
-        resp = resident_client.get("/api/v1/finance/ledger")
+        resp = admin_client.get("/api/v1/finance/ledger")
         assert resp.status_code == 200
         data = resp.json()
         assert "items" in data
         assert "total" in data
 
-    def test_ledger_pagination(self, resident_client):
+    def test_ledger_pagination(self, admin_client):
         """TC-FINv1-07: GET /api/v1/finance/ledger?page=1&page_size=5."""
-        resp = resident_client.get("/api/v1/finance/ledger?page=1&page_size=5")
+        resp = admin_client.get("/api/v1/finance/ledger?page=1&page_size=5")
         assert resp.status_code == 200
         assert len(resp.json()["items"]) <= 5
 
@@ -212,7 +211,13 @@ class TestFinanceV1Expenses:
         """TC-FINv1-09: POST /api/v1/finance/expenses as resident → 403."""
         resp = resident_client.post(
             "/api/v1/finance/expenses",
-            json={"category": "Cleaning", "amount_paise": 5000, "vendor": "CleanCo"},
+            json={
+                "category": "Cleaning",
+                "amount_paise": 5000,
+                "vendor": "CleanCo",
+                "description": "Monthly cleaning",
+                "expense_date": "2026-08-11",
+            },
         )
         assert resp.status_code == 403
 

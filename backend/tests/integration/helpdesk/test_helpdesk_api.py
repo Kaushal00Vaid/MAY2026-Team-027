@@ -13,7 +13,6 @@ Run from backend/:
     uv run pytest tests/integration/helpdesk/ -v
 """
 
-import pytest
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -150,39 +149,42 @@ class TestComplaintGet:
 
 
 class TestComplaintUpdate:
-    def test_update_complaint_status_returns_200(self, resident_client):
+    def test_update_complaint_status_returns_200(self, admin_client):
         """TC-HD-16: PATCH /api/v1/complaints/{id} with valid status → 200."""
-        cid = _create_complaint(resident_client).json()["id"]
-        resp = resident_client.patch(
+        complaint = _create_complaint(admin_client).json()
+        cid = complaint["id"]
+        resp = admin_client.patch(
             f"/api/v1/complaints/{cid}",
-            json={"status": "In Progress"},
+            json={"status": "In Progress", "expected_version": complaint["version"]},
         )
         assert resp.status_code == 200
         assert resp.json()["status"] == "In Progress"
 
-    def test_update_complaint_invalid_status_returns_400(self, resident_client):
+    def test_update_complaint_invalid_status_returns_422(self, admin_client):
         """TC-HD-17: PATCH with invalid status value → 400."""
-        cid = _create_complaint(resident_client).json()["id"]
-        resp = resident_client.patch(
+        complaint = _create_complaint(admin_client).json()
+        cid = complaint["id"]
+        resp = admin_client.patch(
             f"/api/v1/complaints/{cid}",
-            json={"status": "Done"},  # invalid
+            json={"status": "Done", "expected_version": complaint["version"]},
         )
-        assert resp.status_code == 400
+        assert resp.status_code == 422
 
-    def test_update_complaint_empty_status_returns_400(self, resident_client):
+    def test_update_complaint_empty_status_returns_422(self, admin_client):
         """TC-HD-18: PATCH with empty string status → 400 from service validation."""
-        cid = _create_complaint(resident_client).json()["id"]
-        resp = resident_client.patch(
+        complaint = _create_complaint(admin_client).json()
+        cid = complaint["id"]
+        resp = admin_client.patch(
             f"/api/v1/complaints/{cid}",
-            json={"status": ""},
+            json={"status": "", "expected_version": complaint["version"]},
         )
-        assert resp.status_code == 400
+        assert resp.status_code == 422
 
-    def test_update_nonexistent_complaint_returns_404(self, resident_client):
+    def test_update_nonexistent_complaint_returns_404(self, admin_client):
         """TC-HD-19: PATCH /api/v1/complaints/99999 → 404."""
-        resp = resident_client.patch(
+        resp = admin_client.patch(
             "/api/v1/complaints/99999",
-            json={"status": "In Progress"},
+            json={"status": "In Progress", "expected_version": 1},
         )
         assert resp.status_code == 404
 

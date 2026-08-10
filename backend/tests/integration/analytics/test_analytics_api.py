@@ -13,7 +13,6 @@ Run from backend/:
     uv run pytest tests/integration/analytics/ -v
 """
 
-import pytest
 
 
 # ─────────────────────────────────────────────────────────────────────────────

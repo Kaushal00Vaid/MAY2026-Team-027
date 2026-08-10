@@ -14,6 +14,7 @@ export const completePayment = (data, idempotencyKey) =>
   axiosInstance.post(`${base}/payments`, data, {
     headers: { "Idempotency-Key": idempotencyKey },
   });
+export const createExpense = (data) => axiosInstance.post(`${base}/expenses`, data);
 export const downloadStatement = () =>
   axiosInstance.get(`${base}/statement`, { responseType: "blob" });
 export const downloadAnnualAudit = () =>

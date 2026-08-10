@@ -54,6 +54,9 @@ Open **http://localhost:5173** in your browser.
 | `npm run build` | Build production bundle to `dist/` |
 | `npm run preview` | Preview production build locally |
 | `npm run lint` | Run ESLint across the codebase |
+| `npm test` | Run every Vitest suite once |
+| `npm run test:unit` | Run API-client, hook, and isolated component tests |
+| `npm run test:integration` | Run rendered page integration tests |
 
 ---
 
@@ -80,14 +83,14 @@ frontend/
 │   ├── components/                  # Reusable UI components
 │   │   └── ui/                      # shadcn/ui primitives (Button, Card, Dialog, etc.)
 │   │
-│   ├── features/                    # Feature-scoped UI modules (domain logic)
-│   │   ├── amenities/               # Amenity browsing & booking UI stubs
-│   │   ├── community/               # Notices, events, polls UI stubs
+│   ├── features/                    # Feature-scoped UI and API modules
+│   │   ├── amenities/               # Amenity browsing, availability & bookings
+│   │   ├── community/               # Notices, events, polls, directory & volunteers
 │   │   ├── finance/                 # Finance dashboard components
-│   │   ├── helpdesk/                # Complaint filing & tracking UI stubs
-│   │   ├── operations/              # Staff operations UI stubs
-│   │   ├── realtime/                # Notification bell (static placeholder)
-│   │   └── security/                # Visitor & guest pass UI stubs
+│   │   ├── helpdesk/                # Complaints, comments & maintenance work
+│   │   ├── operations/              # Tasks, inventory, roster & attendance
+│   │   ├── realtime/                # Notification menu & WebSocket refresh
+│   │   └── security/                # Visitors, guest passes, resident ID & access logs
 │   │
 │   ├── hooks/                       # Custom React hooks
 │   ├── lib/                         # Utility helpers (utils.js, date formatting, etc.)
@@ -123,6 +126,14 @@ frontend/
 │   ├── App.css                      # Global styles & Tailwind import rules
 │   ├── index.css                    # Base CSS reset
 │   └── main.jsx                     # React DOM entry point
+│
+├── tests/
+│   ├── unit/
+│   │   ├── api/                     # Frontend ↔ backend route contract tests
+│   │   ├── components/              # Isolated component behavior
+│   │   └── hooks/                   # Hook behavior
+│   └── integration/
+│       └── pages/                   # Rendered page/API interaction tests
 │
 ├── components.json                  # shadcn/ui configuration
 ├── eslint.config.js                 # ESLint flat config
@@ -171,7 +182,7 @@ frontend/
 | Route | Page | Description |
 |-------|------|-------------|
 | `/gate` | `SecurityDashboard` | Visitor gate control |
-| `/gate/staff` | `StaffDashboard` | Staff personal dashboard |
+| `/gate/dashboard` | `StaffDashboard` | Staff personal dashboard |
 | `/gate/maintenance` | `StaffMaintenance` | Work orders & maintenance tasks |
 | `/gate/operations` | `StaffOperations` | Daily operations checklist |
 | `/gate/inventory` | `StaffInventory` | Equipment & supply stock |
@@ -181,21 +192,21 @@ frontend/
 
 ## API Integration Status
 
-| Module | `src/api/` File | Status |
+| Module | Client module | Status |
 |--------|----------------|--------|
-| Auth | `auth.js` | ✅ Fully integrated |
-| Analytics | `analytics.js` | ✅ Fully integrated |
-| Finance (legacy) | `finance.js` | ✅ Integrated |
-| Users | `users.js` | ⚠️ Partial |
-| Finance V1 | _(missing)_ | ❌ Not wired |
-| Helpdesk | _(missing)_ | ❌ Not wired |
-| Amenities | _(missing)_ | ❌ Not wired |
-| Community | _(missing)_ | ❌ Not wired |
-| Operations | _(missing)_ | ❌ Not wired |
-| Security | _(missing)_ | ❌ Not wired |
-| Realtime / Notifications | _(missing)_ | ❌ Not wired |
+| Auth | `src/api/auth.js` | ✅ Integrated |
+| Analytics | `src/api/analytics.js` | ✅ Integrated |
+| Finance (legacy) | `src/api/finance.js` | ✅ Integrated |
+| Users | `src/api/users.js` | ✅ Integrated |
+| Finance V1 | `src/features/finance/api.js` | ✅ Integrated |
+| Helpdesk | `src/features/helpdesk/api.js` | ✅ Integrated |
+| Amenities | `src/features/amenities/api.js` | ✅ Integrated |
+| Community | `src/features/community/api.js` | ✅ Integrated |
+| Operations | `src/features/operations/api.js` | ✅ Integrated |
+| Security | `src/features/security/api.js` | ✅ Integrated |
+| Realtime / Notifications | `src/features/realtime/api.js` | ✅ Integrated |
 
-> See [`pending_integrations.md`](../docs/pending_integrations.md) for a full endpoint-by-endpoint breakdown and priority order.
+Route mappings are regression-tested in `tests/unit/api/apiClients.test.js`. See [`pending_integrations.md`](../docs/pending_integrations.md) for the current boundary between integrated endpoints and backend capabilities that do not yet have a corresponding product workflow.
 
 ---
 
