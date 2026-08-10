@@ -3,10 +3,23 @@ from sqlalchemy.orm import Session
 from app.db.database import get_db
 from app.dependencies import require_roles
 from app.db.models.user import User
-from app.analytics.schemas import AdminAnalyticsResponse, ResidentAnalyticsResponse, AdvancedAnalyticsResponse
-from app.analytics.service import get_admin_analytics, get_resident_analytics, get_advanced_analytics, export_analytics_csv
+from app.analytics.schemas import AdminAnalyticsResponse, ResidentAnalyticsResponse, AdvancedAnalyticsResponse, StaffAnalyticsResponse
+from app.analytics.service import get_admin_analytics, get_resident_analytics, get_advanced_analytics, export_analytics_csv, get_staff_analytics
 
 router = APIRouter()
+
+@router.get("/staff", response_model=StaffAnalyticsResponse)
+def read_staff_analytics(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(
+        require_roles("support_staff", "super_admin", "admin", "committee_member")
+    ),
+):
+    """
+    Retrieve aggregated analytics for the Staff Dashboard.
+    Requires staff or admin roles.
+    """
+    return get_staff_analytics(db)
 
 @router.get("/admin", response_model=AdminAnalyticsResponse)
 def read_admin_analytics(

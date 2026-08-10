@@ -24,7 +24,12 @@ from app.analytics.schemas import (
     VendorData,
     FinancialEfficiency,
     HeatmapDay,
-    HeatmapSlot
+    HeatmapSlot,
+    StaffAnalyticsResponse,
+    GateActivityAnalytics,
+    EventParticipationAnalytics,
+    InventoryStatusAnalytics,
+    RosterCoverageAnalytics
 )
 from app.finance.models import Payment, Invoice, Expense
 from app.db.models.complaint import Complaint
@@ -32,8 +37,9 @@ from app.helpdesk.complaints.models import ComplaintStatusHistory
 from app.db.models.user import User
 from app.security.models import Visitor, AccessLog
 from app.amenities.models import AmenityBooking, Amenity
-from app.community.models import CommunityEvent, Notice
+from app.community.models import CommunityEvent, Notice, EventRsvp
 from app.helpdesk.work_orders.models import MaintenanceWorkOrder
+from app.operations.models import InventoryItem, ShiftAssignment, StaffAttendance
 
 def time_ago_str(dt: datetime) -> str:
     if not dt:
@@ -419,3 +425,73 @@ def export_analytics_csv(db: Session) -> str:
     lines.append("")
     
     return "\n".join(lines)
+
+def get_staff_analytics(db: Session) -> StaffAnalyticsResponse:
+    now = datetime.now(timezone.utc)
+    start_of_today = now.replace(hour=0, minute=0, second=0, microsecond=0)
+    
+    # 1. Gate Activity
+    total_entries_today = db.query(AccessLog).filter(AccessLog.occurred_at >= start_of_today).count()
+    pending_approvals = db.query(Visitor).filter(Visitor.status == 'pending').count()
+    gate_activity = GateActivityAnalytics(
+        total_entries_today=total_entries_today,
+        pending_approvals=pending_approvals
+    )
+    
+    # 2. Event Participation (Top 3 upcoming)
+    upcoming_events = db.query(CommunityEvent).filter(
+        CommunityEvent.starts_at > now,
+        CommunityEvent.is_active == True
+    ).order_by(CommunityEvent.starts_at.asc()).limit(3).all()
+    
+    events_data = []
+    for e in upcoming_events:
+        rsvp_count = db.query(EventRsvp).filter(
+            EventRsvp.event_id == e.id,
+            EventRsvp.status == 'going'
+        ).count()
+        events_data.append(EventParticipationAnalytics(
+            id=e.id,
+            title=e.title,
+            rsvp_count=rsvp_count,
+            starts_at=e.starts_at.isoformat()
+        ))
+        
+    # 3. Inventory Status
+    total_items = db.query(InventoryItem).filter(InventoryItem.is_active == True).count()
+    low_stock_items = db.query(InventoryItem).filter(
+        InventoryItem.is_active == True,
+        InventoryItem.quantity <= InventoryItem.reorder_threshold
+    ).count()
+    inventory = InventoryStatusAnalytics(
+        low_stock_items=low_stock_items,
+        total_items=total_items
+    )
+    
+    # 4. Roster Coverage
+    today_date = now.date()
+    # Mask logic: 1 << today.weekday()
+    day_mask_bit = 1 << today_date.weekday()
+    
+    active_staff_today = db.query(ShiftAssignment).filter(
+        ShiftAssignment.status == 'active',
+        ShiftAssignment.days_mask.op('&')(day_mask_bit) > 0
+    ).count()
+    
+    checked_in_now = db.query(StaffAttendance).filter(
+        StaffAttendance.attendance_date == today_date,
+        StaffAttendance.check_in_at.isnot(None),
+        StaffAttendance.check_out_at.is_(None)
+    ).count()
+    
+    roster = RosterCoverageAnalytics(
+        active_staff_today=active_staff_today,
+        checked_in_now=checked_in_now
+    )
+    
+    return StaffAnalyticsResponse(
+        gate_activity=gate_activity,
+        events=events_data,
+        inventory=inventory,
+        roster=roster
+    )
