@@ -21,6 +21,7 @@ from app.finance.router_v1 import router as finance_v1_router
 from app.security.router import router as security_router
 from app.community.router import router as community_router
 from app.analytics.router import router as analytics_router
+from app.realtime.router import router as realtime_router
 
 
 def create_app() -> FastAPI:
@@ -76,6 +77,7 @@ def create_app() -> FastAPI:
         prefix="/api/v1/analytics",
         tags=["Analytics"],
     )
+    app.include_router(realtime_router)
 
     # Health check
     @app.get("/", tags=["Health"])

@@ -47,6 +47,7 @@ from app.helpdesk.work_orders.models import (  # noqa: F401
     WorkOrderResolutionPhoto,
 )
 from app.security.models import AccessLog, GuestPass, Visitor  # noqa: F401
+from app.realtime.models import Notification, WebSocketTicket  # noqa: F401
 
 __all__ = [
     "User",
@@ -97,4 +98,6 @@ __all__ = [
     "StockMovement",
     "ShiftAssignment",
     "StaffAttendance",
+    "Notification",
+    "WebSocketTicket",
 ]

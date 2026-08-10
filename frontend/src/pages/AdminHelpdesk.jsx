@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { LayoutDashboard, WalletCards, Headset, ShieldCheck, CalendarCheck, Users, BarChart3, Filter, Plus, AlertTriangle, Clock, ArrowRight, Droplet, Wrench, Search, CheckCircle2, X, UploadCloud, UserCog } from "lucide-react";
 import DashboardLayout from "@/components/layout/DashboardLayout";
+import { useRealtimeRefresh } from "@/features/realtime/useRealtimeRefresh";
 import { useAuth } from "@/hooks/useAuth";
 import {
   addComment, createComplaint, errorMessage, escalateComplaint, getStats,
@@ -70,6 +71,7 @@ export default function AdminHelpdesk() {
     const timer = setTimeout(() => load(search, statusFilter), 250);
     return () => clearTimeout(timer);
   }, [search, statusFilter]); // eslint-disable-line react-hooks/exhaustive-deps
+  useRealtimeRefresh(["helpdesk"], () => load(search, statusFilter));
   useEffect(() => { if (!toast) return undefined; const timer = setTimeout(() => setToast(""), 3500); return () => clearTimeout(timer); }, [toast]);
 
   const openResolve = async (ticket) => {
