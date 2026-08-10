@@ -101,6 +101,10 @@ class VendorData(BaseModel):
     res: str
     sla: str
 
+class AmenityAnalyticsOption(BaseModel):
+    id: int
+    name: str
+
 class FinancialEfficiency(BaseModel):
     ratio: int
     collections: str
@@ -108,9 +112,12 @@ class FinancialEfficiency(BaseModel):
 
 class HeatmapSlot(BaseModel):
     value: int # 0 to 4 intensity
+    bookings: int
+    label: str
 
 class HeatmapDay(BaseModel):
     day: str
+    date: str
     slots: List[HeatmapSlot]
 
 class AdvancedAnalyticsResponse(BaseModel):
@@ -118,6 +125,8 @@ class AdvancedAnalyticsResponse(BaseModel):
     vendors: List[VendorData]
     financial: FinancialEfficiency
     heatmap: List[HeatmapDay]
+    amenities: List[AmenityAnalyticsOption]
+    selected_amenity_id: int | None
 
 class GateActivityAnalytics(BaseModel):
     total_entries_today: int

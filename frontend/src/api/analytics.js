@@ -9,8 +9,10 @@ export const getAdminAnalytics = ({ months = 6 } = {}) => {
   return axiosInstance.get("/api/v1/analytics/admin", { params: { months } });
 };
 
-export const getAdminAdvancedAnalytics = () => {
-  return axiosInstance.get("/api/v1/analytics/advanced");
+export const getAdminAdvancedAnalytics = ({ amenityId } = {}) => {
+  return axiosInstance.get("/api/v1/analytics/advanced", {
+    params: amenityId ? { amenity_id: amenityId } : {},
+  });
 };
 
 /**

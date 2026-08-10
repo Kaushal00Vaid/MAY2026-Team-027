@@ -7,9 +7,9 @@ import {
   CalendarCheck,
   Users,
   BarChart3,
-  ChevronDown,
   Download,
   CheckCircle2,
+  AlertCircle,
   X,
   UserCog,
   Loader2
@@ -45,28 +45,30 @@ export default function AdminAnalytics() {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
-  const [showToast, setShowToast] = useState(false);
+  const [toast, setToast] = useState(null);
   const [exporting, setExporting] = useState(false);
+  const [amenityId, setAmenityId] = useState(null);
+  const [showAllVendors, setShowAllVendors] = useState(false);
+  const [retryKey, setRetryKey] = useState(0);
 
   useEffect(() => {
-    getAdminAdvancedAnalytics()
-      .then(res => setData(res.data))
-      .catch(err => setError("Unable to load analytics."))
+    getAdminAdvancedAnalytics({ amenityId })
+      .then(res => { setData(res.data); setError(""); })
+      .catch(() => setError("Unable to load analytics."))
       .finally(() => setLoading(false));
-  }, []);
+  }, [amenityId, retryKey]);
 
   useEffect(() => {
     let timer;
-    if (showToast) {
-      timer = setTimeout(() => setShowToast(false), 3000);
+    if (toast) {
+      timer = setTimeout(() => setToast(null), 3000);
     }
     return () => clearTimeout(timer);
-  }, [showToast]);
+  }, [toast]);
 
   const handleExport = async () => {
     if (exporting) return;
     setExporting(true);
-    setShowToast(true);
     try {
       const response = await downloadAnalyticsExport();
       const url = window.URL.createObjectURL(new Blob([response.data]));
@@ -76,8 +78,10 @@ export default function AdminAnalytics() {
       document.body.appendChild(link);
       link.click();
       link.parentNode.removeChild(link);
-    } catch (err) {
-      console.error(err);
+      window.URL.revokeObjectURL(url);
+      setToast({ type: "success", title: "Export complete", message: "Analytics report downloaded." });
+    } catch {
+      setToast({ type: "error", title: "Export failed", message: "Please try downloading the report again." });
     } finally {
       setExporting(false);
     }
@@ -96,7 +100,10 @@ export default function AdminAnalytics() {
   if (error || !data) {
     return (
       <DashboardLayout sidebarItems={sidebarItems} userRole="Residential Admin">
-        <div className="p-8 text-red-500 font-bold">{error || "Failed to load"}</div>
+        <div className="p-8">
+          <div role="alert" className="text-red-500 font-bold">{error || "Failed to load"}</div>
+          <button onClick={() => { setError(""); setLoading(true); setRetryKey((value) => value + 1); }} className="mt-4 px-4 py-2 bg-[#0f2336] text-white text-sm font-semibold rounded-lg">Retry</button>
+        </div>
       </DashboardLayout>
     );
   }
@@ -106,14 +113,14 @@ export default function AdminAnalytics() {
       <div className="p-6 md:p-8 max-w-[1400px] mx-auto space-y-6 animate-in fade-in duration-500 relative">
         
         {/* Toast Notification */}
-        {showToast && (
+        {toast && (
           <div className="fixed bottom-6 right-6 bg-[#0f2336] text-white px-6 py-4 rounded-xl shadow-2xl flex items-center gap-3 animate-in slide-in-from-bottom-5 z-50">
-            <CheckCircle2 className="text-emerald-400" size={20} />
+            {toast.type === "success" ? <CheckCircle2 className="text-emerald-400" size={20} /> : <AlertCircle className="text-red-400" size={20} />}
             <div className="flex flex-col">
-              <span className="font-bold text-sm">Export Started</span>
-              <span className="text-xs text-gray-300">Analytics report is being generated.</span>
+              <span className="font-bold text-sm">{toast.title}</span>
+              <span className="text-xs text-gray-300">{toast.message}</span>
             </div>
-            <button onClick={() => setShowToast(false)} className="ml-4 text-gray-400 hover:text-white transition-colors">
+            <button aria-label="Dismiss notification" onClick={() => setToast(null)} className="ml-4 text-gray-400 hover:text-white transition-colors">
               <X size={16} />
             </button>
           </div>
@@ -142,15 +149,21 @@ export default function AdminAnalytics() {
           <div className="lg:col-span-2 bg-white p-6 md:p-8 rounded-3xl border border-gray-100 shadow-sm flex flex-col">
             <div className="flex items-center justify-between mb-8">
               <h3 className="text-lg font-bold text-[#0f2336]">Amenity Utilization Heatmap</h3>
-              <div className="flex items-center gap-2 bg-gray-50 border border-gray-200 rounded-lg px-3 py-1.5 cursor-pointer hover:bg-gray-100 transition-colors">
-                <span className="text-sm font-medium text-gray-700">Gymnasium</span>
-                <ChevronDown size={14} className="text-gray-500" />
-              </div>
+              <select
+                aria-label="Select amenity"
+                value={amenityId ?? data.selected_amenity_id ?? ""}
+                disabled={!data.amenities.length}
+                onChange={(event) => { setLoading(true); setAmenityId(Number(event.target.value)); }}
+                className="bg-gray-50 border border-gray-200 rounded-lg px-3 py-1.5 text-sm font-medium text-gray-700 cursor-pointer hover:bg-gray-100 transition-colors disabled:cursor-not-allowed"
+              >
+                {!data.amenities.length && <option value="">No active amenities</option>}
+                {data.amenities.map((amenity) => <option key={amenity.id} value={amenity.id}>{amenity.name}</option>)}
+              </select>
             </div>
             
             <div className="flex-1 flex flex-col justify-center gap-4 py-4">
-              {data.heatmap.map((dayData, i) => (
-                <div key={i} className="flex gap-4">
+              {data.heatmap.map((dayData) => (
+                <div key={dayData.date} className="flex gap-4">
                   <div className="w-8 flex items-center justify-end text-xs font-bold text-gray-400">{dayData.day}</div>
                   <div className="flex-1 grid grid-cols-7 gap-2">
                     {dayData.slots.map((slot, j) => {
@@ -158,11 +171,12 @@ export default function AdminAnalytics() {
                       if (slot.value === 1) bgColor = "bg-[#5f8787]/30";
                       if (slot.value === 2) bgColor = "bg-[#5f8787]";
                       if (slot.value >= 3) bgColor = "bg-[#0f2336]";
-                      return <div key={j} className={`h-8 rounded-sm ${bgColor}`}></div>;
+                      return <div key={j} title={`${dayData.day} ${slot.label}: ${slot.bookings} booking(s)`} className={`h-8 rounded-sm ${bgColor}`}></div>;
                     })}
                   </div>
                 </div>
               ))}
+              {!data.heatmap.length && <p className="text-sm text-gray-500 text-center py-12">No active amenity is available for utilization analytics.</p>}
             </div>
             
             <div className="flex justify-end items-center gap-2 mt-8">
@@ -245,25 +259,25 @@ export default function AdminAnalytics() {
             </div>
           </div>
 
-          {/* Vendor Performance */}
+          {/* Service Provider Performance */}
           <div className="lg:col-span-2 bg-white rounded-3xl border border-gray-100 shadow-sm flex flex-col overflow-hidden">
             <div className="p-6 md:p-8 flex items-center justify-between">
-              <h3 className="text-lg font-bold text-[#0f2336]">Vendor Performance</h3>
-              <button className="text-xs font-bold text-blue-600 hover:text-blue-700 transition-colors">View All</button>
+              <h3 className="text-lg font-bold text-[#0f2336]">Service Provider Performance</h3>
+              {data.vendors.length > 5 && <button onClick={() => setShowAllVendors((value) => !value)} className="text-xs font-bold text-blue-600 hover:text-blue-700 transition-colors">{showAllVendors ? "Show Less" : "View All"}</button>}
             </div>
             
             <div className="overflow-x-auto">
               <table className="w-full text-sm text-left whitespace-nowrap">
                 <thead className="text-[11px] font-bold text-gray-500 uppercase tracking-wider bg-gray-50/50">
                   <tr>
-                    <th className="px-6 md:px-8 py-4">Vendor Name</th>
+                    <th className="px-6 md:px-8 py-4">Provider Name</th>
                     <th className="px-6 md:px-8 py-4">Service Type</th>
                     <th className="px-6 md:px-8 py-4">Avg Resolution (hrs)</th>
                     <th className="px-6 md:px-8 py-4">SLA Status</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-50">
-                  {data.vendors.map((v) => (
+                  {(showAllVendors ? data.vendors : data.vendors.slice(0, 5)).map((v) => (
                     <tr key={v.id} className={`transition-colors ${
                       v.sla.includes('Warning') ? 'bg-orange-50/30' :
                       v.sla.includes('Escalated') ? 'bg-red-50/30' : 'hover:bg-gray-50/50'
@@ -285,6 +299,7 @@ export default function AdminAnalytics() {
                       </td>
                     </tr>
                   ))}
+                  {!data.vendors.length && <tr><td colSpan="4" className="px-8 py-10 text-center text-gray-500">No assigned service providers yet.</td></tr>}
                 </tbody>
               </table>
             </div>
