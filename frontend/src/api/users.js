@@ -9,6 +9,8 @@ import axiosInstance from "./axiosInstance";
 export const listUsers = (skip = 0, limit = 50) =>
   axiosInstance.get("/users/", { params: { skip, limit } });
 
+export const getCurrentUser = () => axiosInstance.get("/users/me");
+
 /**
  * Update a user's role. Super admin (or admin with restrictions) only.
  * @param {number} userId

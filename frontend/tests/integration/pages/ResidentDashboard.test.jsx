@@ -2,7 +2,7 @@
 
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import ResidentDashboard from "./ResidentDashboard";
+import ResidentDashboard from "@/pages/ResidentDashboard";
 
 const getResidentAnalytics = vi.fn();
 const navigate = vi.fn();

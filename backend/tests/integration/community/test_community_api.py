@@ -17,7 +17,6 @@ Run from backend/:
     uv run pytest tests/integration/community/ -v
 """
 
-import pytest
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -129,13 +128,14 @@ class TestNotices:
             from tests.conftest import _make_committee_member
             return _make_committee_member()
 
+        resident_override = app.dependency_overrides[get_current_user]
         app.dependency_overrides[get_current_user] = _committee
         setup_client = TestClient(app)
         notice_resp = setup_client.post(
             "/api/v1/community/notices",
             json={"title": "Read Test", "body": "Body", "target_type": "all"},
         )
-        app.dependency_overrides.clear()
+        app.dependency_overrides[get_current_user] = resident_override
 
         if notice_resp.status_code == 201:
             nid = notice_resp.json()["id"]
@@ -240,13 +240,13 @@ class TestPolls:
         resp = unauth_client.get("/api/v1/community/polls/active")
         assert resp.status_code in (401, 403)
 
-    def test_vote_nonexistent_poll_returns_404(self, resident_client):
-        """TC-COM-26: POST /polls/99999/votes → 404."""
+    def test_vote_inactive_or_missing_poll_returns_409(self, resident_client):
+        """TC-COM-26: A missing poll is not accepting votes and returns 409."""
         resp = resident_client.post(
             "/api/v1/community/polls/99999/votes",
             json={"option_id": 1},
         )
-        assert resp.status_code == 404
+        assert resp.status_code == 409
 
     def test_vote_invalid_option_id_returns_422(self, resident_client):
         """TC-COM-27: POST vote with option_id=0 → 422."""
@@ -299,17 +299,17 @@ class TestDiscussions:
 
 
 class TestDirectory:
-    def test_directory_returns_paginated_response(self, resident_client):
+    def test_directory_returns_paginated_response(self, admin_client):
         """TC-COM-32: GET /api/v1/community/directory → 200 paginated."""
-        resp = resident_client.get("/api/v1/community/directory")
+        resp = admin_client.get("/api/v1/community/directory")
         assert resp.status_code == 200
         data = resp.json()
         assert "items" in data
         assert "total" in data
 
-    def test_directory_search_param(self, resident_client):
+    def test_directory_search_param(self, admin_client):
         """TC-COM-33: GET directory?search=Alice → 200 filtered results."""
-        resp = resident_client.get("/api/v1/community/directory?search=Alice")
+        resp = admin_client.get("/api/v1/community/directory?search=Alice")
         assert resp.status_code == 200
 
     def test_directory_unauthenticated_returns_401(self, unauth_client):

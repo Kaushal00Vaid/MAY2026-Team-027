@@ -35,7 +35,7 @@ def _mock_admin():
 def _isolated_admin_override():
     app.dependency_overrides[get_current_user] = _mock_admin
     yield
-    app.dependency_overrides.clear()
+    app.dependency_overrides.pop(get_current_user, None)
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────

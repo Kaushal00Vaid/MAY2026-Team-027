@@ -14,6 +14,7 @@ Run from backend/:
 """
 
 import pytest
+from starlette.websockets import WebSocketDisconnect
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -133,26 +134,16 @@ class TestMarkAllNotificationsRead:
 class TestWebSocket:
     def test_websocket_without_ticket_closes_with_4401(self, unauth_client):
         """TC-RT-16: WS /ws without valid ticket → connection closed with 4401."""
-        with unauth_client.websocket_connect(
-            "/ws?ticket=invalid-garbage-ticket-that-is-long-enough-to-pass-validation"
-        ) as ws:
-            # The server should close with 4401 or disconnect immediately
-            try:
-                data = ws.receive_json()
-                # If we somehow receive data, the ticket was unexpectedly accepted
-                # This means we got connection.ready which would be a bug
-                assert data.get("type") != "connection.ready", (
-                    "Invalid ticket should not result in connection.ready"
-                )
-            except Exception:
-                # Expected: connection closed by server
+        with pytest.raises(WebSocketDisconnect) as exc:
+            with unauth_client.websocket_connect(
+                "/ws?ticket=invalid-garbage-ticket-that-is-long-enough-to-pass-validation"
+            ):
                 pass
+        assert exc.value.code == 4401
 
     def test_websocket_requires_ticket_param(self, unauth_client):
-        """TC-RT-17: WS /ws without ticket query param → 422."""
-        try:
+        """TC-RT-17: WS /ws without ticket query param is rejected."""
+        with pytest.raises(WebSocketDisconnect) as exc:
             with unauth_client.websocket_connect("/ws") as ws:
                 ws.receive_json()
-        except Exception as e:
-            # Expected: 422 or connection refused without ticket param
-            assert True
+        assert exc.value.code == 1008

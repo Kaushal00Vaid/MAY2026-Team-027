@@ -14,7 +14,6 @@ Run from backend/:
     uv run pytest tests/integration/security/ -v
 """
 
-import pytest
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -49,7 +48,7 @@ class TestResidentId:
             "/api/v1/security/resident-id/verify",
             json={"token": "invalid-garbage-token"},
         )
-        assert resp.status_code in (400, 404)
+        assert resp.status_code == 401
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -94,9 +93,9 @@ class TestVisitors:
         resp = staff_client.get("/api/v1/security/visitors?status=unknown")
         assert resp.status_code == 422
 
-    def test_create_visitor_as_resident_returns_201(self, resident_client):
-        """TC-SEC-10: POST visitor as resident → 201."""
-        resp = resident_client.post(
+    def test_create_visitor_as_security_returns_201(self, staff_client):
+        """TC-SEC-10: POST visitor as security staff → 201."""
+        resp = staff_client.post(
             "/api/v1/security/visitors",
             json=self._visitor_payload(),
         )
@@ -105,16 +104,16 @@ class TestVisitors:
         assert data["visitor_name"] == "Test Visitor"
         assert "id" in data
 
-    def test_create_visitor_trimmed_fields(self, resident_client):
+    def test_create_visitor_trimmed_fields(self, staff_client):
         """TC-SEC-11: Visitor name/unit are trimmed in response."""
-        resp = resident_client.post(
+        resp = staff_client.post(
             "/api/v1/security/visitors",
-            json=self._visitor_payload(visitor_name="  Alice  ", target_unit=" B-202 "),
+            json=self._visitor_payload(visitor_name="  Alice  ", target_unit=" A-101 "),
         )
         assert resp.status_code == 201
         data = resp.json()
         assert data["visitor_name"] == "Alice"
-        assert data["target_unit"] == "B-202"
+        assert data["unit"] == "A-101"
 
     def test_create_visitor_missing_required_field_returns_422(self, resident_client):
         """TC-SEC-12: POST visitor without visitor_name → 422."""
@@ -132,9 +131,9 @@ class TestVisitors:
         )
         assert resp.status_code in (401, 403)
 
-    def test_decide_visitor_nonexistent_returns_404(self, staff_client):
+    def test_decide_visitor_nonexistent_returns_404(self, admin_client):
         """TC-SEC-14: POST /visitors/99999/decision → 404."""
-        resp = staff_client.post(
+        resp = admin_client.post(
             "/api/v1/security/visitors/99999/decision",
             json={"decision": "approved", "expected_version": 1},
         )

@@ -19,7 +19,7 @@ def override_get_current_user():
 def _isolated_resident_override():
     app.dependency_overrides[get_current_user] = override_get_current_user
     yield
-    app.dependency_overrides.clear()
+    app.dependency_overrides.pop(get_current_user, None)
 
 def test_create_complaint():
     response = client.post(

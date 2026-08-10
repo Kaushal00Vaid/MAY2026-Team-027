@@ -13,6 +13,7 @@ export const verifyGuestPin = (pin) => axiosInstance.post(`${base}/guest-passes/
 export const manualResidentEntry = (unit) => axiosInstance.post(`${base}/access-logs/manual-entry`, { unit });
 export const listAccessLogs = (limit = 100) => axiosInstance.get(`${base}/access-logs`, { params: { limit } });
 export const getResidentId = () => axiosInstance.get(`${base}/resident-id`);
+export const verifyResidentId = (data) => axiosInstance.post(`${base}/resident-id/verify`, data);
 export const securityError = (error, fallback) => {
   const detail = error?.response?.data?.detail;
   if (Array.isArray(detail)) return detail.map((item) => item.msg).join(" • ");

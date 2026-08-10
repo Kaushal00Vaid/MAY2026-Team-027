@@ -9,7 +9,6 @@ Run from backend/:
     uv run pytest tests/integration/users/ -v
 """
 
-import pytest
 
 
 # ─────────────────────────────────────────────────────────────────────────────

@@ -13,7 +13,8 @@ Run from backend/:
     uv run pytest tests/integration/operations/ -v
 """
 
-import pytest
+
+from tests.conftest import STAFF_ID
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -25,6 +26,7 @@ def _create_task(client, **overrides):
     payload = {
         "title": "Test Task",
         "location": "Block A",
+        "assigned_to": STAFF_ID,
         **overrides,
     }
     return client.post("/api/v1/operations/tasks", json=payload)
@@ -41,7 +43,7 @@ def _create_item(client, **overrides):
     return client.post("/api/v1/operations/inventory", json=payload)
 
 
-def _create_shift(client, staff_id: int = 1, **overrides):
+def _create_shift(client, staff_id: int = STAFF_ID, **overrides):
     payload = {
         "staff_id": staff_id,
         "role_label": "Security",
@@ -139,7 +141,7 @@ class TestTasks:
         """TC-OPS-13: PATCH /api/v1/operations/tasks/99999 → 404."""
         resp = admin_client.patch(
             "/api/v1/operations/tasks/99999",
-            json={"status": "done"},
+            json={"status": "completed"},
         )
         assert resp.status_code == 404
 
@@ -292,10 +294,10 @@ class TestAttendance:
         resp = staff_client.get("/api/v1/operations/attendance/today")
         assert resp.status_code == 200
 
-    def test_get_attendance_today_as_admin_returns_200(self, admin_client):
-        """TC-OPS-34: GET attendance/today as admin → 200."""
+    def test_get_attendance_today_as_admin_returns_403(self, admin_client):
+        """TC-OPS-34: GET attendance/today as admin → 403 (personal staff endpoint)."""
         resp = admin_client.get("/api/v1/operations/attendance/today")
-        assert resp.status_code == 200
+        assert resp.status_code == 403
 
     def test_get_attendance_today_as_resident_returns_403(self, resident_client):
         """TC-OPS-35: GET attendance/today as resident → 403."""

@@ -2,7 +2,7 @@
 
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import AdminDashboard from "./AdminDashboard";
+import AdminDashboard from "@/pages/AdminDashboard";
 
 const getAdminAnalytics = vi.fn();
 const getTransactions = vi.fn();

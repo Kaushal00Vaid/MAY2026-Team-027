@@ -2,7 +2,7 @@
 
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import ResidentCommunity from "./ResidentCommunity";
+import ResidentCommunity from "@/pages/ResidentCommunity";
 
 const api = vi.hoisted(() => ({
   listNotices: vi.fn(), listEvents: vi.fn(), getActivePoll: vi.fn(), listVolunteers: vi.fn(),

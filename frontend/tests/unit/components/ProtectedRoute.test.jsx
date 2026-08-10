@@ -3,7 +3,7 @@
 import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
-import ProtectedRoute from "./ProtectedRoute";
+import ProtectedRoute from "@/components/auth/ProtectedRoute";
 
 let authState;
 vi.mock("@/hooks/useAuth", () => ({ useAuth: () => authState }));
