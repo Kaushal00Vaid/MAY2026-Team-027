@@ -1,202 +1,345 @@
-import time
 import logging
-from datetime import datetime, timezone
+import time
+from datetime import datetime, timedelta, timezone
+from typing import Callable
+from zoneinfo import ZoneInfo
+
+from apscheduler.events import EVENT_JOB_ERROR, EVENT_JOB_MISSED
 from apscheduler.schedulers.blocking import BlockingScheduler
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
-# Import models and DB session
-from app.db.database import SessionLocal
-from app.finance.models import Invoice
-from app.security.models import Visitor, GuestPass
 from app.amenities.models import AmenityBooking
-from app.community.models import Notice, NoticeDelivery
-from app.db.models.user import User
+from app.config import settings
+from app.db.database import SessionLocal
+from app.finance.models import Invoice, InvoiceReminder
+from app.realtime.service import add_notifications
+from app.security.models import GuestPass, Visitor
 
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-)
-logger = logging.getLogger("Scheduler")
+logger = logging.getLogger("societysync.scheduler")
+JobOperation = Callable[[Session, datetime], dict[str, int]]
 
-# Hardcoded late fee for demonstration (e.g. 500 INR = 50000 paise)
-LATE_FEE_PAISE = 50000
+
+def _execute_locked(
+    job_name: str,
+    operation: JobOperation,
+    *,
+    session_factory=None,
+    attempts: int | None = None,
+    retry_delay: float | None = None,
+    sleeper=time.sleep,
+) -> dict[str, int]:
+    """Run a job transaction with a PostgreSQL advisory lock and bounded retries."""
+    factory = session_factory or SessionLocal
+    max_attempts = attempts or settings.SCHEDULER_MAX_ATTEMPTS
+    delay = (
+        settings.SCHEDULER_RETRY_DELAY_SECONDS if retry_delay is None else retry_delay
+    )
+
+    for attempt in range(1, max_attempts + 1):
+        db: Session = factory()
+        try:
+            acquired = db.scalar(
+                text("SELECT pg_try_advisory_xact_lock(hashtext(:job_name))"),
+                {"job_name": f"societysync:{job_name}"},
+            )
+            if not acquired:
+                db.rollback()
+                logger.warning("job_skipped_locked job=%s", job_name)
+                return {"skipped": 1}
+
+            started = time.monotonic()
+            result = operation(db, datetime.now(timezone.utc))
+            db.commit()
+            logger.info(
+                "job_succeeded job=%s attempt=%s duration_ms=%s result=%s",
+                job_name,
+                attempt,
+                round((time.monotonic() - started) * 1000),
+                result,
+            )
+            return result
+        except Exception:
+            db.rollback()
+            if attempt == max_attempts:
+                logger.exception("job_failed job=%s attempts=%s", job_name, attempt)
+                raise
+            logger.warning(
+                "job_retry job=%s attempt=%s", job_name, attempt, exc_info=True
+            )
+            sleeper(delay * (2 ** (attempt - 1)))
+        finally:
+            db.close()
+
+    raise RuntimeError(f"Scheduled job {job_name} exhausted without a result")
+
+
+def _fanout_notices(db: Session, now: datetime) -> dict[str, int]:
+    result = db.execute(
+        text(
+            """
+            INSERT INTO community_notice_deliveries (notice_id, user_id, delivered_at)
+            SELECT notice.id, recipient.user_id, :delivered_at
+            FROM community_notices AS notice
+            CROSS JOIN users AS recipient
+            WHERE notice.is_active = TRUE
+              AND (notice.expires_at IS NULL OR notice.expires_at > :delivered_at)
+              AND recipient.is_active = TRUE
+              AND EXISTS (
+                SELECT 1
+                FROM user_roles ur
+                JOIN roles role ON role.role_id = ur.role_id
+                WHERE ur.user_id = recipient.user_id
+                  AND role.role_name IN ('flat_owner', 'resident_rental')
+              )
+              AND (
+                notice.target_type = 'all'
+                OR (notice.target_type = 'block' AND lower(trim(notice.target_value)) = lower(trim(recipient.building_block)))
+                OR (notice.target_type = 'flat' AND lower(trim(notice.target_value)) = lower(trim(recipient.flat_number)))
+              )
+            ON CONFLICT (notice_id, user_id) DO NOTHING
+            """
+        ),
+        {"delivered_at": now},
+    )
+    return {"deliveries_created": result.rowcount or 0}
+
+
+def _update_overdue_invoices(db: Session, now: datetime) -> dict[str, int]:
+    today = now.astimezone(ZoneInfo(settings.SCHEDULER_TIMEZONE)).date()
+    count = (
+        db.query(Invoice)
+        .filter(
+            Invoice.status == "issued",
+            Invoice.due_date < today,
+        )
+        .update(
+            {
+                Invoice.status: "overdue",
+                Invoice.late_fee_paise: settings.SCHEDULER_LATE_FEE_PAISE,
+                Invoice.version: Invoice.version + 1,
+            },
+            synchronize_session=False,
+        )
+    )
+    return {"invoices_updated": count}
+
+
+def _send_invoice_reminders(db: Session, now: datetime) -> dict[str, int]:
+    today = now.astimezone(ZoneInfo(settings.SCHEDULER_TIMEZONE)).date()
+    reminder_dates = {
+        today + timedelta(days=3): "due_soon",
+        today: "due_today",
+    }
+    invoices = (
+        db.query(Invoice)
+        .filter(
+            Invoice.status.in_(["issued", "overdue"]),
+            Invoice.due_date.in_(reminder_dates),
+        )
+        .all()
+    )
+    keys = {
+        invoice.id: f"{reminder_dates[invoice.due_date]}:{today.isoformat()}"
+        for invoice in invoices
+    }
+    existing = set()
+    if keys:
+        existing = {
+            (invoice_id, execution_key)
+            for invoice_id, execution_key in db.query(
+                InvoiceReminder.invoice_id,
+                InvoiceReminder.execution_key,
+            )
+            .filter(
+                InvoiceReminder.invoice_id.in_(keys),
+                InvoiceReminder.execution_key.in_(keys.values()),
+            )
+            .all()
+        }
+
+    created = 0
+    for invoice in invoices:
+        execution_key = keys[invoice.id]
+        if (invoice.id, execution_key) in existing:
+            continue
+        reminder_type = reminder_dates[invoice.due_date]
+        db.add(
+            InvoiceReminder(
+                invoice_id=invoice.id,
+                execution_key=execution_key,
+                reminder_type=reminder_type,
+            )
+        )
+        amount_paise = invoice.base_amount_paise + invoice.late_fee_paise
+        add_notifications(
+            db,
+            [invoice.resident_id],
+            event_type="finance.invoice_reminder",
+            title="Payment due soon"
+            if reminder_type == "due_soon"
+            else "Payment due today",
+            message=f"Invoice {invoice.invoice_number} for ₹{amount_paise / 100:,.2f} is due on {invoice.due_date:%d %b %Y}.",
+            resource_type="invoice",
+            resource_id=invoice.id,
+            payload={"scope": "finance", "reminder_type": reminder_type},
+        )
+        created += 1
+    return {"reminders_created": created}
+
+
+def _expire_visitors_and_passes(db: Session, now: datetime) -> dict[str, int]:
+    visitor_count = (
+        db.query(Visitor)
+        .filter(
+            Visitor.status == "pending",
+            Visitor.expires_at < now,
+        )
+        .update(
+            {Visitor.status: "expired", Visitor.version: Visitor.version + 1},
+            synchronize_session=False,
+        )
+    )
+    pass_count = (
+        db.query(GuestPass)
+        .filter(
+            GuestPass.valid_until < now,
+            GuestPass.used_at.is_(None),
+            GuestPass.revoked_at.is_(None),
+        )
+        .update({GuestPass.revoked_at: now}, synchronize_session=False)
+    )
+    return {"visitors_expired": visitor_count, "passes_revoked": pass_count}
+
+
+def _complete_amenity_bookings(db: Session, now: datetime) -> dict[str, int]:
+    count = (
+        db.query(AmenityBooking)
+        .filter(
+            AmenityBooking.status == "confirmed",
+            AmenityBooking.ends_at < now,
+        )
+        .update({AmenityBooking.status: "completed"}, synchronize_session=False)
+    )
+    return {"bookings_completed": count}
+
 
 def fanout_notices():
-    """
-    Finds active notices and ensures a NoticeDelivery record exists 
-    for every active user. Uses ON CONFLICT DO NOTHING for idempotency.
-    """
-    logger.info("Running job: fanout_notices")
-    db: Session = SessionLocal()
-    try:
-        # Get active notices
-        active_notices = db.query(Notice).filter(Notice.is_active == True).all()
-        if not active_notices:
-            return
-
-        # Get all active users
-        active_users = db.query(User).filter(User.is_active == True).all()
-        user_ids = [u.user_id for u in active_users]
-
-        if not user_ids:
-            return
-
-        new_deliveries = 0
-        # Use raw SQL for the ON CONFLICT DO NOTHING insertion to be efficient and idempotent
-        sql = text("""
-            INSERT INTO community_notice_deliveries (notice_id, user_id, delivered_at)
-            VALUES (:notice_id, :user_id, :delivered_at)
-            ON CONFLICT (notice_id, user_id) DO NOTHING
-        """)
-        
-        now = datetime.now(timezone.utc)
-        for notice in active_notices:
-            for uid in user_ids:
-                # Basic fan-out (could be filtered by block/flat in future)
-                result = db.execute(sql, {
-                    "notice_id": notice.id,
-                    "user_id": uid,
-                    "delivered_at": now
-                })
-                new_deliveries += result.rowcount
-                
-        db.commit()
-        logger.info(f"fanout_notices completed. Inserted {new_deliveries} new deliveries.")
-    except Exception as e:
-        db.rollback()
-        logger.error(f"Error in fanout_notices: {e}")
-    finally:
-        db.close()
+    return _execute_locked("fanout_notices", _fanout_notices)
 
 
 def update_overdue_invoices():
-    """
-    Updates invoices past their due date from 'issued' to 'overdue'
-    and applies a late fee. Highly idempotent because it only targets 'issued' status.
-    """
-    logger.info("Running job: update_overdue_invoices")
-    db: Session = SessionLocal()
-    try:
-        now = datetime.now(timezone.utc)
-        today = now.date()
-        
-        # Only update if status is 'issued' and due_date < today
-        overdue_invoices = db.query(Invoice).filter(
-            Invoice.status == 'issued',
-            Invoice.due_date < today
-        ).all()
-        
-        count = 0
-        for inv in overdue_invoices:
-            inv.status = 'overdue'
-            inv.late_fee_paise = LATE_FEE_PAISE
-            count += 1
-            
-        if count > 0:
-            db.commit()
-            
-        logger.info(f"update_overdue_invoices completed. Updated {count} invoices.")
-    except Exception as e:
-        db.rollback()
-        logger.error(f"Error in update_overdue_invoices: {e}")
-    finally:
-        db.close()
+    return _execute_locked("update_overdue_invoices", _update_overdue_invoices)
+
+
+def send_invoice_reminders():
+    return _execute_locked("send_invoice_reminders", _send_invoice_reminders)
 
 
 def expire_visitors_and_passes():
-    """
-    Marks visitors as expired if their expires_at has passed and they are still pending.
-    Revokes guest passes if their valid_until has passed.
-    """
-    logger.info("Running job: expire_visitors_and_passes")
-    db: Session = SessionLocal()
-    try:
-        now = datetime.now(timezone.utc)
-        
-        # Expire Visitors
-        expired_visitors = db.query(Visitor).filter(
-            Visitor.status == 'pending',
-            Visitor.expires_at < now
-        ).all()
-        
-        v_count = 0
-        for v in expired_visitors:
-            v.status = 'expired'
-            v_count += 1
-            
-        # Expire Guest Passes
-        expired_passes = db.query(GuestPass).filter(
-            GuestPass.valid_until < now,
-            GuestPass.revoked_at.is_(None)
-        ).all()
-        
-        p_count = 0
-        for p in expired_passes:
-            p.revoked_at = now
-            p_count += 1
-            
-        if v_count > 0 or p_count > 0:
-            db.commit()
-            
-        logger.info(f"expire_visitors_and_passes completed. Expired {v_count} visitors, revoked {p_count} passes.")
-    except Exception as e:
-        db.rollback()
-        logger.error(f"Error in expire_visitors_and_passes: {e}")
-    finally:
-        db.close()
+    return _execute_locked("expire_visitors_and_passes", _expire_visitors_and_passes)
 
 
 def complete_amenity_bookings():
-    """
-    Marks confirmed amenity bookings as completed once their end time has passed.
-    """
-    logger.info("Running job: complete_amenity_bookings")
-    db: Session = SessionLocal()
-    try:
-        now = datetime.now(timezone.utc)
-        
-        completed_bookings = db.query(AmenityBooking).filter(
-            AmenityBooking.status == 'confirmed',
-            AmenityBooking.ends_at < now
-        ).all()
-        
-        count = 0
-        for b in completed_bookings:
-            b.status = 'completed'
-            count += 1
-            
-        if count > 0:
-            db.commit()
-            
-        logger.info(f"complete_amenity_bookings completed. Marked {count} bookings as completed.")
-    except Exception as e:
-        db.rollback()
-        logger.error(f"Error in complete_amenity_bookings: {e}")
-    finally:
-        db.close()
+    return _execute_locked("complete_amenity_bookings", _complete_amenity_bookings)
 
 
-if __name__ == '__main__':
-    logger.info("Starting APScheduler...")
-    scheduler = BlockingScheduler()
-    
-    # Schedule jobs
-    # Running frequently for demonstration/testing. In production, some of these might run daily.
-    scheduler.add_job(fanout_notices, 'interval', minutes=1, id='fanout_notices', replace_existing=True)
-    scheduler.add_job(update_overdue_invoices, 'interval', minutes=5, id='update_overdue_invoices', replace_existing=True)
-    scheduler.add_job(expire_visitors_and_passes, 'interval', minutes=1, id='expire_visitors_and_passes', replace_existing=True)
-    scheduler.add_job(complete_amenity_bookings, 'interval', minutes=1, id='complete_amenity_bookings', replace_existing=True)
-    
-    # Run once immediately on startup to catch up
-    logger.info("Running initial batch of jobs...")
-    fanout_notices()
-    update_overdue_invoices()
-    expire_visitors_and_passes()
-    complete_amenity_bookings()
-    
+JOBS = (
+    ("fanout_notices", fanout_notices),
+    ("update_overdue_invoices", update_overdue_invoices),
+    ("send_invoice_reminders", send_invoice_reminders),
+    ("expire_visitors_and_passes", expire_visitors_and_passes),
+    ("complete_amenity_bookings", complete_amenity_bookings),
+)
+
+
+def _scheduler_event(event):
+    if event.code == EVENT_JOB_MISSED:
+        logger.error(
+            "job_missed job=%s scheduled_at=%s", event.job_id, event.scheduled_run_time
+        )
+    else:
+        logger.error(
+            "job_error job=%s",
+            event.job_id,
+            exc_info=(
+                type(event.exception),
+                event.exception,
+                event.exception.__traceback__,
+            ),
+        )
+
+
+def build_scheduler() -> BlockingScheduler:
+    scheduler = BlockingScheduler(
+        timezone=settings.SCHEDULER_TIMEZONE,
+        job_defaults={
+            "coalesce": True,
+            "max_instances": 1,
+            "misfire_grace_time": settings.SCHEDULER_MISFIRE_GRACE_SECONDS,
+        },
+    )
+    scheduler.add_listener(_scheduler_event, EVENT_JOB_ERROR | EVENT_JOB_MISSED)
+    scheduler.add_job(
+        fanout_notices,
+        "interval",
+        seconds=settings.SCHEDULER_FANOUT_INTERVAL_SECONDS,
+        id="fanout_notices",
+        replace_existing=True,
+    )
+    scheduler.add_job(
+        expire_visitors_and_passes,
+        "interval",
+        seconds=settings.SCHEDULER_EXPIRY_INTERVAL_SECONDS,
+        id="expire_visitors_and_passes",
+        replace_existing=True,
+    )
+    scheduler.add_job(
+        complete_amenity_bookings,
+        "interval",
+        seconds=settings.SCHEDULER_BOOKING_INTERVAL_SECONDS,
+        id="complete_amenity_bookings",
+        replace_existing=True,
+    )
+    scheduler.add_job(
+        update_overdue_invoices,
+        "cron",
+        hour=0,
+        minute=5,
+        id="update_overdue_invoices",
+        replace_existing=True,
+    )
+    scheduler.add_job(
+        send_invoice_reminders,
+        "cron",
+        hour=9,
+        minute=0,
+        id="send_invoice_reminders",
+        replace_existing=True,
+    )
+    return scheduler
+
+
+def main() -> None:
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s %(levelname)s %(name)s %(message)s",
+    )
+    scheduler = build_scheduler()
+    if settings.SCHEDULER_RUN_ON_STARTUP:
+        for job_name, job in JOBS:
+            try:
+                job()
+            except Exception:
+                logger.exception("startup_job_failed job=%s", job_name)
+    logger.info(
+        "scheduler_started timezone=%s jobs=%s", settings.SCHEDULER_TIMEZONE, len(JOBS)
+    )
     try:
-        logger.info("Scheduler is active and waiting for next interval.")
         scheduler.start()
     except (KeyboardInterrupt, SystemExit):
-        logger.info("Scheduler shutting down...")
+        logger.info("scheduler_stopped")
+
+
+if __name__ == "__main__":
+    main()

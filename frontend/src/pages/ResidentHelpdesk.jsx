@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { useLocation } from "react-router-dom";
 import DashboardLayout from "@/components/layout/DashboardLayout";
 import { useRealtimeRefresh } from "@/features/realtime/useRealtimeRefresh";
 import { getResidentSidebarItems } from "@/components/resident/ResidentSidebarConfig";
@@ -30,12 +31,14 @@ const statusColor = (status) => ({
 const INITIAL_FORM = { title: "", description: "", category: "Maintenance", priority: "Medium" };
 
 export default function ResidentHelpdesk() {
+  const location = useLocation();
   const { user } = useAuth();
   const createFileRef = useRef(null);
+  const deepLinkHandled = useRef(false);
   const [tickets, setTickets] = useState([]);
   const [knownIssues, setKnownIssues] = useState([]);
   const [showAll, setShowAll] = useState(false);
-  const [showModal, setShowModal] = useState(false);
+  const [showModal, setShowModal] = useState(location.state?.action === "new");
   const [form, setForm] = useState(INITIAL_FORM);
   const [attachment, setAttachment] = useState(null);
   const [selected, setSelected] = useState(null);
@@ -81,6 +84,16 @@ export default function ResidentHelpdesk() {
       setDetails({ comments, history, attachments: files });
     } catch (requestError) { setError(errorMessage(requestError, "Unable to load ticket details.")); }
   };
+
+  useEffect(() => {
+    if (deepLinkHandled.current || !location.state?.ticketId || tickets.length === 0) return;
+    const target = tickets.find((ticket) => ticket.id === Number(location.state.ticketId));
+    if (!target) return;
+    deepLinkHandled.current = true;
+    // Resolve the dashboard deep link after its ticket is present in the API result.
+
+    void openDetails(target);
+  }, [location.state?.ticketId, tickets]);
 
   const submitTicket = async (event) => {
     event.preventDefault(); setSaving(true); setError("");

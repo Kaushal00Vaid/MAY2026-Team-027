@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { useLocation } from "react-router-dom";
 import { AlertTriangle, CheckCircle2, CreditCard, Download, Filter, Loader2, X } from "lucide-react";
 import DashboardLayout from "@/components/layout/DashboardLayout";
 import { useRealtimeRefresh } from "@/features/realtime/useRealtimeRefresh";
@@ -9,9 +10,10 @@ import {
 } from "@/features/finance/api";
 
 export default function ResidentFinancials() {
+  const location = useLocation();
   const [summary, setSummary] = useState(null);
   const [filter, setFilter] = useState("all");
-  const [showPaymentModal, setShowPaymentModal] = useState(false);
+  const [showPaymentModal, setShowPaymentModal] = useState(location.state?.action === "pay");
   const [method, setMethod] = useState("bank");
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
@@ -25,7 +27,7 @@ export default function ResidentFinancials() {
     finally { setLoading(false); }
   }, []);
   // Data fetching intentionally initializes screen state from the API.
-  // eslint-disable-next-line react-hooks/set-state-in-effect
+
   useEffect(() => { load(); }, [load]);
   useRealtimeRefresh(["finance"], load);
   useEffect(() => {

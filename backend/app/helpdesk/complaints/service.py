@@ -69,7 +69,16 @@ def create_complaint(db: Session, user: User, data: ComplaintCreate) -> Complain
             note="Complaint created",
         )
     )
-    add_notifications(db, user_ids_for_roles(db, ["super_admin", "admin", "committee_member"]), event_type="complaint.created", title="New helpdesk complaint", message=complaint.title, resource_type="complaint", resource_id=complaint.id, payload={"scope": "helpdesk", "status": complaint.status})
+    add_notifications(
+        db,
+        user_ids_for_roles(db, ["super_admin", "admin", "committee_member"]),
+        event_type="complaint.created",
+        title="New helpdesk complaint",
+        message=complaint.title or complaint.category,
+        resource_type="complaint",
+        resource_id=complaint.id,
+        payload={"scope": "helpdesk", "status": complaint.status},
+    )
     db.commit()
     db.refresh(complaint)
     return complaint

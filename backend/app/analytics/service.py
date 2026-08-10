@@ -1,7 +1,10 @@
+import csv
+from io import StringIO
+
 from sqlalchemy.orm import Session
-from sqlalchemy import func, case
+from sqlalchemy import func
 from datetime import datetime, timezone, timedelta
-from typing import List
+from zoneinfo import ZoneInfo
 
 from app.analytics.schemas import (
     AdminAnalyticsResponse,
@@ -25,6 +28,7 @@ from app.analytics.schemas import (
     FinancialEfficiency,
     HeatmapDay,
     HeatmapSlot,
+    AmenityAnalyticsOption,
     StaffAnalyticsResponse,
     GateActivityAnalytics,
     EventParticipationAnalytics,
@@ -40,6 +44,8 @@ from app.amenities.models import AmenityBooking, Amenity
 from app.community.models import CommunityEvent, Notice, EventRsvp
 from app.helpdesk.work_orders.models import MaintenanceWorkOrder
 from app.operations.models import InventoryItem, ShiftAssignment, StaffAttendance
+
+IST = ZoneInfo("Asia/Kolkata")
 
 def time_ago_str(dt: datetime) -> str:
     if not dt:
@@ -58,7 +64,101 @@ def time_ago_str(dt: datetime) -> str:
     else:
         return f"{int(diff.total_seconds() // 86400)} days ago"
 
-def get_admin_analytics(db: Session) -> AdminAnalyticsResponse:
+def _shift_month(month_start: datetime, offset: int) -> datetime:
+    month_index = month_start.year * 12 + month_start.month - 1 + offset
+    return month_start.replace(year=month_index // 12, month=month_index % 12 + 1)
+
+
+def _daily_slots(amenity: Amenity, day) -> int:
+    operating_minutes = int(
+        (
+            datetime.combine(day, amenity.operating_end)
+            - datetime.combine(day, amenity.operating_start)
+        ).total_seconds()
+        // 60
+    )
+    return max(operating_minutes // amenity.slot_minutes, 0)
+
+
+def _format_inr_compact(amount_paise: int) -> str:
+    amount = amount_paise / 100
+    if amount >= 10_000_000:
+        return f"₹{amount / 10_000_000:.1f}Cr"
+    if amount >= 100_000:
+        return f"₹{amount / 100_000:.1f}L"
+    if amount >= 1_000:
+        return f"₹{amount / 1_000:.1f}K"
+    return f"₹{amount:,.0f}"
+
+
+def _as_utc(value: datetime) -> datetime:
+    return value if value.tzinfo else value.replace(tzinfo=timezone.utc)
+
+
+def _local_day_window(now: datetime, local_timezone=IST):
+    local_now = _as_utc(now).astimezone(local_timezone)
+    local_start = local_now.replace(hour=0, minute=0, second=0, microsecond=0)
+    return (
+        local_start.astimezone(timezone.utc),
+        (local_start + timedelta(days=1)).astimezone(timezone.utc),
+        local_now.date(),
+    )
+
+
+def _heatmap_slots(amenity: Amenity, bookings: list[AmenityBooking], week_start):
+    slot_count = 7
+    operating_minutes = max(
+        int(
+            (
+                datetime.combine(week_start, amenity.operating_end)
+                - datetime.combine(week_start, amenity.operating_start)
+            ).total_seconds()
+            // 60
+        ),
+        1,
+    )
+    bucket_minutes = operating_minutes / slot_count
+    counts = [[0 for _ in range(slot_count)] for _ in range(7)]
+    for booking in bookings:
+        day_index = (booking.starts_at.date() - week_start).days
+        if not 0 <= day_index < 7:
+            continue
+        booking_minutes = (
+            booking.starts_at.hour * 60
+            + booking.starts_at.minute
+            - amenity.operating_start.hour * 60
+            - amenity.operating_start.minute
+        )
+        bucket = min(max(int(booking_minutes // bucket_minutes), 0), slot_count - 1)
+        counts[day_index][bucket] += 1
+
+    peak = max((count for day in counts for count in day), default=0)
+    result = []
+    for day_index, day_counts in enumerate(counts):
+        day = week_start + timedelta(days=day_index)
+        slots = []
+        for bucket, count in enumerate(day_counts):
+            start_minutes = (
+                amenity.operating_start.hour * 60
+                + amenity.operating_start.minute
+                + round(bucket * bucket_minutes)
+            )
+            hour, minute = divmod(start_minutes, 60)
+            intensity = 0 if not count or not peak else max(1, round(count / peak * 4))
+            slots.append(HeatmapSlot(
+                value=intensity,
+                bookings=count,
+                label=f"{hour % 24:02d}:{minute:02d}",
+            ))
+        result.append(HeatmapDay(
+            day=day.strftime("%a"),
+            date=day.isoformat(),
+            slots=slots,
+        ))
+    return result
+
+
+def get_admin_analytics(db: Session, months: int = 6) -> AdminAnalyticsResponse:
     now = datetime.now(timezone.utc)
     
     # 1. Current Collections
@@ -81,12 +181,12 @@ def get_admin_analytics(db: Session) -> AdminAnalyticsResponse:
         Payment.created_at < start_of_month
     ).scalar() or 0
     
-    curr_amount_dollars = curr_month_total / 100
-    prev_amount_dollars = prev_month_total / 100
+    curr_amount = curr_month_total / 100
+    prev_amount = prev_month_total / 100
     
     pct_change = 0.0
-    if prev_amount_dollars > 0:
-        pct_change = ((curr_amount_dollars - prev_amount_dollars) / prev_amount_dollars) * 100
+    if prev_amount > 0:
+        pct_change = ((curr_amount - prev_amount) / prev_amount) * 100
 
     # 2. Active Complaints
     active_complaints_query = db.query(Complaint).filter(Complaint.status.not_in(['Resolved', 'Closed']))
@@ -95,22 +195,23 @@ def get_admin_analytics(db: Session) -> AdminAnalyticsResponse:
 
     # 3. Visitors at Gate
     total_visitors = db.query(Visitor).filter(Visitor.status == 'pending').count()
-    # To match UI style, total and awaiting_approval might just be the same for the mock
     visitors = VisitorsAtGate(total=total_visitors, awaiting_approval=total_visitors)
 
-    # 4. Amenities (Clubhouse Occupancy for today)
+    # 4. Today's amenity slot utilization. Booking counts and person capacity
+    # are different units, so utilization is calculated against configured slots.
     start_of_today = now.replace(hour=0, minute=0, second=0, microsecond=0)
     end_of_today = start_of_today + timedelta(days=1)
     
-    total_capacity = db.query(func.sum(Amenity.capacity)).filter(Amenity.is_active == True).scalar() or 100
+    active_amenities = db.query(Amenity).filter(Amenity.is_active).all()
+    total_slots = sum(_daily_slots(amenity, start_of_today.date()) for amenity in active_amenities)
+    amenity_ids = [amenity.id for amenity in active_amenities]
     booked_slots = db.query(AmenityBooking).filter(
-        AmenityBooking.status == 'confirmed',
+        AmenityBooking.amenity_id.in_(amenity_ids),
+        AmenityBooking.status.in_(['confirmed', 'completed']),
         AmenityBooking.starts_at >= start_of_today,
         AmenityBooking.starts_at < end_of_today
-    ).count()
-    
-    # Just an approximation: 
-    percentage = (booked_slots / total_capacity) * 100 if total_capacity > 0 else 0
+    ).count() if amenity_ids else 0
+    percentage = (booked_slots / total_slots) * 100 if total_slots > 0 else 0
 
     # 5. SLA Alerts
     overdue_complaints = active_complaints_query.filter(
@@ -126,19 +227,11 @@ def get_admin_analytics(db: Session) -> AdminAnalyticsResponse:
             overdue_by_mins=max(diff_mins, 0)
         ))
 
-    # 6. Revenue Trend (last 6 months)
+    # 6. Revenue trend using exact calendar-month boundaries.
     revenue_trend = []
-    for i in range(5, -1, -1):
-        # Calculate month start and end
-        # this logic can be simplified but let's do a reliable backstep
-        m_date = now - timedelta(days=30 * i)
-        m_start = m_date.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
-        
-        if m_start.month == 12:
-            m_end = m_start.replace(year=m_start.year + 1, month=1)
-        else:
-            m_end = m_start.replace(month=m_start.month + 1)
-            
+    for offset in range(-(months - 1), 1):
+        m_start = _shift_month(start_of_month, offset)
+        m_end = _shift_month(m_start, 1)
         month_total = db.query(func.sum(Payment.amount_paise)).filter(
             Payment.status == 'succeeded',
             Payment.created_at >= m_start,
@@ -146,7 +239,7 @@ def get_admin_analytics(db: Session) -> AdminAnalyticsResponse:
         ).scalar() or 0
         
         revenue_trend.append(RevenueTrendData(
-            name=m_start.strftime("%b"),
+            name=m_start.strftime("%b %y") if months > 6 else m_start.strftime("%b"),
             value=month_total / 100
         ))
 
@@ -201,7 +294,7 @@ def get_admin_analytics(db: Session) -> AdminAnalyticsResponse:
     return AdminAnalyticsResponse(
         stats=AdminDashboardStats(
             current_collections=CurrentCollections(
-                amount=curr_amount_dollars,
+                amount=curr_amount,
                 percentage_change=pct_change
             ),
             active_complaints=ActiveComplaints(
@@ -212,7 +305,7 @@ def get_admin_analytics(db: Session) -> AdminAnalyticsResponse:
             clubhouse_occupancy=ClubhouseOccupancy(
                 percentage=percentage,
                 booked=booked_slots,
-                capacity=total_capacity
+                capacity=total_slots
             )
         ),
         sla_alerts=sla_alerts,
@@ -286,7 +379,7 @@ def get_resident_analytics(db: Session, user_id: int) -> ResidentAnalyticsRespon
     # 4. Events
     upcoming_events = db.query(CommunityEvent).filter(
         CommunityEvent.starts_at >= now,
-        CommunityEvent.is_active == True
+        CommunityEvent.is_active
     ).order_by(CommunityEvent.starts_at.asc()).limit(3).all()
     
     events = []
@@ -303,7 +396,7 @@ def get_resident_analytics(db: Session, user_id: int) -> ResidentAnalyticsRespon
         
     # 5. Notices
     active_notices = db.query(Notice).filter(
-        Notice.is_active == True
+        Notice.is_active
     ).order_by(Notice.published_at.desc()).limit(5).all()
     
     # Simple target filtering logic could go here, but assuming 'all' for dashboard display
@@ -329,7 +422,7 @@ def get_resident_analytics(db: Session, user_id: int) -> ResidentAnalyticsRespon
         notices=notices
     )
 
-def get_advanced_analytics(db: Session) -> AdvancedAnalyticsResponse:
+def get_advanced_analytics(db: Session, amenity_id: int | None = None) -> AdvancedAnalyticsResponse:
     # 1. Pareto Data
     complaints = db.query(Complaint.category, func.count(Complaint.id)).group_by(Complaint.category).all()
     pareto = []
@@ -343,16 +436,27 @@ def get_advanced_analytics(db: Session) -> AdvancedAnalyticsResponse:
     # 2. Vendors Data
     vendors = []
     staff_users = db.query(User).filter(User.staff_type.isnot(None)).all()
-    for i, staff in enumerate(staff_users):
+    now = datetime.now(timezone.utc)
+    for staff in staff_users:
         tasks = db.query(MaintenanceWorkOrder).filter(MaintenanceWorkOrder.assigned_to == staff.user_id).all()
-        completed_tasks = [t for t in tasks if t.status == 'completed']
+        completed_tasks = [t for t in tasks if t.resolved_at]
         res = "0.0"
         sla = "Within SLA"
         if completed_tasks:
-            res = "4.2"
-        elif len(tasks) > 5:
+            average_hours = sum(
+                (_as_utc(task.resolved_at) - _as_utc(task.created_at)).total_seconds() / 3600
+                for task in completed_tasks
+            ) / len(completed_tasks)
+            res = f"{average_hours:.1f}"
+        overdue_tasks = [
+            task for task in tasks
+            if task.complaint and task.complaint.sla_deadline
+            and not task.resolved_at and _as_utc(task.complaint.sla_deadline) < now
+        ]
+        if len(overdue_tasks) >= 2:
+            sla = "Escalated"
+        elif overdue_tasks:
             sla = "Warning (L1)"
-            res = "12.5"
             
         vendors.append(VendorData(
             id=staff.user_id,
@@ -362,76 +466,92 @@ def get_advanced_analytics(db: Session) -> AdvancedAnalyticsResponse:
             sla=sla
         ))
         
-    if not vendors:
-        vendors = [VendorData(id=1, name="Demo Vendor", type="Maintenance", res="2.0", sla="Within SLA")]
-
     # 3. Financial Efficiency
-    now = datetime.now(timezone.utc)
     start_of_month = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
     collections = db.query(func.sum(Payment.amount_paise)).filter(Payment.status == 'succeeded', Payment.created_at >= start_of_month).scalar() or 0
-    opex = db.query(func.sum(Expense.amount_paise)).filter(Expense.status == 'paid', Expense.date >= start_of_month.date()).scalar() or 0
+    opex = db.query(func.sum(Expense.amount_paise)).filter(Expense.expense_date >= start_of_month.date()).scalar() or 0
     
-    col_str = f"${(collections/100/1000):.1f}K" if collections > 0 else "$1.2M"
-    opex_str = f"${(opex/100/1000):.1f}K" if opex > 0 else "$280K"
-    ratio = 82
-    if collections > 0 and opex > 0:
-        ratio = min(int((collections / opex) * 100), 100)
+    col_str = _format_inr_compact(collections)
+    opex_str = _format_inr_compact(opex)
+    ratio = round(collections / (collections + opex) * 100) if collections + opex else 0
         
     financial = FinancialEfficiency(ratio=ratio, collections=col_str, opex=opex_str)
     
-    # 4. Heatmap
-    days = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
+    # 4. Current-week heatmap for the selected active amenity.
+    active_amenities = db.query(Amenity).filter(Amenity.is_active).order_by(Amenity.name).all()
+    selected_amenity = next((item for item in active_amenities if item.id == amenity_id), None)
+    if selected_amenity is None and active_amenities:
+        selected_amenity = active_amenities[0]
+    week_start = (now - timedelta(days=now.weekday())).date()
     heatmap = []
-    import random
-    for day in days:
-        slots = []
-        for _ in range(7):
-            val = random.randint(0, 4)
-            slots.append(HeatmapSlot(value=val))
-        heatmap.append(HeatmapDay(day=day, slots=slots))
+    if selected_amenity:
+        week_end = week_start + timedelta(days=7)
+        bookings = db.query(AmenityBooking).filter(
+            AmenityBooking.amenity_id == selected_amenity.id,
+            AmenityBooking.status.in_(["confirmed", "completed"]),
+            AmenityBooking.starts_at >= datetime.combine(week_start, datetime.min.time(), tzinfo=timezone.utc),
+            AmenityBooking.starts_at < datetime.combine(week_end, datetime.min.time(), tzinfo=timezone.utc),
+        ).all()
+        heatmap = _heatmap_slots(selected_amenity, bookings, week_start)
         
     return AdvancedAnalyticsResponse(
         pareto=pareto,
         vendors=vendors,
         financial=financial,
-        heatmap=heatmap
+        heatmap=heatmap,
+        amenities=[AmenityAnalyticsOption(id=item.id, name=item.name) for item in active_amenities],
+        selected_amenity_id=selected_amenity.id if selected_amenity else None,
     )
     
 def export_analytics_csv(db: Session) -> str:
-    lines = []
-    lines.append("REPORT: Advanced Analytics")
-    lines.append("")
-    
-    lines.append("--- Complaint Pareto ---")
-    lines.append("Category,Count")
-    complaints = db.query(Complaint.category, func.count(Complaint.id)).group_by(Complaint.category).all()
-    for cat, count in complaints:
-        lines.append(f"{cat or 'Other'},{count}")
-    lines.append("")
-        
-    lines.append("--- Vendor Performance ---")
-    lines.append("Name,Type,Assigned Tasks")
-    staff_users = db.query(User).filter(User.staff_type.isnot(None)).all()
-    for staff in staff_users:
-        tasks = db.query(MaintenanceWorkOrder).filter(MaintenanceWorkOrder.assigned_to == staff.user_id).count()
-        lines.append(f"{staff.first_name} {staff.last_name},{staff.staff_type},{tasks}")
-    lines.append("")
-    
-    lines.append("--- Gate Activity ---")
-    lines.append("Date,Visitor,Purpose")
-    recent_access = db.query(AccessLog).order_by(AccessLog.occurred_at.desc()).limit(10).all()
-    for a in recent_access:
-        lines.append(f"{a.occurred_at},{a.subject_name},{a.event_type}")
-    lines.append("")
-    
-    return "\n".join(lines)
+    analytics = get_advanced_analytics(db)
+    output = StringIO()
+    writer = csv.writer(output)
+    writer.writerow(["REPORT: Advanced Analytics"])
+    writer.writerow([])
+
+    writer.writerow(["Complaint Pareto"])
+    writer.writerow(["Category", "Count"])
+    for item in analytics.pareto:
+        writer.writerow([item.name, item.value])
+    writer.writerow([])
+
+    writer.writerow(["Service Provider Performance"])
+    writer.writerow(["Name", "Service Type", "Average Resolution Hours", "SLA Status"])
+    for provider in analytics.vendors:
+        writer.writerow([provider.name, provider.type, provider.res, provider.sla])
+    writer.writerow([])
+
+    writer.writerow(["Financial Efficiency"])
+    writer.writerow(["Collection Ratio", "Collections", "Operating Expenses"])
+    writer.writerow([
+        f"{analytics.financial.ratio}%",
+        analytics.financial.collections,
+        analytics.financial.opex,
+    ])
+    writer.writerow([])
+
+    selected = next(
+        (item for item in analytics.amenities if item.id == analytics.selected_amenity_id),
+        None,
+    )
+    writer.writerow(["Amenity Utilization", selected.name if selected else "No active amenity"])
+    writer.writerow(["Date", "Day", "Time", "Bookings", "Intensity"])
+    for day in analytics.heatmap:
+        for slot in day.slots:
+            writer.writerow([day.date, day.day, slot.label, slot.bookings, slot.value])
+
+    return output.getvalue()
 
 def get_staff_analytics(db: Session) -> StaffAnalyticsResponse:
     now = datetime.now(timezone.utc)
-    start_of_today = now.replace(hour=0, minute=0, second=0, microsecond=0)
+    start_of_today, end_of_today, today_date = _local_day_window(now)
     
     # 1. Gate Activity
-    total_entries_today = db.query(AccessLog).filter(AccessLog.occurred_at >= start_of_today).count()
+    total_entries_today = db.query(AccessLog).filter(
+        AccessLog.occurred_at >= start_of_today,
+        AccessLog.occurred_at < end_of_today,
+    ).count()
     pending_approvals = db.query(Visitor).filter(Visitor.status == 'pending').count()
     gate_activity = GateActivityAnalytics(
         total_entries_today=total_entries_today,
@@ -441,7 +561,7 @@ def get_staff_analytics(db: Session) -> StaffAnalyticsResponse:
     # 2. Event Participation (Top 3 upcoming)
     upcoming_events = db.query(CommunityEvent).filter(
         CommunityEvent.starts_at > now,
-        CommunityEvent.is_active == True
+        CommunityEvent.is_active
     ).order_by(CommunityEvent.starts_at.asc()).limit(3).all()
     
     events_data = []
@@ -458,9 +578,9 @@ def get_staff_analytics(db: Session) -> StaffAnalyticsResponse:
         ))
         
     # 3. Inventory Status
-    total_items = db.query(InventoryItem).filter(InventoryItem.is_active == True).count()
+    total_items = db.query(InventoryItem).filter(InventoryItem.is_active).count()
     low_stock_items = db.query(InventoryItem).filter(
-        InventoryItem.is_active == True,
+        InventoryItem.is_active,
         InventoryItem.quantity <= InventoryItem.reorder_threshold
     ).count()
     inventory = InventoryStatusAnalytics(
@@ -469,20 +589,28 @@ def get_staff_analytics(db: Session) -> StaffAnalyticsResponse:
     )
     
     # 4. Roster Coverage
-    today_date = now.date()
     # Mask logic: 1 << today.weekday()
     day_mask_bit = 1 << today_date.weekday()
     
-    active_staff_today = db.query(ShiftAssignment).filter(
+    active_staff_today = db.query(
+        func.count(func.distinct(ShiftAssignment.staff_id))
+    ).filter(
         ShiftAssignment.status == 'active',
         ShiftAssignment.days_mask.op('&')(day_mask_bit) > 0
-    ).count()
+    ).scalar() or 0
     
-    checked_in_now = db.query(StaffAttendance).filter(
+    checked_in_now = db.query(
+        func.count(func.distinct(StaffAttendance.staff_id))
+    ).join(
+        ShiftAssignment,
+        ShiftAssignment.staff_id == StaffAttendance.staff_id,
+    ).filter(
         StaffAttendance.attendance_date == today_date,
         StaffAttendance.check_in_at.isnot(None),
-        StaffAttendance.check_out_at.is_(None)
-    ).count()
+        StaffAttendance.check_out_at.is_(None),
+        ShiftAssignment.status == 'active',
+        ShiftAssignment.days_mask.op('&')(day_mask_bit) > 0,
+    ).scalar() or 0
     
     roster = RosterCoverageAnalytics(
         active_staff_today=active_staff_today,

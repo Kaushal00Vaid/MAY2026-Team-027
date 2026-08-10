@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { useNavigate } from "react-router-dom";
 import {
   Wallet,
   Wrench,
@@ -19,13 +20,9 @@ import DashboardLayout from "@/components/layout/DashboardLayout";
 import { getResidentSidebarItems } from "@/components/resident/ResidentSidebarConfig";
 import { getResidentAnalytics } from "@/api/analytics";
 import { useAuth } from "@/hooks/useAuth";
-
-const QR_PATTERN = [
-  true, true, false, true,
-  true, false, true, false,
-  false, true, true, true,
-  true, false, true, true,
-];
+import { downloadStatement, financeError, saveBlob } from "@/features/finance/api";
+import ResidentPassCode from "@/features/security/ResidentPassCode";
+import { useResidentPass } from "@/features/security/useResidentPass";
 
 export default function ResidentDashboard() {
   const [ticketFilter, setTicketFilter] = useState("all");
@@ -34,7 +31,11 @@ export default function ResidentDashboard() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [requestKey, setRequestKey] = useState(0);
+  const [actionError, setActionError] = useState("");
+  const [downloading, setDownloading] = useState(false);
   const { user } = useAuth();
+  const navigate = useNavigate();
+  const residentPass = useResidentPass();
 
   useEffect(() => {
     let active = true;
@@ -59,6 +60,21 @@ export default function ResidentDashboard() {
     setLoading(true);
     setRequestKey((key) => key + 1);
   };
+
+  const downloadFinancialStatement = async () => {
+    if (downloading) return;
+    setDownloading(true);
+    setActionError("");
+    try {
+      saveBlob(await downloadStatement(), "societysync-statement.pdf");
+    } catch (requestError) {
+      setActionError(financeError(requestError, "Statement download failed."));
+    } finally {
+      setDownloading(false);
+    }
+  };
+
+  const complaintId = (ticket) => String(ticket.id).replace(/\D/g, "");
 
   const getIconForType = (type) => {
     const t = type?.toLowerCase() || '';
@@ -109,6 +125,7 @@ export default function ResidentDashboard() {
       {!loading && !error && (
       <>
       <div className="p-6 md:p-8 max-w-7xl mx-auto animate-in fade-in duration-500">
+        {actionError && <div role="alert" className="mb-6 p-4 rounded-xl bg-red-50 border border-red-100 text-sm font-semibold text-red-600">{actionError}</div>}
         
         {/* Top Header & Balance */}
         <div className="flex flex-col lg:flex-row lg:items-end justify-between gap-6 mb-8">
@@ -141,11 +158,11 @@ export default function ResidentDashboard() {
             )}
             
             <div className="relative z-10 flex gap-3">
-              <button className="flex-1 py-3 bg-primary hover:bg-primary/90 text-primary-foreground text-sm font-semibold rounded-xl transition-all shadow-[0_0_20px_rgba(79,70,229,0.3)] hover:shadow-[0_0_25px_rgba(79,70,229,0.5)] active:scale-95 flex items-center justify-center gap-2">
+              <button onClick={() => navigate("/resident/finance", { state: { action: "pay" } })} className="flex-1 py-3 bg-primary hover:bg-primary/90 text-primary-foreground text-sm font-semibold rounded-xl transition-all shadow-[0_0_20px_rgba(79,70,229,0.3)] hover:shadow-[0_0_25px_rgba(79,70,229,0.5)] active:scale-95 flex items-center justify-center gap-2">
                 <CreditCard size={16} /> Pay Now
               </button>
-              <button className="p-3 bg-white/10 hover:bg-white/20 text-white rounded-xl backdrop-blur-sm border border-white/10 transition-all active:scale-95 flex items-center justify-center">
-                <Download size={18} />
+              <button aria-label="Download financial statement" disabled={downloading} onClick={downloadFinancialStatement} className="p-3 bg-white/10 hover:bg-white/20 disabled:opacity-50 text-white rounded-xl backdrop-blur-sm border border-white/10 transition-all active:scale-95 flex items-center justify-center">
+                {downloading ? <Loader2 className="animate-spin" size={18}/> : <Download size={18} />}
               </button>
             </div>
           </div>
@@ -178,7 +195,7 @@ export default function ResidentDashboard() {
             
             <div className="space-y-4 flex-1 overflow-y-auto pr-2">
               {filteredTickets.map(t => (
-                <div key={t.id} className="p-4 rounded-xl border border-gray-100 bg-gray-50/50 hover:bg-gray-50 transition-colors group cursor-pointer">
+                <button onClick={() => navigate("/resident/helpdesk", { state: { ticketId: complaintId(t) } })} key={t.id} className="w-full text-left p-4 rounded-xl border border-gray-100 bg-gray-50/50 hover:bg-gray-50 transition-colors group cursor-pointer">
                   <div className="flex justify-between items-start mb-2">
                     <div className="flex items-center gap-3">
                       <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${
@@ -202,14 +219,14 @@ export default function ResidentDashboard() {
                       {t.status}
                     </div>
                   </div>
-                </div>
+                </button>
               ))}
               {filteredTickets.length === 0 && (
                 <div className="text-center py-8 text-gray-500 text-sm">No tickets found.</div>
               )}
             </div>
             
-            <button className="mt-4 w-full py-2.5 border border-dashed border-gray-300 text-gray-600 text-sm font-semibold rounded-xl hover:bg-gray-50 hover:border-gray-400 transition-colors flex items-center justify-center gap-2">
+            <button onClick={() => navigate("/resident/helpdesk", { state: { action: "new" } })} className="mt-4 w-full py-2.5 border border-dashed border-gray-300 text-gray-600 text-sm font-semibold rounded-xl hover:bg-gray-50 hover:border-gray-400 transition-colors flex items-center justify-center gap-2">
               <span className="text-lg leading-none">+</span> Raise New Ticket
             </button>
           </div>
@@ -225,15 +242,10 @@ export default function ResidentDashboard() {
                 <QrCode size={16} className="text-white/50" />
               </div>
               
-              <div className="w-28 h-28 bg-white p-2 rounded-xl mb-5 relative z-10 shadow-lg cursor-pointer transform transition-transform hover:scale-105 active:scale-95" onClick={() => setShowQRModal(true)}>
-                {/* Mock QR Code Pattern */}
-                <div className="w-full h-full bg-gray-100 grid grid-cols-3 grid-rows-3 gap-0.5">
-                  <div className="bg-[#0f2336] rounded-sm"></div><div className="bg-transparent"></div><div className="bg-[#0f2336] rounded-sm"></div>
-                  <div className="bg-transparent"></div><div className="bg-[#0f2336] rounded-sm"></div><div className="bg-transparent"></div>
-                  <div className="bg-[#0f2336] rounded-sm"></div><div className="bg-transparent"></div><div className="bg-[#0f2336] rounded-sm"></div>
-                </div>
+              <button type="button" aria-label="Expand digital resident pass" className="w-28 h-28 bg-white p-2 rounded-xl mb-5 relative z-10 shadow-lg cursor-pointer transform transition-transform hover:scale-105 active:scale-95" onClick={() => setShowQRModal(true)}>
+                <ResidentPassCode token={residentPass.pass?.token} size={96}/>
                 <div className="absolute inset-0 border border-black/10 rounded-xl pointer-events-none"></div>
-              </div>
+              </button>
               
               <button 
                 onClick={() => setShowQRModal(true)}
@@ -288,7 +300,7 @@ export default function ResidentDashboard() {
                     <div className="flex-1 flex flex-col justify-center">
                       <div className="font-bold text-sm text-[#0f2336]">{e.title}</div>
                       <div className="text-xs text-gray-500 mt-1">{e.location} • {e.time_str}</div>
-                      <button className="mt-2 w-fit px-3 py-1 bg-white border border-gray-200 text-gray-700 text-[10px] font-bold uppercase tracking-wider rounded-md hover:bg-gray-50 transition">
+                      <button onClick={() => navigate("/resident/community")} className="mt-2 w-fit px-3 py-1 bg-white border border-gray-200 text-gray-700 text-[10px] font-bold uppercase tracking-wider rounded-md hover:bg-gray-50 transition">
                         RSVP / Info
                       </button>
                     </div>
@@ -328,9 +340,9 @@ export default function ResidentDashboard() {
             )}
             
             {/* View All Card */}
-            <div className="min-w-[150px] p-5 rounded-2xl border border-dashed border-gray-300 bg-gray-50 flex items-center justify-center snap-start shrink-0 hover:bg-gray-100 cursor-pointer transition-colors group">
+            <button onClick={() => navigate("/resident/community", { state: { view: "notices" } })} className="min-w-[150px] p-5 rounded-2xl border border-dashed border-gray-300 bg-gray-50 flex items-center justify-center snap-start shrink-0 hover:bg-gray-100 cursor-pointer transition-colors group">
               <span className="text-sm font-bold text-gray-500 group-hover:text-primary transition-colors">View All &rarr;</span>
-            </div>
+            </button>
           </div>
         </div>
 
@@ -349,7 +361,7 @@ export default function ResidentDashboard() {
                 <X size={16} />
               </button>
               <h3 className="text-lg font-bold text-white mb-1">Digital Entry Pass</h3>
-              <p className="text-xs text-white/70">Green Valley Residency • Unit B-402</p>
+              <p className="text-xs text-white/70">Green Valley Residency • {user?.flat_number || "Unit unavailable"}</p>
             </div>
             
             {/* QR Body */}
@@ -358,19 +370,12 @@ export default function ResidentDashboard() {
                 {/* Scanner Animation Line */}
                 <div className="absolute top-0 left-0 w-full h-0.5 bg-primary/50 shadow-[0_0_8px_rgba(79,70,229,0.8)] animate-[scan_2s_ease-in-out_infinite_alternate]"></div>
                 
-                {/* Mock QR Content */}
-                <div className="w-full h-full bg-gray-200 grid grid-cols-4 grid-rows-4 gap-1 p-1">
-                  {QR_PATTERN.map((filled, index) => (
-                    <div key={index} className={`rounded-sm ${filled ? 'bg-[#0f2336]' : 'bg-transparent'}`}></div>
-                  ))}
-                </div>
+                <ResidentPassCode token={residentPass.pass?.token}/>
               </div>
               
               <div className="text-center">
-                <div className="font-mono text-lg font-bold tracking-widest text-[#0f2336] mb-1">ID: RES-84920</div>
-                <div className="text-xs font-semibold text-emerald-600 bg-emerald-50 px-3 py-1.5 rounded-full">
-                  Status: Active
-                </div>
+                <div className="font-mono text-lg font-bold tracking-widest text-[#0f2336] mb-1">ID: RES-{String(user?.user_id || "—").padStart(5, "0")}</div>
+                {residentPass.error ? <button onClick={residentPass.refresh} className="text-xs font-semibold text-red-600 bg-red-50 px-3 py-1.5 rounded-full">Pass unavailable • Retry</button> : <div className="text-xs font-semibold text-emerald-600 bg-emerald-50 px-3 py-1.5 rounded-full">{residentPass.loading ? "Refreshing pass…" : "Status: Active"}</div>}
               </div>
             </div>
           </div>

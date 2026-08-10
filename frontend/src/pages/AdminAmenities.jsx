@@ -13,7 +13,7 @@ export default function AdminAmenities() {
   const [selectedBooking, setSelectedBooking] = useState(null); const [showAddModal, setShowAddModal] = useState(false); const [form, setForm] = useState(blank); const [loading, setLoading] = useState(true); const [saving, setSaving] = useState(false); const [error, setError] = useState(""); const [toast, setToast] = useState("");
   const startDate = localDate(dayAt(weekOffset * 7));
   const load = useCallback(async () => { setLoading(true); setError(""); try { const amenitiesResponse = await listAmenities(true); const items = amenitiesResponse.data; setAmenities(items); const id = selectedId || items[0]?.id; if (id && !selectedId) setSelectedId(id); if (id) { const [availabilityResponse, bookingsResponse] = await Promise.all([getAvailability(id, startDate), listBookings({ page_size: 100, start_date: startDate })]); setAvailability(availabilityResponse.data); setBookings(bookingsResponse.data.items.filter((item) => item.amenity_id === id)); } } catch (e) { setError(amenitiesError(e, "Unable to load amenity schedule.")); } finally { setLoading(false); } }, [selectedId, startDate]);
-  // eslint-disable-next-line react-hooks/set-state-in-effect
+
   useEffect(() => { load(); }, [load]);
   useRealtimeRefresh(["amenities"], load);
   useEffect(() => { if (!toast) return undefined; const timer = setTimeout(() => setToast(""), 3500); return () => clearTimeout(timer); }, [toast]);

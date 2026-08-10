@@ -1,3 +1,4 @@
+import { lazy, Suspense } from "react";
 import { BrowserRouter, Navigate, Routes, Route } from "react-router-dom";
 import "./App.css";
 
@@ -6,32 +7,35 @@ import { AuthProvider } from "@/context/AuthContext";
 import { RealtimeProvider } from "@/features/realtime/RealtimeContext";
 import ProtectedRoute from "@/components/auth/ProtectedRoute";
 
-// Pages
-import LandingPage from "@/pages/LandingPage";
-import SignInPage from "@/pages/SignInPage";
-import SignUpPage from "@/pages/SignUpPage";
-import AdminDashboard from "@/pages/AdminDashboard";
-import AdminFinance from "@/pages/AdminFinance";
-import AdminHelpdesk from "@/pages/AdminHelpdesk";
-import AdminSecurity from "@/pages/AdminSecurity";
-import AdminAmenities from "@/pages/AdminAmenities";
-import AdminCommunity from "@/pages/AdminCommunity";
-import AdminAnalytics from "@/pages/AdminAnalytics";
-import ResidentDashboard from "@/pages/ResidentDashboard";
-import ResidentFinancials from "@/pages/ResidentFinancials";
-import ResidentHelpdesk from "@/pages/ResidentHelpdesk";
-import ResidentAmenities from "@/pages/ResidentAmenities";
-import ResidentCommunity from "@/pages/ResidentCommunity";
-import ResidentDigitalID from "@/pages/ResidentDigitalID";
-import SecurityDashboard from "@/pages/SecurityDashboard";
-import StaffDashboard from "@/pages/StaffDashboard";
-import StaffMaintenance from "@/pages/StaffMaintenance";
-import StaffOperations from "@/pages/StaffOperations";
-import StaffInventory from "@/pages/StaffInventory";
-import StaffRoster from "@/pages/StaffRoster";
-import AdminUserManagement from "@/pages/AdminUserManagement";
-import CompleteProfile from "@/pages/CompleteProfile";
-import GoogleAuthSuccess from "@/pages/GoogleAuthSuccess";
+// Keep the initial bundle small by loading each page only when its route is visited.
+const LandingPage = lazy(() => import("@/pages/LandingPage"));
+const SignInPage = lazy(() => import("@/pages/SignInPage"));
+const SignUpPage = lazy(() => import("@/pages/SignUpPage"));
+const AdminDashboard = lazy(() => import("@/pages/AdminDashboard"));
+const AdminFinance = lazy(() => import("@/pages/AdminFinance"));
+const AdminHelpdesk = lazy(() => import("@/pages/AdminHelpdesk"));
+const AdminSecurity = lazy(() => import("@/pages/AdminSecurity"));
+const AdminAmenities = lazy(() => import("@/pages/AdminAmenities"));
+const AdminCommunity = lazy(() => import("@/pages/AdminCommunity"));
+const AdminAnalytics = lazy(() => import("@/pages/AdminAnalytics"));
+const ResidentDashboard = lazy(() => import("@/pages/ResidentDashboard"));
+const ResidentFinancials = lazy(() => import("@/pages/ResidentFinancials"));
+const ResidentHelpdesk = lazy(() => import("@/pages/ResidentHelpdesk"));
+const ResidentAmenities = lazy(() => import("@/pages/ResidentAmenities"));
+const ResidentCommunity = lazy(() => import("@/pages/ResidentCommunity"));
+const ResidentDigitalID = lazy(() => import("@/pages/ResidentDigitalID"));
+const SecurityDashboard = lazy(() => import("@/pages/SecurityDashboard"));
+const StaffDashboard = lazy(() => import("@/pages/StaffDashboard"));
+const StaffMaintenance = lazy(() => import("@/pages/StaffMaintenance"));
+const StaffOperations = lazy(() => import("@/pages/StaffOperations"));
+const StaffInventory = lazy(() => import("@/pages/StaffInventory"));
+const StaffRoster = lazy(() => import("@/pages/StaffRoster"));
+const AdminUserManagement = lazy(() => import("@/pages/AdminUserManagement"));
+const CompleteProfile = lazy(() => import("@/pages/CompleteProfile"));
+const GoogleAuthSuccess = lazy(() => import("@/pages/GoogleAuthSuccess"));
+const AccountPage = lazy(() => import("@/pages/AccountPage"));
+const HelpCenter = lazy(() => import("@/pages/HelpCenter"));
+const NotFoundPage = lazy(() => import("@/pages/NotFoundPage"));
 
 // Role constants
 const ADMIN_ROLES = ["super_admin", "admin", "committee_member"];
@@ -46,7 +50,8 @@ function App() {
     <BrowserRouter>
       <AuthProvider>
         <RealtimeProvider>
-        <Routes>
+        <Suspense fallback={<div className="min-h-screen flex items-center justify-center" role="status">Loading page…</div>}>
+          <Routes>
           {/* Public routes */}
           <Route path="/" element={<LandingPage />} />
           <Route path="/signin" element={<SignInPage />} />
@@ -67,6 +72,8 @@ function App() {
             }
           />
           <Route path="/unauthorised" element={<Navigate to="/unauthorized" replace />} />
+          <Route path="/account" element={<ProtectedRoute><AccountPage /></ProtectedRoute>} />
+          <Route path="/help" element={<ProtectedRoute><HelpCenter /></ProtectedRoute>} />
 
           {/* Admin routes */}
           <Route path="/admin" element={
@@ -133,7 +140,9 @@ function App() {
           <Route path="/gate/roster" element={
             <ProtectedRoute allowedRoles={OPERATIONS_ROLES}><StaffRoster /></ProtectedRoute>
           } />
-        </Routes>
+          <Route path="*" element={<NotFoundPage />} />
+          </Routes>
+        </Suspense>
         </RealtimeProvider>
       </AuthProvider>
     </BrowserRouter>

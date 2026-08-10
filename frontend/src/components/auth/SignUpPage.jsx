@@ -6,8 +6,8 @@ import BrandPanel from "./components/BrandPanel";
 import DividerOr from "./components/DividerOr";
 import SocialButton from "./components/SocialButton";
 import {
-  Sparkle, DiamondDot, HexRing, CircleRing,
-  MiniBuilding, SkylineWatermark, FloatingChip, DotGridBg,
+  Sparkle, DiamondDot, HexRing,
+  SkylineWatermark, DotGridBg,
 } from "./components/AuthDecorations";
 import * as authApi from "@/api/auth";
 import { initiateGoogleLogin } from "@/api/auth";
