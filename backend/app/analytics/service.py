@@ -12,13 +12,20 @@ from app.analytics.schemas import (
     ClubhouseOccupancy,
     SlaAlert,
     RevenueTrendData,
-    ActivityFeedItem
+    ActivityFeedItem,
+    ResidentAnalyticsResponse,
+    ResidentBalance,
+    ResidentTicket,
+    ResidentBooking,
+    ResidentEvent,
+    ResidentNotice
 )
-from app.finance.models import Payment
+from app.finance.models import Payment, Invoice
 from app.db.models.complaint import Complaint
 from app.helpdesk.complaints.models import ComplaintStatusHistory
 from app.security.models import Visitor, AccessLog
 from app.amenities.models import AmenityBooking, Amenity
+from app.community.models import CommunityEvent, Notice
 
 def time_ago_str(dt: datetime) -> str:
     if not dt:
@@ -197,4 +204,113 @@ def get_admin_analytics(db: Session) -> AdminAnalyticsResponse:
         sla_alerts=sla_alerts,
         revenue_trend=revenue_trend,
         activity_feed=top_feed
+    )
+
+def get_resident_analytics(db: Session, user_id: int) -> ResidentAnalyticsResponse:
+    now = datetime.now(timezone.utc)
+    
+    # 1. Balance
+    invoices = db.query(Invoice).filter(
+        Invoice.resident_id == user_id,
+        Invoice.status.in_(['issued', 'overdue'])
+    ).all()
+    
+    total_due = sum((inv.base_amount_paise + inv.late_fee_paise) for inv in invoices) / 100.0
+    next_due_date = None
+    latest_invoice_number = None
+    if invoices:
+        next_invoice = min(invoices, key=lambda x: x.due_date)
+        next_due_date = next_invoice.due_date.strftime("%d %b")
+        latest_invoice_number = next_invoice.invoice_number
+        
+    balance = ResidentBalance(
+        total_due=total_due,
+        next_due_date=next_due_date,
+        latest_invoice_number=latest_invoice_number
+    )
+    
+    # 2. Tickets
+    recent_complaints = db.query(Complaint).filter(Complaint.user_id == user_id).order_by(Complaint.updated_at.desc()).limit(5).all()
+    tickets = []
+    for c in recent_complaints:
+        color = "gray"
+        if c.status not in ["Resolved", "Closed"]:
+            color = "orange" if c.priority == "High" else "blue"
+        tickets.append(ResidentTicket(
+            id=f"TKT-{c.id}",
+            title=c.title or "Complaint",
+            status=c.status,
+            type=c.category,
+            updated=time_ago_str(c.updated_at),
+            color=color
+        ))
+        
+    # 3. Bookings
+    start_of_today = now.replace(hour=0, minute=0, second=0, microsecond=0)
+    upcoming_bookings = db.query(AmenityBooking).filter(
+        AmenityBooking.resident_id == user_id,
+        AmenityBooking.starts_at >= start_of_today,
+        AmenityBooking.status == 'confirmed'
+    ).order_by(AmenityBooking.starts_at.asc()).limit(3).all()
+    
+    bookings = []
+    for b in upcoming_bookings:
+        # Avoid making separate queries if Amenity is loaded, but it might not be eager loaded. 
+        # We can just fetch it manually if needed, or assume it's backpopulated (needs a join ideally).
+        amenity = db.query(Amenity).filter(Amenity.id == b.amenity_id).first()
+        amenity_name = amenity.name if amenity else "Amenity"
+        is_today = b.starts_at.date() == now.date()
+        bookings.append(ResidentBooking(
+            id=b.id,
+            title=b.purpose or amenity_name,
+            amenity_name=amenity_name,
+            starts_at=b.starts_at.strftime("%H:%M"),
+            ends_at=b.ends_at.strftime("%H:%M"),
+            is_today=is_today
+        ))
+        
+    # 4. Events
+    upcoming_events = db.query(CommunityEvent).filter(
+        CommunityEvent.starts_at >= now,
+        CommunityEvent.is_active == True
+    ).order_by(CommunityEvent.starts_at.asc()).limit(3).all()
+    
+    events = []
+    for e in upcoming_events:
+        events.append(ResidentEvent(
+            id=e.id,
+            title=e.title,
+            location=e.location,
+            date_str=e.starts_at.strftime("%d %b %Y"),
+            time_str=e.starts_at.strftime("%H:%M"),
+            month=e.starts_at.strftime("%b"),
+            day=e.starts_at.strftime("%d")
+        ))
+        
+    # 5. Notices
+    active_notices = db.query(Notice).filter(
+        Notice.is_active == True
+    ).order_by(Notice.published_at.desc()).limit(5).all()
+    
+    # Simple target filtering logic could go here, but assuming 'all' for dashboard display
+    
+    notices = []
+    colors = ["blue", "orange", "emerald", "purple", "gray"]
+    for i, n in enumerate(active_notices):
+        # We don't have the author's name directly in Notice, so we use a fallback or fetch user
+        notices.append(ResidentNotice(
+            id=n.id,
+            title=n.title,
+            desc=n.body[:150] + ("..." if len(n.body) > 150 else ""),
+            from_author="Management", # mock author for now
+            time_str=time_ago_str(n.published_at),
+            color=colors[i % len(colors)]
+        ))
+        
+    return ResidentAnalyticsResponse(
+        balance=balance,
+        tickets=tickets,
+        bookings=bookings,
+        events=events,
+        notices=notices
     )
