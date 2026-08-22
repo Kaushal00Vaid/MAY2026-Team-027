@@ -1,23 +1,38 @@
-import { useState, useEffect } from "react";
+import { useState } from "react";
+
+const STORAGE_KEY = "ss-theme";
+
+function preferredTheme() {
+  if (typeof window === "undefined") return "light";
+  const stored = window.localStorage.getItem(STORAGE_KEY);
+  if (stored === "dark" || stored === "light") return stored;
+  return typeof window.matchMedia === "function"
+    && window.matchMedia("(prefers-color-scheme: dark)").matches
+    ? "dark"
+    : "light";
+}
+
+function applyTheme(theme) {
+  if (typeof document === "undefined") return;
+  document.documentElement.classList.toggle("dark", theme === "dark");
+  document.documentElement.dataset.theme = theme;
+  document.documentElement.style.colorScheme = theme;
+}
+
+export function initializeTheme() {
+  const theme = preferredTheme();
+  applyTheme(theme);
+  return theme;
+}
 
 export function useTheme() {
-  const [theme, setTheme] = useState("light");
-
-  useEffect(() => {
-    const stored = typeof window !== "undefined" && localStorage.getItem("ss-theme");
-    const prefersDark =
-      typeof window !== "undefined" &&
-      window.matchMedia("(prefers-color-scheme: dark)").matches;
-    const initial = stored ?? (prefersDark ? "dark" : "light");
-    setTheme(initial);
-    document.documentElement.classList.toggle("dark", initial === "dark");
-  }, []);
+  const [theme, setTheme] = useState(preferredTheme);
 
   const toggle = () => {
     const next = theme === "light" ? "dark" : "light";
     setTheme(next);
-    localStorage.setItem("ss-theme", next);
-    document.documentElement.classList.toggle("dark", next === "dark");
+    window.localStorage.setItem(STORAGE_KEY, next);
+    applyTheme(next);
   };
 
   return { theme, toggle };

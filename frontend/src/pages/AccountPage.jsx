@@ -15,10 +15,10 @@ export default function AccountPage() {
   const section = searchParams.get("section") === "settings" ? "settings" : "profile";
 
   return (
-    <main className="min-h-screen bg-[#fbf9f6] p-5 md:p-10">
+    <main className="min-h-screen bg-[#fbf9f6] dark:bg-background p-5 md:p-10 transition-colors">
       <div className="max-w-3xl mx-auto">
         <button type="button" onClick={() => navigate(home)} className="inline-flex items-center gap-2 text-sm font-semibold text-gray-500 hover:text-[#0f2336]"><ArrowLeft size={16}/>Back to dashboard</button>
-        <div className="mt-8 bg-white rounded-3xl border border-gray-100 shadow-sm overflow-hidden">
+        <div className="mt-8 bg-white dark:bg-card rounded-3xl border border-gray-100 dark:border-border shadow-sm overflow-hidden transition-colors">
           <div className="bg-gradient-to-br from-[#0f1a2b] to-[#1a2d48] p-8 text-white flex items-center gap-5">
             <div className="w-16 h-16 rounded-2xl bg-white/10 flex items-center justify-center"><UserRound size={30}/></div>
             <div><p className="text-xs uppercase tracking-widest text-white/50">Account</p><h1 className="text-2xl font-extrabold mt-1">{fullName}</h1></div>
