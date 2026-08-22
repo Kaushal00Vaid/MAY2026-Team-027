@@ -18,7 +18,6 @@ import {
   UserCog,
   Loader2
 } from "lucide-react";
-import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import DashboardLayout from "@/components/layout/DashboardLayout";
 import { getTransactions } from "@/api/finance";
 import { downloadAnalyticsExport, getAdminAnalytics } from "@/api/analytics";
@@ -33,6 +32,35 @@ const sidebarItems = [
   { label: "Analytics", icon: BarChart3, active: false, href: "/admin/analytics" },
   { label: "User Roles", icon: UserCog, active: false, href: "/admin/users" },
 ];
+
+function RevenueChart({ data }) {
+  if (!data?.length) return <div className="h-full grid place-items-center text-sm text-gray-400">No revenue data available.</div>;
+
+  const width = 600;
+  const height = 190;
+  const padding = 24;
+  const maximum = Math.max(...data.map((item) => Number(item.value) || 0), 1);
+  const points = data.map((item, index) => {
+    const x = data.length === 1 ? width / 2 : padding + (index * (width - padding * 2)) / (data.length - 1);
+    const y = height - padding - ((Number(item.value) || 0) / maximum) * (height - padding * 2);
+    return { ...item, x, y };
+  });
+  const line = points.map(({ x, y }) => `${x},${y}`).join(" ");
+  const area = `${padding},${height - padding} ${line} ${width - padding},${height - padding}`;
+
+  return (
+    <div className="h-full flex flex-col" role="img" aria-label="Monthly revenue trend">
+      <svg viewBox={`0 0 ${width} ${height}`} className="w-full flex-1" preserveAspectRatio="none">
+        <defs><linearGradient id="revenueArea" x1="0" y1="0" x2="0" y2="1"><stop offset="5%" stopColor="#4f46e5" stopOpacity="0.3"/><stop offset="95%" stopColor="#4f46e5" stopOpacity="0"/></linearGradient></defs>
+        {[0.25, 0.5, 0.75, 1].map((ratio) => <line key={ratio} x1={padding} x2={width - padding} y1={height - padding - ratio * (height - padding * 2)} y2={height - padding - ratio * (height - padding * 2)} stroke="#f3f4f6" strokeDasharray="4 4"/>)}
+        <polygon points={area} fill="url(#revenueArea)"/>
+        <polyline points={line} fill="none" stroke="#4f46e5" strokeWidth="4" strokeLinejoin="round" strokeLinecap="round"/>
+        {points.map((point) => <circle key={point.name} cx={point.x} cy={point.y} r="5" fill="#4f46e5"><title>{point.name}: ₹{Number(point.value).toLocaleString("en-IN")}</title></circle>)}
+      </svg>
+      <div className="flex justify-between px-2 text-xs text-gray-500">{data.map((item) => <span key={item.name}>{item.name}</span>)}</div>
+    </div>
+  );
+}
 
 
 
@@ -49,6 +77,7 @@ export default function AdminDashboard() {
   const [months, setMonths] = useState(6);
   const [exporting, setExporting] = useState(false);
   const [exportMessage, setExportMessage] = useState("");
+  const [showAllActivity, setShowAllActivity] = useState(false);
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -202,7 +231,8 @@ export default function AdminDashboard() {
                 </div>
                 <div>
                   <h3 className="text-lg font-bold text-white">SLA Breach Alert</h3>
-                  <p className="text-sm text-gray-400 mt-0.5">{analytics.sla_alerts.length} ticket(s) require immediate attention.</p>
+                  <p className="text-sm text-gray-300 mt-0.5">{analytics.sla_alerts.length} open complaint(s) have passed their resolution deadline.</p>
+                  <p className="text-xs text-gray-400 mt-1">Overdue time is measured from each complaint&apos;s assigned SLA deadline.</p>
                   
                   <div className="mt-4 flex flex-col gap-2">
                     {analytics.sla_alerts.map((alert) => (
@@ -244,25 +274,7 @@ export default function AdminDashboard() {
                 </select>
               </div>
               <div className="h-64 w-full">
-                <ResponsiveContainer width="100%" height="100%">
-                  <AreaChart data={analytics?.revenue_trend || []} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
-                    <defs>
-                      <linearGradient id="colorRevenue" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="5%" stopColor="#4f46e5" stopOpacity={0.3}/>
-                        <stop offset="95%" stopColor="#4f46e5" stopOpacity={0}/>
-                      </linearGradient>
-                    </defs>
-                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f3f4f6" />
-                    <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: '#6b7280' }} dy={10} />
-                    <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: '#6b7280' }} tickFormatter={(value) => `₹${value/1000}k`} />
-                    <Tooltip 
-                      contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 4px 20px rgba(0,0,0,0.08)' }}
-                      itemStyle={{ color: '#0f2336', fontWeight: 600 }}
-                      formatter={(value) => [`₹${Number(value).toLocaleString("en-IN")}`, 'Revenue']}
-                    />
-                    <Area type="monotone" dataKey="value" stroke="#4f46e5" strokeWidth={3} fillOpacity={1} fill="url(#colorRevenue)" />
-                  </AreaChart>
-                </ResponsiveContainer>
+                <RevenueChart data={analytics?.revenue_trend || []}/>
               </div>
             </div>
 
@@ -344,13 +356,13 @@ export default function AdminDashboard() {
           <div className="bg-white p-6 rounded-2xl border border-gray-100 shadow-sm h-fit sticky top-24">
             <div className="flex items-center justify-between mb-8">
               <h3 className="text-lg font-bold text-[#0f2336]">Activity Feed</h3>
-              <button onClick={() => navigate("/admin/analytics")} className="text-blue-600 hover:text-blue-700 text-sm font-semibold flex items-center gap-1 group">
-                View All <ArrowRight size={14} className="group-hover:translate-x-1 transition-transform" />
+              <button onClick={() => setShowAllActivity((value) => !value)} aria-expanded={showAllActivity} className="text-blue-600 hover:text-blue-700 text-sm font-semibold flex items-center gap-1 group">
+                {showAllActivity ? "Show Recent" : "View All"} <ArrowRight size={14} className={`transition-transform ${showAllActivity ? "rotate-90" : "group-hover:translate-x-1"}`} />
               </button>
             </div>
             
             <div className="relative border-l-2 border-gray-100 ml-3 space-y-8 pb-4">
-              {analytics?.activity_feed?.map((item, idx) => (
+              {analytics?.activity_feed?.slice(0, showAllActivity ? analytics.activity_feed.length : 4).map((item, idx) => (
                 <div key={idx} className="relative pl-6 group">
                   {item.type === 'security' && (
                     <span className="absolute -left-[9px] top-1 w-4 h-4 rounded-full border-4 border-white bg-blue-500 group-hover:scale-125 transition-transform"></span>

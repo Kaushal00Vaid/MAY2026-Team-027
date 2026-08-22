@@ -2,7 +2,7 @@
 
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { MemoryRouter, Route, Routes } from "react-router-dom";
+import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
 import { Headphones, LayoutDashboard } from "lucide-react";
 import DashboardLayout from "@/components/layout/DashboardLayout";
 
@@ -24,13 +24,18 @@ const items = [
   { label: "Helpdesk", icon: Headphones, href: "/admin/helpdesk" },
 ];
 
+function AccountDestination() {
+  const location = useLocation();
+  return <p>Account destination {location.search}</p>;
+}
+
 function renderLayout() {
   return render(
     <MemoryRouter initialEntries={["/admin"]}>
       <Routes>
         <Route path="/admin" element={<DashboardLayout sidebarItems={items} userRole="Admin" userName="Asha Shah"><p>Dashboard content</p></DashboardLayout>}/>
         <Route path="/admin/helpdesk" element={<p>Helpdesk destination</p>}/>
-        <Route path="/account" element={<p>Account destination</p>}/>
+        <Route path="/account" element={<AccountDestination/>}/>
       </Routes>
     </MemoryRouter>,
   );
@@ -57,9 +62,9 @@ describe("DashboardLayout navigation", () => {
     expect(await screen.findByText("Helpdesk destination")).toBeTruthy();
   });
 
-  it("routes settings and profile controls to the account page", async () => {
+  it("routes settings to the preferences section", async () => {
     renderLayout();
     fireEvent.click(screen.getByRole("button", { name: /account settings/i }));
-    expect(await screen.findByText("Account destination")).toBeTruthy();
+    expect(await screen.findByText("Account destination ?section=settings")).toBeTruthy();
   });
 });
