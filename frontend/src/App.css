@@ -3,6 +3,9 @@
 @import "shadcn/tailwind.css";
 @import "@fontsource-variable/inter";
 
+/* Tailwind v4 defaults dark variants to the OS media query. Preferences are
+   user-controlled, so bind dark utilities to the class managed by useTheme. */
+@custom-variant dark (&:where(.dark, .dark *));
 
 
 :root {
@@ -59,6 +62,28 @@
   --shadow-2xl: 0px 1px 4px 0px hsl(0 0% 0% / 0.13);
   --tracking-normal: 0.025em;
   --spacing: 0.25rem;
+}
+
+:root.dark {
+  color-scheme: dark;
+  --background: #0b1220;
+  --foreground: #e5e7eb;
+  --card: #152033;
+  --card-foreground: #f3f4f6;
+  --popover: #152033;
+  --popover-foreground: #f3f4f6;
+  --muted: #202c3f;
+  --muted-foreground: #a8b2c1;
+  --accent: #273449;
+  --accent-foreground: #f3f4f6;
+  --border: #334155;
+  --input: #334155;
+  --sidebar: #111b2c;
+  --sidebar-foreground: #f3f4f6;
+  --sidebar-accent: #202c3f;
+  --sidebar-accent-foreground: #ffffff;
+  --sidebar-border: #334155;
+  --dot-grid: rgba(255,255,255,0.12);
 }
 
 
@@ -133,6 +158,51 @@
     @apply bg-background text-foreground;
     letter-spacing: var(--tracking-normal);
   }
+}
+
+/* Legacy dashboard pages still contain literal light palette utilities. These
+   mappings make the saved theme apply consistently while those pages migrate
+   to semantic color tokens. Exact class-token selectors avoid changing brand
+   gradients and status colors. */
+:root.dark body,
+:root.dark #root {
+  background-color: var(--background);
+  color: var(--foreground);
+}
+
+:root.dark [class~="bg-white"],
+:root.dark [class~="bg-white/70"],
+:root.dark [class~="bg-white/90"] {
+  background-color: var(--card) !important;
+}
+
+:root.dark [class~="bg-[#fbf9f6]"],
+:root.dark [class~="bg-[#f3f4f6]"],
+:root.dark [class~="bg-gray-50"],
+:root.dark [class~="bg-gray-50/50"],
+:root.dark [class~="bg-gray-100"],
+:root.dark [class~="bg-gray-100/80"] {
+  background-color: var(--background) !important;
+}
+
+:root.dark [class~="text-[#0f2336]"],
+:root.dark [class~="text-[#0f1a2b]"],
+:root.dark [class~="text-gray-900"],
+:root.dark [class~="text-gray-800"],
+:root.dark [class~="text-gray-700"] {
+  color: var(--foreground) !important;
+}
+
+:root.dark [class~="text-gray-600"],
+:root.dark [class~="text-gray-500"],
+:root.dark [class~="text-gray-400"] {
+  color: var(--muted-foreground) !important;
+}
+
+:root.dark [class~="border-gray-50"],
+:root.dark [class~="border-gray-100"],
+:root.dark [class~="border-gray-200"] {
+  border-color: var(--border) !important;
 }
 
 /* ── Auth page decoration animations ─────────────────────────── */
