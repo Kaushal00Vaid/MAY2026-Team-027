@@ -289,7 +289,10 @@ def get_admin_analytics(db: Session, months: int = 6) -> AdminAnalyticsResponse:
         })
         
     feed_items.sort(key=lambda x: x["dt"], reverse=True)
-    top_feed = [x["item"] for x in feed_items[:4]]
+    # Return the complete bounded feed assembled above. The dashboard initially
+    # renders four entries and expands this list in place without another slow
+    # network request or an unrelated redirect to Analytics.
+    top_feed = [x["item"] for x in feed_items]
 
     return AdminAnalyticsResponse(
         stats=AdminDashboardStats(

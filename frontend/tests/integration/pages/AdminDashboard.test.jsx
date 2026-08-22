@@ -31,7 +31,12 @@ const analytics = {
   },
   sla_alerts: [{ ticket_id: "#TK-1", title: "Lift", overdue_by_mins: 20 }],
   revenue_trend: [{ name: "Aug", value: 125000 }],
-  activity_feed: [{ time_ago: "Now", type: "helpdesk", title: "Helpdesk", description: "Ticket updated" }],
+  activity_feed: Array.from({ length: 6 }, (_, index) => ({
+    time_ago: "Now",
+    type: "helpdesk",
+    title: "Helpdesk",
+    description: `Ticket ${index + 1} updated`,
+  })),
 };
 
 describe("AdminDashboard", () => {
@@ -53,13 +58,17 @@ describe("AdminDashboard", () => {
     await waitFor(() => expect(getAdminAnalytics).toHaveBeenLastCalledWith({ months: 12 }));
   });
 
-  it("connects SLA and activity drill-down actions", async () => {
+  it("explains SLA breaches and expands activity without leaving the dashboard", async () => {
     render(<AdminDashboard />);
     await screen.findByText("Resolve Now");
+    expect(screen.getByText(/passed their resolution deadline/i)).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "Resolve Now" }));
     expect(navigate).toHaveBeenLastCalledWith("/admin/helpdesk");
+    expect(screen.queryByText("Ticket 6 updated")).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: /view all/i }));
-    expect(navigate).toHaveBeenLastCalledWith("/admin/analytics");
+    expect(screen.getByText("Ticket 6 updated")).toBeTruthy();
+    expect(screen.getByRole("button", { name: /show recent/i }).getAttribute("aria-expanded")).toBe("true");
+    expect(navigate).toHaveBeenCalledTimes(1);
   });
 
   it.each([

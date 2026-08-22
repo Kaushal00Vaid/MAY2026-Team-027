@@ -199,7 +199,7 @@ export default function DashboardLayout({
             <div className="font-semibold text-sm hidden lg:block text-gray-700">{userName}</div>
             <div className="h-5 w-px bg-gray-200 mx-1 hidden lg:block"></div>
             <NotificationMenu />
-            <button type="button" aria-label="Account settings" onClick={() => navigate("/account")} className="p-2 text-gray-400 hover:text-gray-600 rounded-full hover:bg-gray-100 transition-all">
+            <button type="button" aria-label="Account settings" onClick={() => navigate("/account?section=settings")} className="p-2 text-gray-400 hover:text-gray-600 rounded-full hover:bg-gray-100 transition-all">
               <Settings size={18} />
             </button>
             <button type="button" aria-label="Open profile" onClick={() => navigate("/account")} className="w-8 h-8 rounded-full bg-primary/10 overflow-hidden border border-primary/20 ml-2 cursor-pointer ring-2 ring-transparent hover:ring-primary/30 transition-all">
