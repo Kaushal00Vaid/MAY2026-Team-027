@@ -36,6 +36,8 @@ class ComplaintCreate(BaseModel):
 
     @model_validator(mode="after")
     def coordinates_are_a_pair(self):
+        if not self.category or not self.description:
+            raise ValueError("Category and description cannot be blank")
         if (self.latitude is None) != (self.longitude is None):
             raise ValueError("Latitude and longitude must be supplied together")
         return self
@@ -47,6 +49,14 @@ class ComplaintUpdate(BaseModel):
     work_order_notes: str | None = Field(None, max_length=10_000)
     expected_version: int = Field(..., ge=1)
     status_note: str | None = Field(None, max_length=2_000)
+    internal_note: str | None = Field(None, max_length=2_000)
+
+    @field_validator("work_order_notes", "status_note", "internal_note")
+    @classmethod
+    def strip_optional_text(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        return value.strip() or None
 
 
 class ComplaintResponse(BaseModel):
