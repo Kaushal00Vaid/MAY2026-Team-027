@@ -200,7 +200,7 @@ def availability(
                 {
                     "starts_at": cursor,
                     "ends_at": end,
-                    "available": cursor > now and collision is None,
+                    "available": amenity.is_active and cursor > now and collision is None,
                     "booking": _booking_dict(db, collision) if visible else None,
                 }
             )
@@ -330,7 +330,13 @@ def create_booking(db: Session, user: User, data, key: str) -> dict:
 
 
 def list_bookings(
-    db: Session, user: User, page: int, page_size: int, start_date: date | None = None
+    db: Session,
+    user: User,
+    page: int,
+    page_size: int,
+    start_date: date | None = None,
+    end_date: date | None = None,
+    amenity_id: int | None = None,
 ) -> tuple[list[dict], int]:
     ensure_member(user)
     _complete_elapsed(db)
@@ -344,6 +350,15 @@ def list_bookings(
                 timezone.utc
             )
         )
+    if end_date:
+        criteria.append(
+            AmenityBooking.starts_at
+            < datetime.combine(end_date, time.min, tzinfo=IST).astimezone(timezone.utc)
+        )
+    if start_date and end_date and end_date <= start_date:
+        raise HTTPException(status_code=422, detail="End date must be after start date.")
+    if amenity_id:
+        criteria.append(AmenityBooking.amenity_id == amenity_id)
     query = select(AmenityBooking).where(*criteria)
     total = db.scalar(select(func.count(AmenityBooking.id)).where(*criteria)) or 0
     items = db.scalars(
