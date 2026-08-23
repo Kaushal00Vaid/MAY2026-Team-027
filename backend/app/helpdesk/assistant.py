@@ -32,7 +32,9 @@ def _provider(api_key: str) -> str:
         return "gemini"
     if api_key.startswith("sk-"):
         return "openai"
-    return "openrouter"
+    # AI Pipe login tokens do not use a native-provider prefix. The documented
+    # OpenAI-compatible configuration routes these tokens through /openai/v1.
+    return "openai"
 
 
 def _request(provider: str, messages: list[dict[str, str]]) -> tuple[str, dict]:

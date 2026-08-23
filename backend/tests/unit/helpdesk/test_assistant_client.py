@@ -51,6 +51,7 @@ def configure_client(monkeypatch):
 @pytest.mark.parametrize(
     ("api_key", "expected_url", "expected_model"),
     [
+        ("aipipe-login-token", "/openai/v1/chat/completions", "gpt-5-nano"),
         ("sk-openai-key", "/openai/v1/chat/completions", "gpt-5-nano"),
         (
             "sk-or-openrouter-key",
