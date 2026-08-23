@@ -21,6 +21,7 @@ import {
 import DashboardLayout from "@/components/layout/DashboardLayout";
 import { getFinanceLedger } from "@/features/finance/api";
 import { downloadAnalyticsExport, getAdminAnalytics } from "@/api/analytics";
+import { useAuth } from "@/hooks/useAuth";
 
 const sidebarItems = [
   { label: "Dashboard", icon: LayoutDashboard, active: true, href: "/admin" },
@@ -79,12 +80,33 @@ export default function AdminDashboard() {
   const [exportMessage, setExportMessage] = useState("");
   const [showAllActivity, setShowAllActivity] = useState(false);
   const navigate = useNavigate();
+  const { user } = useAuth();
+  const userRoles = user?.roles || [];
+  const isSuperAdmin = userRoles.includes("super_admin");
+  const visibleSidebarItems = sidebarItems.filter((item) => item.href !== "/admin/users" || isSuperAdmin);
+  const roleLabel = isSuperAdmin
+    ? "Super Admin"
+    : userRoles.includes("admin")
+      ? "Residential Admin"
+      : "Committee Member";
 
   useEffect(() => {
+    let active = true;
+    setAnalyticsLoading(true);
+    setAnalyticsError("");
+
     getAdminAnalytics({ months })
-      .then((res) => setAnalytics(res.data))
-      .catch(() => setAnalyticsError("Unable to load dashboard analytics."))
-      .finally(() => setAnalyticsLoading(false));
+      .then((res) => {
+        if (active) setAnalytics(res.data);
+      })
+      .catch(() => {
+        if (active) setAnalyticsError("Unable to load dashboard analytics.");
+      })
+      .finally(() => {
+        if (active) setAnalyticsLoading(false);
+      });
+
+    return () => { active = false; };
   }, [months]);
 
   const exportReport = async () => {
@@ -107,7 +129,9 @@ export default function AdminDashboard() {
     setTxLoading(true);
     setTxError(null);
 
-    getFinanceLedger(1, 10)
+    setTransactions([]);
+    const direction = activeTab === "all" ? undefined : activeTab;
+    getFinanceLedger(1, 10, direction)
       .then((res) => {
         if (!active) return;
         const mapped = res.data.items.map((tx) => ({
@@ -131,21 +155,16 @@ export default function AdminDashboard() {
       });
 
     return () => { active = false; };
-  }, []);
-
-  const filteredTransactions = activeTab === "all"
-    ? transactions
-    : transactions.filter((transaction) => transaction.direction === activeTab);
+  }, [activeTab]);
 
   return (
-    <DashboardLayout sidebarItems={sidebarItems} userRole="Residential Admin">
+    <DashboardLayout sidebarItems={visibleSidebarItems} userRole={roleLabel}>
       <div className="p-6 md:p-8 max-w-7xl mx-auto space-y-8 animate-in fade-in duration-500">
         
         {/* Header Section */}
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div>
             <h1 className="text-3xl font-extrabold text-[#0f2336] tracking-tight">Society Overview</h1>
-            <p className="text-sm text-gray-500 mt-1">Real-time metrics for Green Valley Residency.</p>
           </div>
           <button disabled={exporting} onClick={exportReport} className="inline-flex items-center gap-2 px-5 py-2.5 bg-white border border-gray-200 hover:border-gray-300 hover:bg-gray-50 hover:shadow-sm disabled:opacity-50 text-gray-700 text-sm font-semibold rounded-xl transition-all active:scale-95">
             {exporting ? <Loader2 className="animate-spin" size={16}/> : <Download size={16} />}
@@ -240,7 +259,6 @@ export default function AdminDashboard() {
                 <div>
                   <h3 className="text-lg font-bold text-white">SLA Breach Alert</h3>
                   <p className="text-sm text-gray-300 mt-0.5">{analytics.sla_alerts.length} open complaint(s) have passed their resolution deadline.</p>
-                  <p className="text-xs text-gray-400 mt-1">Overdue time is measured from each complaint&apos;s assigned SLA deadline.</p>
                   
                   <div className="mt-4 flex flex-col gap-2">
                     {analytics.sla_alerts.map((alert) => (
@@ -276,7 +294,7 @@ export default function AdminDashboard() {
                   <h3 className="text-lg font-bold text-[#0f2336]">Revenue Trend</h3>
                   <p className="text-xs text-gray-500 mt-1">Monthly collection overview (last {months} months)</p>
                 </div>
-                <select value={months} onChange={(event) => { setAnalyticsError(""); setAnalyticsLoading(true); setMonths(Number(event.target.value)); }} className="bg-gray-50 border border-gray-200 text-sm rounded-lg px-3 py-1.5 outline-none focus:ring-2 focus:ring-primary/20 cursor-pointer">
+                <select value={months} onChange={(event) => setMonths(Number(event.target.value))} className="bg-gray-50 border border-gray-200 text-sm rounded-lg px-3 py-1.5 outline-none focus:ring-2 focus:ring-primary/20 cursor-pointer">
                   <option value={12}>Last 12 Months</option>
                   <option value={6}>Last 6 Months</option>
                 </select>
@@ -318,7 +336,7 @@ export default function AdminDashboard() {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-50">
-                    {filteredTransactions.map((tx) => (
+                    {transactions.map((tx) => (
                       <tr key={tx.id} className="hover:bg-gray-50/50 transition-colors group cursor-default">
                         <td className="px-6 py-4 font-medium text-gray-900 flex items-center gap-3">
                           <div className={`w-8 h-8 rounded-full flex items-center justify-center ${tx.direction === "credit" ? "bg-emerald-100 text-emerald-600" : "bg-red-100 text-red-600"}`}>
@@ -347,7 +365,7 @@ export default function AdminDashboard() {
                         </td>
                       </tr>
                     )}
-                    {!txLoading && !txError && filteredTransactions.length === 0 && (
+                    {!txLoading && !txError && transactions.length === 0 && (
                       <tr>
                         <td colSpan={4} className="px-6 py-8 text-center text-gray-500">
                           No transactions found for this filter.
@@ -364,9 +382,11 @@ export default function AdminDashboard() {
           <div className="bg-white p-6 rounded-2xl border border-gray-100 shadow-sm h-fit sticky top-24">
             <div className="flex items-center justify-between mb-8">
               <h3 className="text-lg font-bold text-[#0f2336]">Activity Feed</h3>
-              <button onClick={() => setShowAllActivity((value) => !value)} aria-expanded={showAllActivity} className="text-blue-600 hover:text-blue-700 text-sm font-semibold flex items-center gap-1 group">
-                {showAllActivity ? "Show Recent" : "View All"} <ArrowRight size={14} className={`transition-transform ${showAllActivity ? "rotate-90" : "group-hover:translate-x-1"}`} />
-              </button>
+              {(analytics?.activity_feed?.length || 0) > 4 && (
+                <button onClick={() => setShowAllActivity((value) => !value)} aria-expanded={showAllActivity} className="text-blue-600 hover:text-blue-700 text-sm font-semibold flex items-center gap-1 group">
+                  {showAllActivity ? "Show Recent" : "View All"} <ArrowRight size={14} className={`transition-transform ${showAllActivity ? "rotate-90" : "group-hover:translate-x-1"}`} />
+                </button>
+              )}
             </div>
             
             <div className="relative border-l-2 border-gray-100 ml-3 space-y-8 pb-4">

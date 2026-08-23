@@ -1,4 +1,5 @@
 from datetime import datetime
+from typing import Literal
 
 from fastapi import APIRouter, Depends, Header, Query, Response, status
 from sqlalchemy.orm import Session
@@ -39,10 +40,11 @@ def admin_summary(
 def ledger(
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=100),
+    direction: Literal["credit", "debit"] | None = Query(None),
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
-    items, total = operations.ledger(db, user, page, page_size)
+    items, total = operations.ledger(db, user, page, page_size, direction)
     return {"items": items, "total": total, "page": page, "page_size": page_size}
 
 
