@@ -9,6 +9,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session, joinedload
 
 from app.config import settings
+from app.helpdesk import assistant
 from app.db.models.complaint import Complaint
 from app.db.models.role import Role, RoleName, UserRole
 from app.db.models.user import User
@@ -366,7 +367,7 @@ def subscribe_known_issue(db: Session, user: User, complaint_id: int) -> dict:
     return next(item for item in list_known_issues(db, user) if item["complaint_id"] == complaint_id)
 
 
-def analyze_message(db: Session, user: User, message: str) -> dict:
+def analyze_message(db: Session, user: User, message: str, history=()) -> dict:
     lowered = message.lower()
     keywords = {
         "Plumbing": ["water", "leak", "pipe", "drain"],
@@ -381,8 +382,12 @@ def analyze_message(db: Session, user: User, message: str) -> dict:
     )
     issues = list_known_issues(db, user)
     match = next((item for item in issues if item["category"].lower() == category.lower()), None)
+    conversation = [
+        {"role": item.role, "content": item.content.strip()}
+        for item in history
+    ]
+    conversation.append({"role": "user", "content": message.strip()})
+    response = assistant.complete_chat(conversation)
     if match:
-        response = "A compatible open issue already exists. You can subscribe to its updates or create a separate ticket."
-    else:
-        response = f"I classified this as {category}. Use New Ticket to submit it to the helpdesk team."
+        response += " A compatible open issue is shown below; you can subscribe to its updates."
     return {"message": response, "suggested_category": category, "known_issue": match}

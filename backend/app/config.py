@@ -30,6 +30,12 @@ class Settings(BaseSettings):
     MEDIA_ROOT: str = "./media"
     HELPDESK_MAX_UPLOAD_BYTES: int = 5 * 1024 * 1024
 
+    # Resident Helpdesk AI assistant (server-side only)
+    AIPIPE_API_KEY: str = ""
+    AIPIPE_BASE_URL: str = "https://aipipe.org/openrouter/v1"
+    AIPIPE_MODEL: str = "openai/gpt-4.1-nano"
+    AIPIPE_TIMEOUT_SECONDS: float = Field(default=20.0, ge=1, le=60)
+
     # Scheduled work (run as a separate process: python scheduler.py)
     SCHEDULER_TIMEZONE: str = "Asia/Kolkata"
     SCHEDULER_RUN_ON_STARTUP: bool = True

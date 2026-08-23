@@ -46,8 +46,8 @@ export const listAssignees = () => axiosInstance.get("/api/v1/helpdesk/assignees
 export const listKnownIssues = () => axiosInstance.get("/api/v1/helpdesk/known-issues");
 export const subscribeKnownIssue = (id) =>
   axiosInstance.post(`/api/v1/helpdesk/known-issues/${id}/subscribe`);
-export const analyzeIssue = (message) =>
-  axiosInstance.post("/api/v1/helpdesk/assistant/analyze", { message });
+export const analyzeIssue = (message, history = []) =>
+  axiosInstance.post("/api/v1/helpdesk/assistant/analyze", { message, history });
 
 export const listMaintenanceTasks = (filterBy = "all") =>
   axiosInstance.get("/api/v1/helpdesk/maintenance-tasks", {

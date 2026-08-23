@@ -32,10 +32,17 @@ def ensure_can_create(user: User) -> None:
         )
 
 
+def ensure_resident(user: User) -> None:
+    if not role_names(user) & RESIDENT_ROLES:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Resident access required.",
+        )
+
+
 def ensure_operational(user: User) -> None:
     if not is_operational(user):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Only admin or committee roles can manage complaints.",
         )
-

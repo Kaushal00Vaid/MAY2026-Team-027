@@ -81,3 +81,12 @@
   staff see only assigned tasks.
 - Files are MIME/size validated and server-selected paths are never exposed.
 - Location falls back to the resident's unit where supported and is `N/A` only when absent.
+
+## Resident AI assistant
+
+The Resident Helpdesk assistant sends bounded conversation history to the backend.
+The backend calls AI Pipe with `AIPIPE_API_KEY`, so the credential must exist only
+in `backend/.env` and must never use a frontend `VITE_` variable. Verify that a
+resident can ask a follow-up question, receives a concise response, and can still
+use the suggested category and known-issue subscription flow. Also verify that an
+unavailable AI service shows a retry/ticket message without losing the typed text.

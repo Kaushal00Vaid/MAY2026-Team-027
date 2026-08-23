@@ -177,11 +177,14 @@ describe("helpdesk API client", () => {
     helpdesk.addComment(1, "Update", true); helpdesk.listStatusHistory(1); helpdesk.listAttachments(1);
     helpdesk.downloadAttachment("/api/v1/complaints/1/attachments/2"); helpdesk.getStats();
     helpdesk.listAssignees(); helpdesk.listKnownIssues(); helpdesk.subscribeKnownIssue(1);
-    helpdesk.analyzeIssue("Water leak"); helpdesk.listMaintenanceTasks("mine"); helpdesk.getDutyState();
+    helpdesk.analyzeIssue("Water leak", [{ role: "assistant", content: "How can I help?" }]); helpdesk.listMaintenanceTasks("mine"); helpdesk.getDutyState();
     helpdesk.setDutyState(true);
     expect(http.post).toHaveBeenCalledWith("/api/v1/complaints/1/comments", { body: "Update", is_internal: true });
     expect(http.get).toHaveBeenCalledWith("/api/v1/complaints/1/attachments");
-    expect(http.post).toHaveBeenCalledWith("/api/v1/helpdesk/assistant/analyze", { message: "Water leak" });
+    expect(http.post).toHaveBeenCalledWith("/api/v1/helpdesk/assistant/analyze", {
+      message: "Water leak",
+      history: [{ role: "assistant", content: "How can I help?" }],
+    });
     expect(http.put).toHaveBeenCalledWith("/api/v1/helpdesk/maintenance-duty", { on_duty: true });
   });
 });

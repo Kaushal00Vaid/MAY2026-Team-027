@@ -35,6 +35,8 @@ export default function ResidentHelpdesk() {
   const { user } = useAuth();
   const createFileRef = useRef(null);
   const deepLinkHandled = useRef(false);
+  const assistantSendingRef = useRef(false);
+  const chatEndRef = useRef(null);
   const [tickets, setTickets] = useState([]);
   const [knownIssues, setKnownIssues] = useState([]);
   const [showAll, setShowAll] = useState(false);
@@ -49,6 +51,7 @@ export default function ResidentHelpdesk() {
   const [assistantIssue, setAssistantIssue] = useState(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [assistantSending, setAssistantSending] = useState(false);
   const [error, setError] = useState("");
   const [toast, setToast] = useState("");
 
@@ -73,6 +76,9 @@ export default function ResidentHelpdesk() {
     const timer = setTimeout(() => setToast(""), 3000);
     return () => clearTimeout(timer);
   }, [toast]);
+  useEffect(() => {
+    chatEndRef.current?.scrollIntoView?.({ behavior: "smooth", block: "nearest" });
+  }, [chat, assistantSending]);
 
   const openDetails = async (ticket) => {
     setError("");
@@ -107,15 +113,28 @@ export default function ResidentHelpdesk() {
   };
 
   const sendAssistantMessage = async () => {
-    const text = message.trim(); if (!text || saving) return;
-    setChat((items) => [...items, { role: "user", text }]); setMessage(""); setSaving(true); setError("");
+    const text = message.trim();
+    if (!text || assistantSendingRef.current) return;
+    const history = chat.slice(-10).map((item) => ({
+      role: item.role === "bot" ? "assistant" : "user",
+      content: item.text,
+    }));
+    assistantSendingRef.current = true;
+    setChat((items) => [...items, { role: "user", text }]);
+    setMessage(""); setAssistantSending(true); setError("");
     try {
-      const { data } = await analyzeIssue(text);
+      const { data } = await analyzeIssue(text, history);
       setChat((items) => [...items, { role: "bot", text: data.message }]);
       setAssistantIssue(data.known_issue);
       setForm((current) => ({ ...current, title: text.slice(0, 255), description: text, category: data.suggested_category }));
-    } catch (requestError) { setError(errorMessage(requestError, "The assistant is temporarily unavailable.")); }
-    finally { setSaving(false); }
+    } catch (requestError) {
+      const assistantError = errorMessage(requestError, "The assistant is temporarily unavailable. Please retry or create a ticket.");
+      setError(assistantError);
+      setMessage(text);
+    } finally {
+      assistantSendingRef.current = false;
+      setAssistantSending(false);
+    }
   };
 
   const subscribe = async (issue) => {
@@ -161,12 +180,14 @@ export default function ResidentHelpdesk() {
       {error && <div className="mb-4 p-3 rounded-xl bg-red-50 border border-red-100 text-sm font-semibold text-red-600">{error}</div>}
       <div className="flex-1 flex flex-col lg:flex-row gap-6 min-h-0">
         <div className="flex-1 bg-white rounded-3xl border border-gray-100 shadow-sm flex flex-col overflow-hidden">
-          <div className="h-16 border-b flex items-center justify-between px-6 bg-gray-50/50"><div className="flex gap-3 items-center"><div className="w-10 h-10 bg-blue-100 text-blue-600 rounded-full flex items-center justify-center"><Bot size={20}/></div><div><h3 className="font-bold text-[#0f2336]">Support Assistant</h3><span className="text-xs text-gray-500">● Online</span></div></div><button onClick={() => setShowModal(true)} className="px-4 py-1.5 bg-white border rounded-lg text-xs font-bold text-gray-600">Escalate to Human</button></div>
+          <div className="h-16 border-b flex items-center justify-between px-6 bg-gray-50/50"><div className="flex gap-3 items-center"><div className="w-10 h-10 bg-blue-100 text-blue-600 rounded-full flex items-center justify-center"><Bot size={20}/></div><div><h3 className="font-bold text-[#0f2336]">Support Assistant</h3><span className="text-xs text-gray-500">AI support</span></div></div><button onClick={() => setShowModal(true)} className="px-4 py-1.5 bg-white border rounded-lg text-xs font-bold text-gray-600">Escalate to Human</button></div>
           <div className="flex-1 overflow-y-auto p-6 space-y-4 bg-slate-50/30">
             {chat.map((item, index) => <div key={index} className={`flex gap-3 max-w-[85%] ${item.role === "user" ? "ml-auto flex-row-reverse" : ""}`}><div className={`w-8 h-8 shrink-0 rounded-full flex items-center justify-center ${item.role === "user" ? "bg-[#0f2336] text-white" : "bg-blue-100 text-blue-600"}`}>{item.role === "user" ? <User size={16}/> : <Bot size={16}/>}</div><div className={`p-4 rounded-2xl text-sm ${item.role === "user" ? "bg-[#0f2336] text-white" : "bg-gray-100 text-gray-800"}`}>{item.text}</div></div>)}
+            {assistantSending && <div className="flex gap-3 max-w-[85%]" aria-label="Assistant is responding"><div className="w-8 h-8 shrink-0 rounded-full flex items-center justify-center bg-blue-100 text-blue-600"><Bot size={16}/></div><div className="p-4 rounded-2xl text-sm bg-gray-100 text-gray-500">Thinking…</div></div>}
             {assistantIssue && <div className="bg-orange-50 border border-orange-200 p-5 rounded-3xl max-w-[90%]"><div className="flex gap-2 text-orange-600 font-bold mb-3"><AlertTriangle size={18}/>Possible Duplicate Issue Detected</div><div className="bg-white rounded-2xl p-4 border"><div className="text-xs font-bold text-gray-400">Ticket #{assistantIssue.complaint_id}</div><div className="font-bold text-[#0f2336]">{assistantIssue.title}</div><div className="text-xs text-gray-500 flex gap-1"><MapPin size={10}/>{assistantIssue.location || "Common area"}</div></div><div className="flex gap-2 mt-4"><button disabled={assistantIssue.subscribed} onClick={() => subscribe(assistantIssue)} className="px-4 py-2 bg-[#0f2336] disabled:opacity-50 text-white rounded-xl text-sm font-semibold">{assistantIssue.subscribed ? "Subscribed" : "Subscribe to updates"}</button><button onClick={() => setShowModal(true)} className="px-4 py-2 bg-white border rounded-xl text-sm font-semibold">This is different</button></div></div>}
+            <div ref={chatEndRef}/>
           </div>
-          <div className="p-4 bg-white border-t"><div className="relative flex items-center"><button onClick={() => setShowModal(true)} className="absolute left-3 text-gray-400"><Paperclip size={18}/></button><input onKeyDown={(event) => event.key === "Enter" && sendAssistantMessage()} value={message} onChange={(event) => setMessage(event.target.value)} placeholder="Describe your issue..." className="w-full h-12 pl-12 pr-12 bg-gray-50 border rounded-2xl text-sm"/><button disabled={saving} onClick={sendAssistantMessage} className="absolute right-3 p-1.5 bg-[#0f2336] text-white rounded-xl"><Send size={16}/></button></div></div>
+          <div className="p-4 bg-white border-t"><div className="relative flex items-center"><button aria-label="Attach a file to a new ticket" onClick={() => setShowModal(true)} className="absolute left-3 text-gray-400"><Paperclip size={18}/></button><input aria-label="Message Support Assistant" maxLength={2000} disabled={assistantSending} onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); void sendAssistantMessage(); } }} value={message} onChange={(event) => setMessage(event.target.value)} placeholder="Describe your issue..." className="w-full h-12 pl-12 pr-12 bg-gray-50 border rounded-2xl text-sm"/><button aria-label="Send message" disabled={assistantSending || !message.trim()} onClick={sendAssistantMessage} className="absolute right-3 p-1.5 bg-[#0f2336] disabled:opacity-50 text-white rounded-xl"><Send size={16}/></button></div></div>
         </div>
 
         <div className="lg:w-80 shrink-0 flex flex-col gap-6 overflow-y-auto pr-1 pb-4">
