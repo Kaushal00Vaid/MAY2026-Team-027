@@ -10,8 +10,10 @@ from reportlab.lib.enums import TA_CENTER
 from reportlab.lib.pagesizes import A4
 from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
 from reportlab.lib.units import mm
+from reportlab.graphics.shapes import Drawing, Rect, String
 from reportlab.platypus import (
-    KeepTogether,
+    HRFlowable,
+    PageBreak,
     Paragraph,
     SimpleDocTemplate,
     Spacer,
@@ -583,12 +585,14 @@ def audit_pdf(db, user, year: int | None = None):
             Payment.settled_at < period_end,
         )
     ) or 0
+    collected = int(collected)
     expenses = db.scalar(
         select(func.coalesce(func.sum(Expense.amount_paise), 0)).where(
             Expense.expense_date >= date(report_year, 1, 1),
             Expense.expense_date < date(report_year + 1, 1, 1),
         )
     ) or 0
+    expenses = int(expenses)
     invoice_rows = db.execute(
         select(Invoice.status, func.count(Invoice.id))
         .where(Invoice.issued_at >= period_start, Invoice.issued_at < period_end)
@@ -615,7 +619,7 @@ def audit_pdf(db, user, year: int | None = None):
         pagesize=A4,
         rightMargin=18 * mm,
         leftMargin=18 * mm,
-        topMargin=18 * mm,
+        topMargin=12 * mm,
         bottomMargin=18 * mm,
         title=f"SocietySync Annual Audit Report {report_year}",
         author="SocietySync",
@@ -623,8 +627,8 @@ def audit_pdf(db, user, year: int | None = None):
     styles = getSampleStyleSheet()
     styles.add(ParagraphStyle(
         name="AuditTitle", parent=styles["Title"], fontName="Helvetica-Bold",
-        fontSize=22, leading=26, textColor=colors.HexColor("#0f2336"),
-        alignment=TA_CENTER, spaceAfter=5 * mm,
+        fontSize=23, leading=27, textColor=colors.white,
+        alignment=TA_CENTER, spaceAfter=2 * mm,
     ))
     styles.add(ParagraphStyle(
         name="Section", parent=styles["Heading2"], fontName="Helvetica-Bold",
@@ -636,44 +640,93 @@ def audit_pdf(db, user, year: int | None = None):
         textColor=colors.HexColor("#64748b"), alignment=TA_CENTER,
     ))
     styles.add(ParagraphStyle(
+        name="HeaderMeta", parent=styles["BodyText"], fontSize=9,
+        leading=13, textColor=colors.HexColor("#cbd5e1"), alignment=TA_CENTER,
+    ))
+    styles.add(ParagraphStyle(
+        name="KpiLabel", parent=styles["BodyText"], fontSize=7.5,
+        leading=9, textColor=colors.HexColor("#64748b"), alignment=TA_CENTER,
+    ))
+    styles.add(ParagraphStyle(
+        name="KpiValue", parent=styles["BodyText"], fontName="Helvetica-Bold",
+        fontSize=12, leading=15, textColor=colors.HexColor("#0f2336"),
+        alignment=TA_CENTER,
+    ))
+    styles.add(ParagraphStyle(
         name="Small", parent=styles["BodyText"], fontSize=8, leading=10,
         textColor=colors.HexColor("#334155"),
     ))
 
+    header = Table(
+        [[Paragraph("SOCIETYSYNC  /  FINANCE", styles["HeaderMeta"])],
+         [Paragraph("Annual Financial Audit Report", styles["AuditTitle"])],
+         [Paragraph(
+             f"01 January - 31 December {report_year} &nbsp;&nbsp;|&nbsp;&nbsp; "
+             f"Generated {datetime.now(IST):%d %B %Y, %H:%M IST}",
+             styles["HeaderMeta"],
+         )]],
+        colWidths=[159 * mm],
+        rowHeights=[9 * mm, 15 * mm, 11 * mm],
+    )
+    header.setStyle(TableStyle([
+        ("BACKGROUND", (0, 0), (-1, -1), colors.HexColor("#0f2336")),
+        ("BOX", (0, 0), (-1, -1), 1.5, colors.HexColor("#d87943")),
+        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+        ("LEFTPADDING", (0, 0), (-1, -1), 12),
+        ("RIGHTPADDING", (0, 0), (-1, -1), 12),
+    ]))
+
+    def kpi_card(label, value, accent):
+        card = Table(
+            [[Paragraph(label.upper(), styles["KpiLabel"])],
+             [Paragraph(value, styles["KpiValue"])]],
+            colWidths=[50 * mm], rowHeights=[7 * mm, 12 * mm],
+        )
+        card.setStyle(TableStyle([
+            ("BACKGROUND", (0, 0), (-1, -1), colors.HexColor("#f8fafc")),
+            ("LINEABOVE", (0, 0), (-1, 0), 3, colors.HexColor(accent)),
+            ("BOX", (0, 0), (-1, -1), 0.5, colors.HexColor("#dbe3ec")),
+            ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+        ]))
+        return card
+
     story = [
-        Paragraph("SocietySync", styles["Meta"]),
-        Paragraph("Annual Financial Audit Report", styles["AuditTitle"]),
-        Paragraph(
-            f"Reporting period: 01 January {report_year} - 31 December {report_year}<br/>"
-            f"Generated: {datetime.now(IST):%d %B %Y, %H:%M IST}",
-            styles["Meta"],
-        ),
-        Spacer(1, 7 * mm),
+        header,
+        Spacer(1, 5 * mm),
         Paragraph("Executive summary", styles["Section"]),
     ]
-    summary_data = [
-        ["Collections", "Expenses", "Net cash flow"],
-        [pdf_money(collected), pdf_money(expenses), pdf_money(collected - expenses)],
-        ["Current reserve", "Outstanding", "Overdue invoices"],
-        [pdf_money(summary["total_reserve_paise"]), pdf_money(summary["outstanding_paise"]), str(summary["defaulter_count"])],
-    ]
-    summary_table = Table(summary_data, colWidths=[53 * mm] * 3, rowHeights=[8 * mm, 11 * mm, 8 * mm, 11 * mm])
+    summary_table = Table([
+        [
+            kpi_card("Collections", pdf_money(collected), "#16a34a"),
+            kpi_card("Expenses", pdf_money(expenses), "#dc2626"),
+            kpi_card("Net cash flow", pdf_money(collected - expenses), "#d87943"),
+        ],
+        [
+            kpi_card("Current reserve", pdf_money(summary["total_reserve_paise"]), "#4f46e5"),
+            kpi_card("Outstanding", pdf_money(summary["outstanding_paise"]), "#f59e0b"),
+            kpi_card("Overdue invoices", str(summary["defaulter_count"]), "#be123c"),
+        ],
+    ], colWidths=[53 * mm] * 3, rowHeights=[22 * mm, 22 * mm])
     summary_table.setStyle(TableStyle([
-        ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#e8eef5")),
-        ("BACKGROUND", (0, 2), (-1, 2), colors.HexColor("#e8eef5")),
-        ("TEXTCOLOR", (0, 0), (-1, -1), colors.HexColor("#0f2336")),
-        ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
-        ("FONTNAME", (0, 2), (-1, 2), "Helvetica-Bold"),
-        ("FONTNAME", (0, 1), (-1, 1), "Helvetica-Bold"),
-        ("FONTNAME", (0, 3), (-1, 3), "Helvetica-Bold"),
-        ("FONTSIZE", (0, 0), (-1, -1), 9),
-        ("FONTSIZE", (0, 1), (-1, 1), 12),
-        ("FONTSIZE", (0, 3), (-1, 3), 12),
-        ("ALIGN", (0, 0), (-1, -1), "CENTER"),
+        ("LEFTPADDING", (0, 0), (-1, -1), 2),
+        ("RIGHTPADDING", (0, 0), (-1, -1), 2),
+        ("TOPPADDING", (0, 0), (-1, -1), 2),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 2),
         ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
-        ("GRID", (0, 0), (-1, -1), 0.5, colors.HexColor("#cbd5e1")),
     ]))
     story.append(summary_table)
+
+    cash_chart = Drawing(450, 108)
+    cash_chart.add(Rect(0, 0, 450, 108, rx=8, ry=8, fillColor=colors.HexColor("#f8fafc"), strokeColor=colors.HexColor("#dbe3ec")))
+    chart_values = [("COLLECTIONS", collected, "#16a34a"), ("EXPENSES", expenses, "#dc2626"), ("NET FLOW", collected - expenses, "#d87943")]
+    chart_max = max((abs(value) for _, value, _ in chart_values), default=1) or 1
+    for index, (label, value, color) in enumerate(chart_values):
+        x = 54 + index * 145
+        bar_height = max(4, abs(value) / chart_max * 55)
+        cash_chart.add(Rect(x, 25, 62, bar_height, rx=3, ry=3, fillColor=colors.HexColor(color), strokeColor=None))
+        cash_chart.add(String(x + 31, 11, label, fontName="Helvetica-Bold", fontSize=7, textAnchor="middle", fillColor=colors.HexColor("#475569")))
+        cash_chart.add(String(x + 31, min(94, 29 + bar_height), pdf_money(value), fontName="Helvetica-Bold", fontSize=7.5, textAnchor="middle", fillColor=colors.HexColor("#0f2336")))
+    story.extend([Paragraph("Financial movement", styles["Section"]), cash_chart])
 
     story.extend([
         Paragraph("Invoice status", styles["Section"]),
@@ -696,24 +749,30 @@ def audit_pdf(db, user, year: int | None = None):
         ),
         Paragraph("Configured fund allocation", styles["Section"]),
     ])
-    allocation_rows = [["Fund", "Allocation"]] + [
-        [escape(item["name"]), f'{item["value"]:.0f}%'] for item in summary["allocations"]
-    ]
-    if len(allocation_rows) == 1:
-        allocation_rows.append(["No active allocations configured", "-"])
-    allocation_table = Table(allocation_rows, colWidths=[120 * mm, 39 * mm])
-    allocation_table.setStyle(TableStyle([
-        ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#0f2336")),
-        ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
-        ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
-        ("ALIGN", (1, 0), (1, -1), "RIGHT"),
-        ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, colors.HexColor("#f8fafc")]),
-        ("GRID", (0, 0), (-1, -1), 0.35, colors.HexColor("#cbd5e1")),
-        ("TOPPADDING", (0, 0), (-1, -1), 6),
-        ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
-    ]))
-    story.append(allocation_table)
-    story.append(Paragraph("Recent ledger activity for the reporting year", styles["Section"]))
+    allocation_items = summary["allocations"]
+    allocation_height = max(55, 22 + len(allocation_items) * 25)
+    allocation_chart = Drawing(450, allocation_height)
+    allocation_chart.add(Rect(0, 0, 450, allocation_height, rx=8, ry=8, fillColor=colors.HexColor("#f8fafc"), strokeColor=colors.HexColor("#dbe3ec")))
+    if allocation_items:
+        for index, item in enumerate(allocation_items):
+            y = allocation_height - 28 - index * 25
+            value = max(0, min(float(item["value"]), 100))
+            allocation_chart.add(String(16, y + 4, str(item["name"])[:28], fontName="Helvetica-Bold", fontSize=8, fillColor=colors.HexColor("#334155")))
+            allocation_chart.add(Rect(150, y, 245, 10, rx=5, ry=5, fillColor=colors.HexColor("#e2e8f0"), strokeColor=None))
+            allocation_chart.add(Rect(150, y, 245 * value / 100, 10, rx=5, ry=5, fillColor=colors.HexColor(item.get("color") or "#d87943"), strokeColor=None))
+            allocation_chart.add(String(430, y + 2, f"{value:.0f}%", fontName="Helvetica-Bold", fontSize=8, textAnchor="end", fillColor=colors.HexColor("#0f2336")))
+    else:
+        allocation_chart.add(String(225, 25, "No active fund allocations configured", fontName="Helvetica", fontSize=9, textAnchor="middle", fillColor=colors.HexColor("#64748b")))
+    story.extend([
+        allocation_chart,
+        PageBreak(),
+        Paragraph("Recent ledger activity", styles["Section"]),
+        Paragraph(
+            f"Latest ledger entries recorded during {report_year}. Debits represent receivables and expenses; credits represent successful payments.",
+            styles["Small"],
+        ),
+        Spacer(1, 3 * mm),
+    ])
     ledger_rows = [["Date", "Reference", "Description", "Type", "Amount"]]
     ledger_rows.extend([
         [
@@ -740,9 +799,25 @@ def audit_pdf(db, user, year: int | None = None):
         ("TOPPADDING", (0, 0), (-1, -1), 5),
         ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
     ]))
-    story.append(KeepTogether(ledger_table))
+    story.append(ledger_table)
     story.extend([
-        Spacer(1, 5 * mm),
+        Spacer(1, 7 * mm),
+        HRFlowable(width="100%", thickness=1, color=colors.HexColor("#dbe3ec")),
+        Spacer(1, 4 * mm),
+        Table(
+            [[Paragraph("<b>PREPARED BY</b><br/>SocietySync Finance System", styles["Small"]),
+              Paragraph("<b>REVIEWED / APPROVED BY</b><br/><br/>Signature: ____________________", styles["Small"])]],
+            colWidths=[79.5 * mm, 79.5 * mm],
+            style=TableStyle([
+                ("BOX", (0, 0), (-1, -1), 0.5, colors.HexColor("#cbd5e1")),
+                ("INNERGRID", (0, 0), (-1, -1), 0.5, colors.HexColor("#cbd5e1")),
+                ("BACKGROUND", (0, 0), (-1, -1), colors.HexColor("#f8fafc")),
+                ("TOPPADDING", (0, 0), (-1, -1), 9),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 9),
+                ("LEFTPADDING", (0, 0), (-1, -1), 9),
+            ]),
+        ),
+        Spacer(1, 4 * mm),
         Paragraph(
             "This system-generated report summarizes SocietySync records and should be reviewed with source documents by the society auditor.",
             styles["Small"],
@@ -751,6 +826,9 @@ def audit_pdf(db, user, year: int | None = None):
 
     def footer(canvas, doc):
         canvas.saveState()
+        canvas.setStrokeColor(colors.HexColor("#d87943"))
+        canvas.setLineWidth(1.5)
+        canvas.line(18 * mm, 14 * mm, A4[0] - 18 * mm, 14 * mm)
         canvas.setFont("Helvetica", 8)
         canvas.setFillColor(colors.HexColor("#64748b"))
         canvas.drawString(18 * mm, 10 * mm, f"SocietySync Annual Audit {report_year}")
