@@ -206,6 +206,34 @@ class TestFinanceV1Ledger:
         assert resp.status_code in (401, 403)
 
 
+class TestFinanceV1BulkInvoices:
+    def test_bulk_invoices_report_duplicate_flats_clearly(self, admin_client):
+        payload = {
+            "period": "2099-12",
+            "purpose": "Integration Test Maintenance",
+            "amount_paise": 120_000,
+            "due_date": "2099-12-15",
+        }
+        first = admin_client.post(
+            "/api/v1/finance/invoices/bulk",
+            json=payload,
+            headers={"Idempotency-Key": "finance-bulk-first"},
+        )
+        assert first.status_code == 201
+        assert first.json()["created_count"] > 0
+        assert first.json()["eligible_flat_count"] == first.json()["created_count"]
+
+        repeated = admin_client.post(
+            "/api/v1/finance/invoices/bulk",
+            json=payload,
+            headers={"Idempotency-Key": "finance-bulk-second"},
+        )
+        assert repeated.status_code == 201
+        assert repeated.json()["created_count"] == 0
+        assert repeated.json()["duplicate_flat_count"] == first.json()["created_count"]
+        assert "already invoiced" in repeated.json()["message"]
+
+
 class TestFinanceV1Expenses:
     def test_create_expense_forbidden_for_resident(self, resident_client):
         """TC-FINv1-09: POST /api/v1/finance/expenses as resident → 403."""
@@ -244,6 +272,9 @@ class TestFinanceV1PDFEndpoints:
 
     def test_annual_audit_returns_pdf_for_admin(self, admin_client):
         """TC-FINv1-13: GET /api/v1/finance/reports/annual-audit as admin → PDF."""
-        resp = admin_client.get("/api/v1/finance/reports/annual-audit")
+        resp = admin_client.get("/api/v1/finance/reports/annual-audit?year=2025")
         assert resp.status_code == 200
         assert resp.headers["content-type"] == "application/pdf"
+        assert resp.headers["content-disposition"] == 'attachment; filename="annual-audit-2025.pdf"'
+        assert resp.content.startswith(b"%PDF")
+        assert len(resp.content) > 2_000

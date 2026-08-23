@@ -17,8 +17,10 @@ export const completePayment = (data, idempotencyKey) =>
 export const createExpense = (data) => axiosInstance.post(`${base}/expenses`, data);
 export const downloadStatement = () =>
   axiosInstance.get(`${base}/statement`, { responseType: "blob" });
-export const downloadAnnualAudit = () =>
-  axiosInstance.get(`${base}/reports/annual-audit`, { responseType: "blob" });
+export const downloadAnnualAudit = (year = new Date().getFullYear()) =>
+  axiosInstance.get(`${base}/reports/annual-audit`, {
+    params: { year }, responseType: "blob",
+  });
 export const downloadReceipt = (paymentId) =>
   axiosInstance.get(`${base}/payments/${paymentId}/receipt`, { responseType: "blob" });
 

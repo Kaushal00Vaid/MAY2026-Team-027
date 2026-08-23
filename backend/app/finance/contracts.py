@@ -116,6 +116,10 @@ class AdminFinanceSummary(BaseModel):
 class BulkInvoiceResponse(BaseModel):
     run_id: int
     created_count: int
+    eligible_flat_count: int = 0
+    duplicate_flat_count: int = 0
+    skipped_resident_count: int = 0
     period: str
     amount_paise: int
     amount_display: str
+    message: str = ""
