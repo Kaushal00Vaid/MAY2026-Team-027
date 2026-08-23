@@ -3,7 +3,7 @@ from datetime import datetime, timezone
 from fastapi import HTTPException
 from sqlalchemy import and_, func, or_, select
 from sqlalchemy.exc import IntegrityError
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, selectinload
 
 from app.community.models import (
     CommunityEvent,
@@ -49,9 +49,6 @@ def create_notice(db: Session, user: User, data: NoticeCreate) -> dict:
     ensure_operational(user)
     if data.expires_at and data.expires_at <= _now():
         raise HTTPException(status_code=422, detail="Notice expiry must be in the future.")
-    notice = Notice(**data.model_dump(), created_by=user.user_id)
-    db.add(notice)
-    db.flush()
     recipients_query = (
         select(User)
         .join(UserRole, UserRole.user_id == User.user_id)
@@ -70,6 +67,14 @@ def create_notice(db: Session, user: User, data: NoticeCreate) -> dict:
             func.lower(User.flat_number) == data.target_value.lower()
         )
     recipients = db.scalars(recipients_query).unique().all()
+    if data.target_type != "all" and not recipients:
+        raise HTTPException(
+            status_code=422,
+            detail="No active residents match the selected notice target.",
+        )
+    notice = Notice(**data.model_dump(), created_by=user.user_id)
+    db.add(notice)
+    db.flush()
     db.add_all(
         NoticeDelivery(notice_id=notice.id, user_id=recipient.user_id)
         for recipient in recipients
@@ -215,12 +220,57 @@ def vote(db: Session, user: User, poll_id: int, option_id: int) -> dict:
 def list_discussions(db: Session, user: User, page: int, page_size: int) -> tuple[list[dict], int]:
     ensure_community_member(user)
     total = db.scalar(select(func.count(DiscussionThread.id)).where(DiscussionThread.is_active.is_(True))) or 0
-    threads = list(db.scalars(select(DiscussionThread).where(DiscussionThread.is_active.is_(True)).order_by(DiscussionThread.updated_at.desc()).offset((page - 1) * page_size).limit(page_size)).all())
-    result = []
-    for item in threads:
-        author = db.get(User, item.created_by) if item.created_by else None
-        result.append({"id": item.id, "title": item.title, "body": item.body, "tag": item.tag, "author": f"{author.first_name} {author.last_name}" if author else "Former resident", "author_flat": author.flat_number if author else None, "reply_count": db.scalar(select(func.count(DiscussionReply.id)).where(DiscussionReply.thread_id == item.id)) or 0, "like_count": db.scalar(select(func.count(DiscussionLike.id)).where(DiscussionLike.thread_id == item.id)) or 0, "created_at": item.created_at})
-    return result, total
+    reply_counts = (
+        select(
+            DiscussionReply.thread_id,
+            func.count(DiscussionReply.id).label("reply_count"),
+        )
+        .group_by(DiscussionReply.thread_id)
+        .subquery()
+    )
+    like_counts = (
+        select(
+            DiscussionLike.thread_id,
+            func.count(DiscussionLike.id).label("like_count"),
+        )
+        .group_by(DiscussionLike.thread_id)
+        .subquery()
+    )
+    rows = db.execute(
+        select(
+            DiscussionThread,
+            User.first_name,
+            User.last_name,
+            User.flat_number,
+            func.coalesce(reply_counts.c.reply_count, 0),
+            func.coalesce(like_counts.c.like_count, 0),
+        )
+        .outerjoin(User, User.user_id == DiscussionThread.created_by)
+        .outerjoin(reply_counts, reply_counts.c.thread_id == DiscussionThread.id)
+        .outerjoin(like_counts, like_counts.c.thread_id == DiscussionThread.id)
+        .where(DiscussionThread.is_active.is_(True))
+        .order_by(DiscussionThread.updated_at.desc())
+        .offset((page - 1) * page_size)
+        .limit(page_size)
+    ).all()
+    return [
+        {
+            "id": item.id,
+            "title": item.title,
+            "body": item.body,
+            "tag": item.tag,
+            "author": (
+                f"{first_name} {last_name}"
+                if first_name is not None
+                else "Former resident"
+            ),
+            "author_flat": flat_number,
+            "reply_count": reply_count,
+            "like_count": like_count,
+            "created_at": item.created_at,
+        }
+        for item, first_name, last_name, flat_number, reply_count, like_count in rows
+    ], total
 
 
 def directory(db: Session, user: User, search: str | None, page: int, page_size: int) -> tuple[list[dict], int]:
@@ -232,7 +282,16 @@ def directory(db: Session, user: User, search: str | None, page: int, page_size:
         filters.append(or_(User.first_name.ilike(pattern), User.last_name.ilike(pattern), User.flat_number.ilike(pattern)))
     base = select(User).join(UserRole, UserRole.user_id == User.user_id).join(Role, Role.role_id == UserRole.role_id).where(*filters)
     total = db.scalar(select(func.count(func.distinct(User.user_id))).select_from(User).join(UserRole, UserRole.user_id == User.user_id).join(Role, Role.role_id == UserRole.role_id).where(*filters)) or 0
-    users = list(db.scalars(base.order_by(User.first_name, User.last_name).offset((page - 1) * page_size).limit(page_size)).unique().all())
+    users = list(
+        db.scalars(
+            base.options(selectinload(User.roles).selectinload(UserRole.role))
+            .order_by(User.first_name, User.last_name)
+            .offset((page - 1) * page_size)
+            .limit(page_size)
+        )
+        .unique()
+        .all()
+    )
     result = []
     for item in users:
         role_names = {assignment.role.role_name for assignment in item.roles}

@@ -116,6 +116,28 @@ class TestNotices:
         )
         assert resp.status_code == 422
 
+    def test_create_notice_rejects_whitespace_only_content(self, committee_client):
+        resp = committee_client.post(
+            "/api/v1/community/notices",
+            json=self._notice_payload(title="   ", body="   "),
+        )
+        assert resp.status_code == 422
+
+    def test_targeted_notice_rejects_audience_without_active_residents(
+        self, committee_client
+    ):
+        before = committee_client.get("/api/v1/community/notices").json()["total"]
+        resp = committee_client.post(
+            "/api/v1/community/notices",
+            json=self._notice_payload(
+                target_type="flat", target_value="Z-999", title="Nobody"
+            ),
+        )
+        assert resp.status_code == 422
+        assert "no active residents" in resp.json()["detail"].lower()
+        after = committee_client.get("/api/v1/community/notices").json()["total"]
+        assert after == before
+
     def test_mark_notice_read_returns_200(self, resident_client):
         """TC-COM-12: POST /notices/{id}/read for existing notice → 200."""
         # Create a notice first (use committee client)
@@ -291,6 +313,18 @@ class TestDiscussions:
         )
         assert resp.status_code == 200
         assert len(resp.json()["items"]) <= 5
+
+    def test_discussion_response_includes_bounded_aggregate_fields(
+        self, resident_client
+    ):
+        resp = resident_client.get(
+            "/api/v1/community/discussions?page=1&page_size=100"
+        )
+        assert resp.status_code == 200
+        for item in resp.json()["items"]:
+            assert isinstance(item["reply_count"], int)
+            assert isinstance(item["like_count"], int)
+            assert item["author"]
 
 
 # ─────────────────────────────────────────────────────────────────────────────

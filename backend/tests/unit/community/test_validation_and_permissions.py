@@ -54,6 +54,15 @@ def test_notice_title_is_trimmed():
     assert notice.title == "Hello"
 
 
+@pytest.mark.parametrize(
+    ("title", "body"),
+    [("   ", "Content"), ("Notice", "   ")],
+)
+def test_notice_rejects_whitespace_only_content(title, body):
+    with pytest.raises(ValidationError):
+        NoticeCreate(title=title, body=body, target_type="all")
+
+
 # ── Schema: PollVoteCreate ─────────────────────────────────────────────────
 
 
