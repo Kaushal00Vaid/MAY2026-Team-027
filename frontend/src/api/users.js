@@ -9,6 +9,16 @@ import axiosInstance from "./axiosInstance";
 export const listUsers = (skip = 0, limit = 50) =>
   axiosInstance.get("/users/", { params: { skip, limit } });
 
+export const listManagedUsers = ({ page = 1, pageSize = 20, search = "", role = "all" } = {}) =>
+  axiosInstance.get("/users/manage", {
+    params: {
+      page,
+      page_size: pageSize,
+      search: search.trim() || undefined,
+      role: role === "all" ? undefined : role,
+    },
+  });
+
 export const getCurrentUser = () => axiosInstance.get("/users/me");
 
 /**

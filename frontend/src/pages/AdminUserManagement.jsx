@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import {
   LayoutDashboard,
   WalletCards,
@@ -18,7 +18,9 @@ import {
 } from "lucide-react";
 import DashboardLayout from "@/components/layout/DashboardLayout";
 import { useAuthContext } from "@/context/AuthContext";
-import { listUsers, updateUserRole } from "@/api/users";
+import { listManagedUsers, updateUserRole } from "@/api/users";
+
+const PAGE_SIZE = 20;
 
 const sidebarItems = [
   { label: "Dashboard", icon: LayoutDashboard, active: false, href: "/admin" },
@@ -76,7 +78,6 @@ function ConfirmDialog({ open, user, newRole, onConfirm, onCancel, loading }) {
           </div>
           <div>
             <h3 className="text-lg font-extrabold text-[#0f2336]">Confirm Role Change</h3>
-            <p className="text-sm text-gray-500 mt-0.5">This action takes effect immediately.</p>
           </div>
         </div>
 
@@ -171,7 +172,9 @@ function RoleSelect({ user, onSelect, disabled }) {
 
 export default function AdminUserManagement() {
   const { user: currentUser } = useAuthContext();
+  const requestId = useRef(0); const updatingRef = useRef(false);
   const [users, setUsers] = useState([]);
+  const [total, setTotal] = useState(0); const [page, setPage] = useState(1); const [roleCounts, setRoleCounts] = useState({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [searchQuery, setSearchQuery] = useState("");
@@ -185,21 +188,26 @@ export default function AdminUserManagement() {
   const [toast, setToast] = useState(null);
 
   const fetchUsers = useCallback(async () => {
+    const current = ++requestId.current;
     setLoading(true);
     setError(null);
     try {
-      const { data } = await listUsers(0, 100);
-      setUsers(data);
+      const { data } = await listManagedUsers({ page, pageSize: PAGE_SIZE, search: searchQuery, role: roleFilter });
+      if (current !== requestId.current) return;
+      setUsers(data.items); setTotal(data.total); setRoleCounts(data.role_counts);
+      if (page > 1 && data.items.length === 0 && data.total > 0) setPage(Math.ceil(data.total / PAGE_SIZE));
     } catch (err) {
-      setError(err?.response?.data?.detail || "Failed to load users.");
+      if (current === requestId.current) setError(err?.response?.data?.detail || "Failed to load users.");
     } finally {
-      setLoading(false);
+      if (current === requestId.current) setLoading(false);
     }
-  }, []);
+  }, [page, roleFilter, searchQuery]);
 
   useEffect(() => {
-    fetchUsers();
+    const timer = setTimeout(fetchUsers, 250);
+    return () => clearTimeout(timer);
   }, [fetchUsers]);
+  useEffect(() => () => { requestId.current += 1; }, []);
 
   // Auto-dismiss toast
   useEffect(() => {
@@ -213,20 +221,28 @@ export default function AdminUserManagement() {
   };
 
   const handleConfirmRole = async () => {
+    if (updatingRef.current) return;
     const { user: targetUser, newRole } = confirmDialog;
+    updatingRef.current = true;
     setUpdating(true);
     try {
-      await updateUserRole(targetUser.user_id, newRole);
-      // Optimistically update local state
+      const { data: updatedUser } = await updateUserRole(targetUser.user_id, newRole);
       setUsers((prev) =>
-        prev.map((u) =>
-          u.user_id === targetUser.user_id ? { ...u, roles: [newRole] } : u
-        )
+        roleFilter !== "all" && roleFilter !== newRole
+          ? prev.filter((u) => u.user_id !== targetUser.user_id)
+          : prev.map((u) => u.user_id === targetUser.user_id ? updatedUser : u)
       );
+      if (roleFilter !== "all" && roleFilter !== newRole) setTotal((value) => Math.max(0, value - 1));
+      setRoleCounts((counts) => {
+        const currentRole = targetUser.roles?.[0];
+        if (!currentRole || currentRole === newRole) return counts;
+        return { ...counts, [currentRole]: Math.max(0, (counts[currentRole] || 0) - 1), [newRole]: (counts[newRole] || 0) + 1 };
+      });
       setToast({ type: "success", message: `Role updated to "${ROLE_META[newRole]?.label ?? newRole}" for ${targetUser.first_name}.` });
     } catch (err) {
       setToast({ type: "error", message: err?.response?.data?.detail || "Failed to update role." });
     } finally {
+      updatingRef.current = false;
       setUpdating(false);
       setConfirmDialog({ open: false, user: null, newRole: "" });
     }
@@ -236,25 +252,12 @@ export default function AdminUserManagement() {
     if (!updating) setConfirmDialog({ open: false, user: null, newRole: "" });
   };
 
-  // Filtering
-  const filteredUsers = users.filter((u) => {
-    const fullName = `${u.first_name} ${u.last_name}`.toLowerCase();
-    const matchesSearch =
-      !searchQuery ||
-      fullName.includes(searchQuery.toLowerCase()) ||
-      u.email?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      u.phone_number?.includes(searchQuery);
-    const matchesRole =
-      roleFilter === "all" || (u.roles?.[0] ?? "flat_owner") === roleFilter;
-    return matchesSearch && matchesRole;
-  });
-
-  // Role summary counts
-  const roleCounts = users.reduce((acc, u) => {
-    const r = u.roles?.[0] ?? "flat_owner";
-    acc[r] = (acc[r] || 0) + 1;
-    return acc;
-  }, {});
+  const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
+  const formatUnit = (user) => {
+    if (!user.flat_number) return null;
+    const block = user.building_block?.trim(); const flat = user.flat_number.trim();
+    return block && !flat.toLowerCase().startsWith(`${block.toLowerCase()}-`) ? `${block}-${flat}` : flat;
+  };
 
   return (
     <DashboardLayout sidebarItems={sidebarItems} userRole="Super Admin">
@@ -292,7 +295,6 @@ export default function AdminUserManagement() {
         <div className="flex flex-col md:flex-row md:items-end justify-between gap-4">
           <div>
             <h1 className="text-3xl font-extrabold text-[#0f2336] tracking-tight">User Role Management</h1>
-            <p className="text-sm text-gray-500 mt-1">Assign and manage roles for all registered users.</p>
           </div>
           <button
             onClick={fetchUsers}
@@ -309,7 +311,7 @@ export default function AdminUserManagement() {
           {Object.entries(ROLE_META).map(([roleKey, meta]) => (
             <button
               key={roleKey}
-              onClick={() => setRoleFilter(roleFilter === roleKey ? "all" : roleKey)}
+              onClick={() => { setRoleFilter(roleFilter === roleKey ? "all" : roleKey); setPage(1); }}
               className={`p-4 rounded-2xl border text-left transition-all hover:shadow-md active:scale-95 ${
                 roleFilter === roleKey
                   ? "border-[#d87943] bg-orange-50 shadow-md"
@@ -335,7 +337,7 @@ export default function AdminUserManagement() {
               <UserCog size={20} className="text-[#d87943]" />
               All Users
               <span className="ml-1 px-2 py-0.5 rounded-lg bg-gray-100 text-gray-500 text-xs font-bold">
-                {filteredUsers.length}
+                {total}
               </span>
             </h3>
 
@@ -343,7 +345,7 @@ export default function AdminUserManagement() {
               {/* Role filter pill */}
               {roleFilter !== "all" && (
                 <button
-                  onClick={() => setRoleFilter("all")}
+                  onClick={() => { setRoleFilter("all"); setPage(1); }}
                   className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl bg-orange-50 border border-[#d87943]/30 text-[#d87943] text-xs font-bold transition-all hover:bg-orange-100"
                 >
                   <X size={12} />
@@ -356,8 +358,9 @@ export default function AdminUserManagement() {
                 <input
                   type="text"
                   placeholder="Search by name, email, phone…"
+                  aria-label="Search users"
                   value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
+                  onChange={(e) => { setSearchQuery(e.target.value); setPage(1); }}
                   className="h-10 pl-9 pr-4 w-full sm:w-64 rounded-xl border border-gray-200 bg-gray-50 text-sm focus:bg-white focus:ring-2 focus:ring-[#d87943]/20 focus:border-[#d87943] outline-none transition-all"
                 />
               </div>
@@ -382,7 +385,7 @@ export default function AdminUserManagement() {
                   Retry
                 </button>
               </div>
-            ) : filteredUsers.length === 0 ? (
+            ) : users.length === 0 ? (
               <div className="flex flex-col items-center justify-center py-24 gap-2 text-gray-400">
                 <Users size={32} />
                 <p className="text-sm font-medium">No users found.</p>
@@ -400,7 +403,7 @@ export default function AdminUserManagement() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-50">
-                  {filteredUsers.map((u) => {
+                  {users.map((u) => {
                     const initials = `${u.first_name?.[0] ?? ""}${u.last_name?.[0] ?? ""}`.toUpperCase();
                     const currentRole = u.roles?.[0] ?? "flat_owner";
                     const isSelf = u.user_id === currentUser?.user_id;
@@ -446,9 +449,9 @@ export default function AdminUserManagement() {
 
                         {/* Flat */}
                         <td className="px-6 py-4">
-                          {u.flat_number ? (
+                          {formatUnit(u) ? (
                             <span className="px-2.5 py-1 bg-gray-100 text-gray-700 font-bold rounded-lg text-xs">
-                              {u.building_block ? `${u.building_block}-` : ""}{u.flat_number}
+                              {formatUnit(u)}
                             </span>
                           ) : (
                             <span className="text-gray-300 text-xs">—</span>
@@ -484,9 +487,10 @@ export default function AdminUserManagement() {
           </div>
 
           {/* Footer */}
-          {!loading && !error && filteredUsers.length > 0 && (
-            <div className="px-8 py-4 border-t border-gray-50 text-xs text-gray-400 font-medium">
-              Showing {filteredUsers.length} of {users.length} users
+          {!loading && !error && users.length > 0 && (
+            <div className="px-8 py-4 border-t border-gray-50 flex items-center justify-between gap-4 text-xs text-gray-400 font-medium">
+              <span>Showing {(page - 1) * PAGE_SIZE + 1}–{(page - 1) * PAGE_SIZE + users.length} of {total} users</span>
+              {totalPages > 1 && <div className="flex items-center gap-3"><button disabled={page === 1} onClick={() => setPage((value) => value - 1)} className="px-3 py-2 border rounded-xl disabled:opacity-40">Previous users</button><span>Page {page} of {totalPages}</span><button disabled={page >= totalPages} onClick={() => setPage((value) => value + 1)} className="px-3 py-2 border rounded-xl disabled:opacity-40">Next users</button></div>}
             </div>
           )}
         </div>

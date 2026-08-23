@@ -177,3 +177,27 @@ This document records the verified behavior of each Admin page. It is updated pa
 - Export submission is guarded against repeated requests; success and failure display dismissible notifications.
 - Empty active-amenity, complaint, and provider datasets display explicit empty states.
 - Provider severity presentation follows the returned `Within SLA`, `Warning`, or `Escalated` state.
+
+## User Role Management
+
+### Access
+
+- User Role Management, its paginated management API, and every role replacement are restricted to the sole `super_admin` account.
+- Ordinary admins, committee members, residents, and support staff cannot list managed users or change roles through direct API requests.
+- The system administrator role is protected from removal/replacement, and the application permits only one super admin.
+
+### Features and actions
+
+- **Role summary** shows complete counts for super admin, admin, committee member, flat owner, rental resident, and support staff across the registered population. Selecting a card applies the server-side role filter.
+- **All Users** paginates twenty users at a time in newest-first order. Search matches name, email, phone, flat number, or building block and combines with the selected role filter.
+- **Change Role** opens a confirmation with the target user, current role, and replacement role. A successful replacement removes the previous role assignment and records the assigning super admin on the new assignment.
+- Super-admin and self-role controls are protected in the interface in addition to backend authorization.
+
+### Validation and expected states
+
+- Inactive users cannot receive role changes.
+- Flat owner and rental resident roles require an existing flat number. Support staff requires an existing staff designation.
+- Moving away from support staff clears `staff_type` so operations, security, helpdesk, and analytics do not treat the user as staff after the role changes.
+- Search and role-filter changes reset to page 1. Only the latest list request updates rows/counts, and empty/error/loading states remain scoped to the table.
+- Role confirmation is guarded against repeated submissions. Success reconciles the canonical server user; failure preserves the existing row and displays the backend reason.
+- Unit labels avoid duplicating a building prefix when the stored flat number already contains it.

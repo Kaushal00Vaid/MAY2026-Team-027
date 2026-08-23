@@ -9,6 +9,11 @@ Run from backend/:
     uv run pytest tests/integration/users/ -v
 """
 
+from app.db.database import get_db
+from app.db.models.user import User
+from app.main import app
+from conftest import ADMIN_ID, RESIDENT_ID, STAFF_ID, SUPER_ADMIN_ID
+
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -59,6 +64,23 @@ class TestListUsers:
         resp = super_admin_client.get("/users/?limit=999")
         assert resp.status_code == 422
 
+    def test_manage_users_returns_pagination_counts_and_search(
+        self, super_admin_client
+    ):
+        resp = super_admin_client.get(
+            "/users/manage?page=1&page_size=2&search=Alice&role=flat_owner"
+        )
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["page"] == 1
+        assert data["page_size"] == 2
+        assert data["total"] == 1
+        assert data["items"][0]["user_id"] == RESIDENT_ID
+        assert data["role_counts"]["flat_owner"] >= 1
+
+    def test_manage_users_as_admin_forbidden(self, admin_client):
+        assert admin_client.get("/users/manage").status_code == 403
+
 
 class TestGetMe:
     def test_get_me_as_resident_returns_200(self, resident_client):
@@ -104,6 +126,59 @@ class TestPatchUserRole:
             json={"role_name": "flat_owner"},
         )
         assert resp.status_code == 403
+
+    def test_patch_role_as_admin_forbidden(self, admin_client):
+        resp = admin_client.patch(
+            f"/users/{RESIDENT_ID}/role", json={"role_name": "admin"}
+        )
+        assert resp.status_code == 403
+
+    def test_super_admin_can_replace_valid_role(self, super_admin_client):
+        resp = super_admin_client.patch(
+            f"/users/{RESIDENT_ID}/role", json={"role_name": "admin"}
+        )
+        assert resp.status_code == 200
+        assert resp.json()["roles"] == ["admin"]
+
+    def test_resident_role_requires_flat_number(self, super_admin_client):
+        resp = super_admin_client.patch(
+            f"/users/{ADMIN_ID}/role", json={"role_name": "flat_owner"}
+        )
+        assert resp.status_code == 422
+        assert "flat number" in resp.json()["detail"].lower()
+
+    def test_support_role_requires_staff_designation(self, super_admin_client):
+        resp = super_admin_client.patch(
+            f"/users/{ADMIN_ID}/role", json={"role_name": "support_staff"}
+        )
+        assert resp.status_code == 422
+        assert "staff designation" in resp.json()["detail"].lower()
+
+    def test_changing_from_support_staff_clears_designation(self, super_admin_client):
+        resp = super_admin_client.patch(
+            f"/users/{STAFF_ID}/role", json={"role_name": "admin"}
+        )
+        assert resp.status_code == 200
+        assert resp.json()["roles"] == ["admin"]
+        assert resp.json()["staff_type"] is None
+
+    def test_inactive_user_role_change_is_rejected(self, super_admin_client):
+        session = next(app.dependency_overrides[get_db]())
+        target = session.get(User, RESIDENT_ID)
+        target.is_active = False
+        session.commit()
+
+        resp = super_admin_client.patch(
+            f"/users/{RESIDENT_ID}/role", json={"role_name": "admin"}
+        )
+        assert resp.status_code == 409
+        assert "inactive" in resp.json()["detail"].lower()
+
+    def test_sole_super_admin_role_remains_protected(self, super_admin_client):
+        resp = super_admin_client.patch(
+            f"/users/{SUPER_ADMIN_ID}/role", json={"role_name": "admin"}
+        )
+        assert resp.status_code == 409
 
     def test_patch_role_without_auth_returns_401(self, unauth_client):
         """TC-USR-14: PATCH /users/1/role unauthenticated → 401."""
