@@ -30,7 +30,8 @@ class Settings(BaseSettings):
     MEDIA_ROOT: str = "./media"
     HELPDESK_MAX_UPLOAD_BYTES: int = 5 * 1024 * 1024
 
-    # Resident Helpdesk AI assistant (server-side only)
+    # Resident Helpdesk AI assistant (server-side only). Restart the API after
+    # changing these values because the settings instance is cached per process.
     AIPIPE_API_KEY: str = ""
     AIPIPE_PROVIDER: str = "auto"
     AIPIPE_BASE_URL: str = "https://aipipe.org"
