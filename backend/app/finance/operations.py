@@ -1,12 +1,29 @@
 import secrets
+from io import BytesIO
 from datetime import date, datetime, timezone
 from zoneinfo import ZoneInfo
+from xml.sax.saxutils import escape
 
 from fastapi import HTTPException
+from reportlab.lib import colors
+from reportlab.lib.enums import TA_CENTER
+from reportlab.lib.pagesizes import A4
+from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
+from reportlab.lib.units import mm
+from reportlab.graphics.shapes import Drawing, Rect, String
+from reportlab.platypus import (
+    HRFlowable,
+    PageBreak,
+    Paragraph,
+    SimpleDocTemplate,
+    Spacer,
+    Table,
+    TableStyle,
+)
 from sqlalchemy import func, select
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, selectinload
 
-from app.db.models.role import RoleName
+from app.db.models.role import RoleName, UserRole
 from app.db.models.user import User
 from app.realtime.service import add_notifications
 from app.finance.models import (
@@ -160,6 +177,46 @@ def bulk_invoices(db: Session, user: User, data, key: str):
             )
         )
     )
+    active_users = list(
+        db.scalars(
+            select(User)
+            .options(selectinload(User.roles).selectinload(UserRole.role))
+            .where(User.is_active.is_(True))
+            .order_by(User.user_id)
+        ).all()
+    )
+    resident_accounts = [candidate for candidate in active_users if resident(candidate)]
+    skipped_resident_count = sum(1 for candidate in resident_accounts if not candidate.flat_number)
+
+    # A flat can have an owner and one or more tenants. Billing is flat-based,
+    # so select one deterministic recipient, preferring the owner account.
+    recipients_by_flat = {}
+    for candidate in (item for item in resident_accounts if item.flat_number):
+        flat_key = (
+            (candidate.building_block or "").strip().casefold(),
+            candidate.flat_number.strip().casefold(),
+        )
+        current = recipients_by_flat.get(flat_key)
+        candidate_is_owner = RoleName.flat_owner.value in roles(candidate)
+        current_is_owner = current and RoleName.flat_owner.value in roles(current)
+        if current is None or (candidate_is_owner and not current_is_owner):
+            recipients_by_flat[flat_key] = candidate
+
+    recipients = list(recipients_by_flat.values())
+    skipped_resident_count += sum(
+        1 for candidate in resident_accounts if candidate.flat_number
+    ) - len(recipients)
+    existing_flat_rows = db.execute(
+        select(User.building_block, User.flat_number)
+        .join(Invoice, Invoice.resident_id == User.user_id)
+        .where(Invoice.purpose == data.purpose, Invoice.period == data.period)
+    ).all()
+    duplicate_flats = {
+        ((building or "").strip().casefold(), flat.strip().casefold())
+        for building, flat in existing_flat_rows
+        if flat
+    }
+
     existing = db.scalar(
         select(BulkInvoiceRun).where(BulkInvoiceRun.idempotency_key == key)
     )
@@ -176,19 +233,14 @@ def bulk_invoices(db: Session, user: User, data, key: str):
         return {
             "run_id": existing.id,
             "created_count": existing.invoice_count,
+            "eligible_flat_count": len(recipients),
+            "duplicate_flat_count": len(duplicate_flats & set(recipients_by_flat)),
+            "skipped_resident_count": skipped_resident_count,
             "period": existing.period,
             "amount_paise": existing.amount_paise,
             "amount_display": money(existing.amount_paise),
+            "message": "This invoice request was already processed.",
         }
-    residents = [
-        candidate
-        for candidate in db.scalars(
-            select(User)
-            .where(User.flat_number.is_not(None), User.is_active.is_(True))
-            .order_by(User.user_id)
-        ).all()
-        if resident(candidate)
-    ]
     run = BulkInvoiceRun(
         idempotency_key=key,
         period=data.period,
@@ -199,15 +251,12 @@ def bulk_invoices(db: Session, user: User, data, key: str):
     db.add(run)
     db.flush()
     count = 0
-    for resident_user in residents:
-        duplicate = db.scalar(
-            select(Invoice.id).where(
-                Invoice.resident_id == resident_user.user_id,
-                Invoice.purpose == data.purpose,
-                Invoice.period == data.period,
-            )
+    for resident_user in recipients:
+        flat_key = (
+            (resident_user.building_block or "").strip().casefold(),
+            resident_user.flat_number.strip().casefold(),
         )
-        if duplicate:
+        if flat_key in duplicate_flats:
             continue
         invoice = Invoice(
             invoice_number=f"INV-{data.period.replace('-', '')}-{run.id}-{resident_user.user_id}",
@@ -232,12 +281,23 @@ def bulk_invoices(db: Session, user: User, data, key: str):
         count += 1
     run.invoice_count = count
     db.commit()
+    duplicate_count = len(duplicate_flats & set(recipients_by_flat))
+    if count:
+        message = f"Created {count} invoice(s) for {data.period}."
+    elif recipients and duplicate_count:
+        message = "No invoices created because every eligible flat is already invoiced for this period and purpose."
+    else:
+        message = "No invoices created because there are no eligible active resident flats."
     return {
         "run_id": run.id,
         "created_count": count,
+        "eligible_flat_count": len(recipients),
+        "duplicate_flat_count": duplicate_count,
+        "skipped_resident_count": skipped_resident_count,
         "period": run.period,
         "amount_paise": run.amount_paise,
         "amount_display": money(run.amount_paise),
+        "message": message,
     }
 
 
@@ -512,14 +572,268 @@ def statement_pdf(db, user):
     return simple_pdf("SocietySync Resident Statement", lines)
 
 
-def audit_pdf(db, user):
+def audit_pdf(db, user, year: int | None = None):
+    ensure_ops(user)
+    report_year = year or datetime.now(IST).year
+    period_start = datetime(report_year, 1, 1, tzinfo=IST).astimezone(timezone.utc)
+    period_end = datetime(report_year + 1, 1, 1, tzinfo=IST).astimezone(timezone.utc)
     summary = admin_summary(db, user)
-    return simple_pdf(
-        "SocietySync Annual Audit Report",
-        [
-            f"Generated: {datetime.now(IST):%Y-%m-%d %H:%M IST}",
-            f"Reserve: INR {summary['total_reserve_paise'] / 100:,.2f}",
-            f"Outstanding: INR {summary['outstanding_paise'] / 100:,.2f}",
-            f"Defaulters: {summary['defaulter_count']}",
-        ],
+    collected = db.scalar(
+        select(func.coalesce(func.sum(Payment.amount_paise), 0)).where(
+            Payment.status == "succeeded",
+            Payment.settled_at >= period_start,
+            Payment.settled_at < period_end,
+        )
+    ) or 0
+    collected = int(collected)
+    expenses = db.scalar(
+        select(func.coalesce(func.sum(Expense.amount_paise), 0)).where(
+            Expense.expense_date >= date(report_year, 1, 1),
+            Expense.expense_date < date(report_year + 1, 1, 1),
+        )
+    ) or 0
+    expenses = int(expenses)
+    invoice_rows = db.execute(
+        select(Invoice.status, func.count(Invoice.id))
+        .where(Invoice.issued_at >= period_start, Invoice.issued_at < period_end)
+        .group_by(Invoice.status)
+    ).all()
+    invoice_counts = dict(invoice_rows)
+    entries = list(
+        db.scalars(
+            select(LedgerEntry)
+            .where(
+                LedgerEntry.created_at >= period_start,
+                LedgerEntry.created_at < period_end,
+            )
+            .order_by(LedgerEntry.created_at.desc())
+            .limit(30)
+        ).all()
     )
+    def pdf_money(paise):
+        return f"INR {paise / 100:,.2f}"
+
+    buffer = BytesIO()
+    document = SimpleDocTemplate(
+        buffer,
+        pagesize=A4,
+        rightMargin=18 * mm,
+        leftMargin=18 * mm,
+        topMargin=12 * mm,
+        bottomMargin=18 * mm,
+        title=f"SocietySync Annual Audit Report {report_year}",
+        author="SocietySync",
+    )
+    styles = getSampleStyleSheet()
+    styles.add(ParagraphStyle(
+        name="AuditTitle", parent=styles["Title"], fontName="Helvetica-Bold",
+        fontSize=23, leading=27, textColor=colors.white,
+        alignment=TA_CENTER, spaceAfter=2 * mm,
+    ))
+    styles.add(ParagraphStyle(
+        name="Section", parent=styles["Heading2"], fontName="Helvetica-Bold",
+        fontSize=13, textColor=colors.HexColor("#0f2336"), spaceBefore=5 * mm,
+        spaceAfter=2.5 * mm,
+    ))
+    styles.add(ParagraphStyle(
+        name="Meta", parent=styles["BodyText"], fontSize=9,
+        textColor=colors.HexColor("#64748b"), alignment=TA_CENTER,
+    ))
+    styles.add(ParagraphStyle(
+        name="HeaderMeta", parent=styles["BodyText"], fontSize=9,
+        leading=13, textColor=colors.HexColor("#cbd5e1"), alignment=TA_CENTER,
+    ))
+    styles.add(ParagraphStyle(
+        name="KpiLabel", parent=styles["BodyText"], fontSize=7.5,
+        leading=9, textColor=colors.HexColor("#64748b"), alignment=TA_CENTER,
+    ))
+    styles.add(ParagraphStyle(
+        name="KpiValue", parent=styles["BodyText"], fontName="Helvetica-Bold",
+        fontSize=12, leading=15, textColor=colors.HexColor("#0f2336"),
+        alignment=TA_CENTER,
+    ))
+    styles.add(ParagraphStyle(
+        name="Small", parent=styles["BodyText"], fontSize=8, leading=10,
+        textColor=colors.HexColor("#334155"),
+    ))
+
+    header = Table(
+        [[Paragraph("SOCIETYSYNC  /  FINANCE", styles["HeaderMeta"])],
+         [Paragraph("Annual Financial Audit Report", styles["AuditTitle"])],
+         [Paragraph(
+             f"01 January - 31 December {report_year} &nbsp;&nbsp;|&nbsp;&nbsp; "
+             f"Generated {datetime.now(IST):%d %B %Y, %H:%M IST}",
+             styles["HeaderMeta"],
+         )]],
+        colWidths=[159 * mm],
+        rowHeights=[9 * mm, 15 * mm, 11 * mm],
+    )
+    header.setStyle(TableStyle([
+        ("BACKGROUND", (0, 0), (-1, -1), colors.HexColor("#0f2336")),
+        ("BOX", (0, 0), (-1, -1), 1.5, colors.HexColor("#d87943")),
+        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+        ("LEFTPADDING", (0, 0), (-1, -1), 12),
+        ("RIGHTPADDING", (0, 0), (-1, -1), 12),
+    ]))
+
+    def kpi_card(label, value, accent):
+        card = Table(
+            [[Paragraph(label.upper(), styles["KpiLabel"])],
+             [Paragraph(value, styles["KpiValue"])]],
+            colWidths=[50 * mm], rowHeights=[7 * mm, 12 * mm],
+        )
+        card.setStyle(TableStyle([
+            ("BACKGROUND", (0, 0), (-1, -1), colors.HexColor("#f8fafc")),
+            ("LINEABOVE", (0, 0), (-1, 0), 3, colors.HexColor(accent)),
+            ("BOX", (0, 0), (-1, -1), 0.5, colors.HexColor("#dbe3ec")),
+            ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+        ]))
+        return card
+
+    story = [
+        header,
+        Spacer(1, 5 * mm),
+        Paragraph("Executive summary", styles["Section"]),
+    ]
+    summary_table = Table([
+        [
+            kpi_card("Collections", pdf_money(collected), "#16a34a"),
+            kpi_card("Expenses", pdf_money(expenses), "#dc2626"),
+            kpi_card("Net cash flow", pdf_money(collected - expenses), "#d87943"),
+        ],
+        [
+            kpi_card("Current reserve", pdf_money(summary["total_reserve_paise"]), "#4f46e5"),
+            kpi_card("Outstanding", pdf_money(summary["outstanding_paise"]), "#f59e0b"),
+            kpi_card("Overdue invoices", str(summary["defaulter_count"]), "#be123c"),
+        ],
+    ], colWidths=[53 * mm] * 3, rowHeights=[22 * mm, 22 * mm])
+    summary_table.setStyle(TableStyle([
+        ("LEFTPADDING", (0, 0), (-1, -1), 2),
+        ("RIGHTPADDING", (0, 0), (-1, -1), 2),
+        ("TOPPADDING", (0, 0), (-1, -1), 2),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 2),
+        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+    ]))
+    story.append(summary_table)
+
+    cash_chart = Drawing(450, 108)
+    cash_chart.add(Rect(0, 0, 450, 108, rx=8, ry=8, fillColor=colors.HexColor("#f8fafc"), strokeColor=colors.HexColor("#dbe3ec")))
+    chart_values = [("COLLECTIONS", collected, "#16a34a"), ("EXPENSES", expenses, "#dc2626"), ("NET FLOW", collected - expenses, "#d87943")]
+    chart_max = max((abs(value) for _, value, _ in chart_values), default=1) or 1
+    for index, (label, value, color) in enumerate(chart_values):
+        x = 54 + index * 145
+        bar_height = max(4, abs(value) / chart_max * 55)
+        cash_chart.add(Rect(x, 25, 62, bar_height, rx=3, ry=3, fillColor=colors.HexColor(color), strokeColor=None))
+        cash_chart.add(String(x + 31, 11, label, fontName="Helvetica-Bold", fontSize=7, textAnchor="middle", fillColor=colors.HexColor("#475569")))
+        cash_chart.add(String(x + 31, min(94, 29 + bar_height), pdf_money(value), fontName="Helvetica-Bold", fontSize=7.5, textAnchor="middle", fillColor=colors.HexColor("#0f2336")))
+    story.extend([Paragraph("Financial movement", styles["Section"]), cash_chart])
+
+    story.extend([
+        Paragraph("Invoice status", styles["Section"]),
+        Table(
+            [["Issued", "Paid", "Overdue", "Cancelled", "Total"] , [
+                invoice_counts.get("issued", 0), invoice_counts.get("paid", 0),
+                invoice_counts.get("overdue", 0), invoice_counts.get("cancelled", 0),
+                sum(invoice_counts.values()),
+            ]],
+            colWidths=[31.8 * mm] * 5,
+            style=TableStyle([
+                ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#0f2336")),
+                ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+                ("FONTNAME", (0, 0), (-1, -1), "Helvetica-Bold"),
+                ("ALIGN", (0, 0), (-1, -1), "CENTER"),
+                ("GRID", (0, 0), (-1, -1), 0.5, colors.HexColor("#cbd5e1")),
+                ("TOPPADDING", (0, 0), (-1, -1), 7),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 7),
+            ]),
+        ),
+        Paragraph("Configured fund allocation", styles["Section"]),
+    ])
+    allocation_items = summary["allocations"]
+    allocation_height = max(55, 22 + len(allocation_items) * 25)
+    allocation_chart = Drawing(450, allocation_height)
+    allocation_chart.add(Rect(0, 0, 450, allocation_height, rx=8, ry=8, fillColor=colors.HexColor("#f8fafc"), strokeColor=colors.HexColor("#dbe3ec")))
+    if allocation_items:
+        for index, item in enumerate(allocation_items):
+            y = allocation_height - 28 - index * 25
+            value = max(0, min(float(item["value"]), 100))
+            allocation_chart.add(String(16, y + 4, str(item["name"])[:28], fontName="Helvetica-Bold", fontSize=8, fillColor=colors.HexColor("#334155")))
+            allocation_chart.add(Rect(150, y, 245, 10, rx=5, ry=5, fillColor=colors.HexColor("#e2e8f0"), strokeColor=None))
+            allocation_chart.add(Rect(150, y, 245 * value / 100, 10, rx=5, ry=5, fillColor=colors.HexColor(item.get("color") or "#d87943"), strokeColor=None))
+            allocation_chart.add(String(430, y + 2, f"{value:.0f}%", fontName="Helvetica-Bold", fontSize=8, textAnchor="end", fillColor=colors.HexColor("#0f2336")))
+    else:
+        allocation_chart.add(String(225, 25, "No active fund allocations configured", fontName="Helvetica", fontSize=9, textAnchor="middle", fillColor=colors.HexColor("#64748b")))
+    story.extend([
+        allocation_chart,
+        PageBreak(),
+        Paragraph("Recent ledger activity", styles["Section"]),
+        Paragraph(
+            f"Latest ledger entries recorded during {report_year}. Debits represent receivables and expenses; credits represent successful payments.",
+            styles["Small"],
+        ),
+        Spacer(1, 3 * mm),
+    ])
+    ledger_rows = [["Date", "Reference", "Description", "Type", "Amount"]]
+    ledger_rows.extend([
+        [
+            entry.created_at.astimezone(IST).strftime("%d %b %Y"),
+            f"LED-{entry.id}",
+            Paragraph(escape(entry.description[:75]), styles["Small"]),
+            entry.direction.title(),
+            pdf_money(entry.amount_paise),
+        ]
+        for entry in entries
+    ])
+    if len(ledger_rows) == 1:
+        ledger_rows.append(["-", "-", "No ledger activity for this year", "-", "-"])
+    ledger_table = Table(ledger_rows, colWidths=[24 * mm, 25 * mm, 66 * mm, 19 * mm, 25 * mm], repeatRows=1)
+    ledger_table.setStyle(TableStyle([
+        ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#0f2336")),
+        ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+        ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+        ("FONTSIZE", (0, 0), (-1, -1), 7.5),
+        ("ALIGN", (3, 1), (-1, -1), "RIGHT"),
+        ("VALIGN", (0, 0), (-1, -1), "TOP"),
+        ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, colors.HexColor("#f8fafc")]),
+        ("GRID", (0, 0), (-1, -1), 0.25, colors.HexColor("#cbd5e1")),
+        ("TOPPADDING", (0, 0), (-1, -1), 5),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
+    ]))
+    story.append(ledger_table)
+    story.extend([
+        Spacer(1, 7 * mm),
+        HRFlowable(width="100%", thickness=1, color=colors.HexColor("#dbe3ec")),
+        Spacer(1, 4 * mm),
+        Table(
+            [[Paragraph("<b>PREPARED BY</b><br/>SocietySync Finance System", styles["Small"]),
+              Paragraph("<b>REVIEWED / APPROVED BY</b><br/><br/>Signature: ____________________", styles["Small"])]],
+            colWidths=[79.5 * mm, 79.5 * mm],
+            style=TableStyle([
+                ("BOX", (0, 0), (-1, -1), 0.5, colors.HexColor("#cbd5e1")),
+                ("INNERGRID", (0, 0), (-1, -1), 0.5, colors.HexColor("#cbd5e1")),
+                ("BACKGROUND", (0, 0), (-1, -1), colors.HexColor("#f8fafc")),
+                ("TOPPADDING", (0, 0), (-1, -1), 9),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 9),
+                ("LEFTPADDING", (0, 0), (-1, -1), 9),
+            ]),
+        ),
+        Spacer(1, 4 * mm),
+        Paragraph(
+            "This system-generated report summarizes SocietySync records and should be reviewed with source documents by the society auditor.",
+            styles["Small"],
+        ),
+    ])
+
+    def footer(canvas, doc):
+        canvas.saveState()
+        canvas.setStrokeColor(colors.HexColor("#d87943"))
+        canvas.setLineWidth(1.5)
+        canvas.line(18 * mm, 14 * mm, A4[0] - 18 * mm, 14 * mm)
+        canvas.setFont("Helvetica", 8)
+        canvas.setFillColor(colors.HexColor("#64748b"))
+        canvas.drawString(18 * mm, 10 * mm, f"SocietySync Annual Audit {report_year}")
+        canvas.drawRightString(A4[0] - 18 * mm, 10 * mm, f"Page {doc.page}")
+        canvas.restoreState()
+
+    document.build(story, onFirstPage=footer, onLaterPages=footer)
+    return buffer.getvalue()

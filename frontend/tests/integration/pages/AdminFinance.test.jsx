@@ -35,7 +35,7 @@ describe("AdminFinance", () => {
     api.getAdminFinance.mockReset().mockResolvedValue({ data: summary });
     api.getFinanceLedger.mockReset().mockResolvedValue({ data: ledger });
     api.downloadAnnualAudit.mockReset().mockResolvedValue({ data: new Blob(["audit"]) });
-    api.generateBulkInvoices.mockReset().mockResolvedValue({ data: { created_count: 3 } });
+    api.generateBulkInvoices.mockReset().mockResolvedValue({ data: { created_count: 3, message: "Created 3 invoice(s) for 2026-09." } });
     api.saveBlob.mockReset();
     vi.stubGlobal("crypto", { randomUUID: () => "coverage-test-key" });
   });
@@ -53,9 +53,10 @@ describe("AdminFinance", () => {
 
   it("downloads the annual audit", async () => {
     render(<AdminFinance />);
-    fireEvent.click(await screen.findByRole("button", { name: /Download Annual Audit/i }));
-    await screen.findByText("Annual audit downloaded.");
-    expect(api.saveBlob).toHaveBeenCalledWith({ data: expect.any(Blob) }, "societysync-annual-audit.pdf");
+    fireEvent.click(await screen.findByRole("button", { name: /Download .* Annual Audit/i }));
+    await screen.findByText(/annual audit downloaded/i);
+    expect(api.downloadAnnualAudit).toHaveBeenCalledWith(new Date().getFullYear());
+    expect(api.saveBlob).toHaveBeenCalledWith({ data: expect.any(Blob) }, `societysync-annual-audit-${new Date().getFullYear()}.pdf`);
   });
 
   it("submits bulk invoices with paise and an idempotency key", async () => {
@@ -68,7 +69,19 @@ describe("AdminFinance", () => {
       expect.objectContaining({ amount_paise: 150050, purpose: "Monthly Maintenance" }),
       "coverage-test-key",
     ));
-    expect(await screen.findByText("3 invoice(s) generated successfully.")).toBeTruthy();
+    expect(await screen.findByText("Created 3 invoice(s) for 2026-09.")).toBeTruthy();
+  });
+
+  it("explains when no new invoice can be generated", async () => {
+    api.generateBulkInvoices.mockResolvedValueOnce({ data: {
+      created_count: 0,
+      message: "No invoices created because every eligible flat is already invoiced for this period and purpose.",
+    } });
+    render(<AdminFinance />);
+    fireEvent.click(await screen.findByRole("button", { name: "Generate Bulk Invoices" }));
+    fireEvent.click(screen.getByRole("button", { name: "Generate invoices" }));
+
+    expect(await screen.findByText(/every eligible flat is already invoiced/i)).toBeTruthy();
   });
 
   it("offers retry when finance loading fails", async () => {

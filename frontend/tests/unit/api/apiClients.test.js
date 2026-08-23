@@ -92,7 +92,9 @@ describe("finance and amenities API clients", () => {
     expect(http.post).toHaveBeenCalledWith("/api/v1/finance/payments", payload, { headers: { "Idempotency-Key": "payment-key" } });
     expect(http.post).toHaveBeenCalledWith("/api/v1/finance/expenses", payload);
     expect(http.get).toHaveBeenCalledWith("/api/v1/finance/statement", { responseType: "blob" });
-    expect(http.get).toHaveBeenCalledWith("/api/v1/finance/reports/annual-audit", { responseType: "blob" });
+    expect(http.get).toHaveBeenCalledWith("/api/v1/finance/reports/annual-audit", {
+      params: { year: new Date().getFullYear() }, responseType: "blob",
+    });
     expect(http.get).toHaveBeenCalledWith("/api/v1/finance/payments/8/receipt", { responseType: "blob" });
   });
 

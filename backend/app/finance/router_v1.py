@@ -1,3 +1,5 @@
+from datetime import datetime
+
 from fastapi import APIRouter, Depends, Header, Query, Response, status
 from sqlalchemy.orm import Session
 
@@ -108,5 +110,11 @@ def statement(db: Session = Depends(get_db), user: User = Depends(get_current_us
 
 
 @router.get("/reports/annual-audit")
-def annual_audit(db: Session = Depends(get_db), user: User = Depends(get_current_user)):
-    return pdf_response(operations.audit_pdf(db, user), "annual-audit.pdf")
+def annual_audit(
+    year: int = Query(datetime.now().year, ge=2000, le=2100),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    return pdf_response(
+        operations.audit_pdf(db, user, year), f"annual-audit-{year}.pdf"
+    )
