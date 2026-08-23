@@ -32,8 +32,11 @@ class Settings(BaseSettings):
 
     # Resident Helpdesk AI assistant (server-side only)
     AIPIPE_API_KEY: str = ""
-    AIPIPE_BASE_URL: str = "https://aipipe.org/openrouter/v1"
-    AIPIPE_MODEL: str = "openai/gpt-4.1-nano"
+    AIPIPE_PROVIDER: str = "auto"
+    AIPIPE_BASE_URL: str = "https://aipipe.org"
+    AIPIPE_OPENAI_MODEL: str = "gpt-5-nano"
+    AIPIPE_OPENROUTER_MODEL: str = "openai/gpt-5-nano"
+    AIPIPE_GEMINI_MODEL: str = "gemini-2.5-flash-lite"
     AIPIPE_TIMEOUT_SECONDS: float = Field(default=20.0, ge=1, le=60)
 
     # Scheduled work (run as a separate process: python scheduler.py)

@@ -90,3 +90,5 @@ in `backend/.env` and must never use a frontend `VITE_` variable. Verify that a
 resident can ask a follow-up question, receives a concise response, and can still
 use the suggested category and known-issue subscription flow. Also verify that an
 unavailable AI service shows a retry/ticket message without losing the typed text.
+With `AIPIPE_PROVIDER=auto`, native `sk-`, `sk-or-`, and `AIza` keys select the
+OpenAI, OpenRouter, and Gemini AI Pipe payloads respectively.
