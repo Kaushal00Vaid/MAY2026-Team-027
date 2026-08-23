@@ -154,3 +154,26 @@ This document records the verified behavior of each Admin page. It is updated pa
 - Directory and discussion pages use server totals and provide previous/next controls when more than ten records exist.
 - Only the latest request for each section updates the UI. Open discussion details update from refreshed data or close if that thread is no longer active/on the current page.
 - Discussion counts/authors and directory roles are loaded with bounded database queries rather than per-row lookups.
+
+## Analytics
+
+### Access
+
+- `super_admin`, `admin`, and `committee_member` accounts can view advanced Analytics and download its CSV export. Backend role checks protect both endpoints.
+- The User Roles destination is shown only to `super_admin` accounts.
+
+### Metrics and actions
+
+- **Amenity Utilization Heatmap** groups confirmed/completed bookings for the current Monday–Sunday week into seven operating-time bands. Week boundaries, booking dates, and times use Asia/Kolkata. The amenity selector includes active facilities only.
+- **Financial Efficiency** shows current-calendar-month successful collections and recorded operating expenses, with their existing normalized ratio.
+- **Predictive Maintenance (Pareto)** counts complaints by category in descending frequency. When no complaints exist, it displays an empty state rather than synthetic chart data.
+- **Service Provider Performance** lists active staff providers, their service type, average resolved-work-order duration, and current overdue-work-order SLA state. Provider/task data is bulk loaded to keep query count bounded.
+- **Export Report** downloads complaint Pareto, provider performance, financial efficiency, and heatmap rows for the currently selected amenity.
+
+### Validation and expected states
+
+- No amenity filter defaults to the first active amenity. An explicitly missing/inactive amenity returns not found rather than silently substituting another facility.
+- Only the latest amenity request can update the page. Loading failures offer Retry, and an invalid selected filter can be reset to the default.
+- Export submission is guarded against repeated requests; success and failure display dismissible notifications.
+- Empty active-amenity, complaint, and provider datasets display explicit empty states.
+- Provider severity presentation follows the returned `Within SLA`, `Warning`, or `Escalated` state.
