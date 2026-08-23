@@ -5,7 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import AdminDashboard from "@/pages/AdminDashboard";
 
 const getAdminAnalytics = vi.fn();
-const getTransactions = vi.fn();
+const getFinanceLedger = vi.fn();
 const downloadAnalyticsExport = vi.fn();
 const navigate = vi.fn();
 
@@ -14,7 +14,9 @@ vi.mock("@/api/analytics", () => ({
   getAdminAnalytics: (...args) => getAdminAnalytics(...args),
   downloadAnalyticsExport: (...args) => downloadAnalyticsExport(...args),
 }));
-vi.mock("@/api/finance", () => ({ getTransactions: (...args) => getTransactions(...args) }));
+vi.mock("@/features/finance/api", () => ({
+  getFinanceLedger: (...args) => getFinanceLedger(...args),
+}));
 vi.mock("@/components/layout/DashboardLayout", () => ({ default: ({ children }) => <div>{children}</div> }));
 vi.mock("recharts", () => ({
   AreaChart: () => <div data-testid="revenue-chart"/>, Area: () => null,
@@ -42,7 +44,7 @@ const analytics = {
 describe("AdminDashboard", () => {
   beforeEach(() => {
     getAdminAnalytics.mockReset().mockResolvedValue({ data: analytics });
-    getTransactions.mockReset().mockResolvedValue({ data: [] });
+    getFinanceLedger.mockReset().mockResolvedValue({ data: { items: [], total: 0, page: 1, page_size: 10 } });
     downloadAnalyticsExport.mockReset();
     navigate.mockReset();
   });
@@ -93,5 +95,35 @@ describe("AdminDashboard", () => {
     await screen.findByText("Analytics report downloaded.");
     expect(click).toHaveBeenCalled();
     click.mockRestore();
+  });
+
+  it("renders and filters recent transactions from the canonical finance ledger", async () => {
+    getFinanceLedger.mockResolvedValue({
+      data: {
+        items: [
+          { id: 1, unit: "A-101", description: "Maintenance payment", category: "Maintenance", direction: "credit", amount_display: "₹2,500.00", date: "2026-08-23T08:00:00Z" },
+          { id: 2, unit: null, description: "ABC Plumbing — Pipe repair", category: "Repairs", direction: "debit", amount_display: "₹800.00", date: "2026-08-22T08:00:00Z" },
+        ],
+        total: 2,
+        page: 1,
+        page_size: 10,
+      },
+    });
+
+    render(<AdminDashboard />);
+
+    expect(await screen.findByText("A-101")).toBeTruthy();
+    expect(screen.getByText("ABC Plumbing — Pipe repair")).toBeTruthy();
+    expect(screen.getByText("Cr ₹2,500.00")).toBeTruthy();
+    expect(screen.getByText("Dr ₹800.00")).toBeTruthy();
+    expect(getFinanceLedger).toHaveBeenCalledWith(1, 10);
+
+    fireEvent.click(screen.getByRole("button", { name: "credit" }));
+    expect(screen.getByText("A-101")).toBeTruthy();
+    expect(screen.queryByText("ABC Plumbing — Pipe repair")).toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: "debit" }));
+    expect(screen.queryByText("A-101")).toBeNull();
+    expect(screen.getByText("ABC Plumbing — Pipe repair")).toBeTruthy();
   });
 });

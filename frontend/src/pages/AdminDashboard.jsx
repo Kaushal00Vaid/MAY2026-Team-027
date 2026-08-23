@@ -19,7 +19,7 @@ import {
   Loader2
 } from "lucide-react";
 import DashboardLayout from "@/components/layout/DashboardLayout";
-import { getTransactions } from "@/api/finance";
+import { getFinanceLedger } from "@/features/finance/api";
 import { downloadAnalyticsExport, getAdminAnalytics } from "@/api/analytics";
 
 const sidebarItems = [
@@ -102,32 +102,40 @@ export default function AdminDashboard() {
     } finally { setExporting(false); }
   };
 
-  // Re-fetch whenever the active tab changes
   useEffect(() => {
-    getTransactions({ type: activeTab, limit: 10 })
+    let active = true;
+    setTxLoading(true);
+    setTxError(null);
+
+    getFinanceLedger(1, 10)
       .then((res) => {
-        // Map API shape → table shape
-        const mapped = res.data.map((tx) => ({
+        if (!active) return;
+        const mapped = res.data.items.map((tx) => ({
           id: tx.id,
-          unit: tx.unit_or_vendor,
+          unit: tx.unit || tx.description,
           category: tx.category,
-          type: tx.type,
-          amount:
-            tx.type === "income"
-              ? `+₹${parseFloat(tx.amount).toLocaleString("en-IN", { minimumFractionDigits: 2 })}`
-              : `-₹${parseFloat(tx.amount).toLocaleString("en-IN", { minimumFractionDigits: 2 })}`,
-          date: new Date(tx.transaction_date).toLocaleString("en-IN", {
+          direction: tx.direction,
+          amount: `${tx.direction === "credit" ? "Cr" : "Dr"} ${tx.amount_display}`,
+          date: new Date(tx.date).toLocaleString("en-IN", {
             dateStyle: "medium",
             timeStyle: "short",
           }),
         }));
         setTransactions(mapped);
       })
-      .catch(() => setTxError("Failed to load transactions."))
-      .finally(() => setTxLoading(false));
-  }, [activeTab]);
+      .catch(() => {
+        if (active) setTxError("Failed to load transactions.");
+      })
+      .finally(() => {
+        if (active) setTxLoading(false);
+      });
 
-  const filteredTransactions = transactions;
+    return () => { active = false; };
+  }, []);
+
+  const filteredTransactions = activeTab === "all"
+    ? transactions
+    : transactions.filter((transaction) => transaction.direction === activeTab);
 
   return (
     <DashboardLayout sidebarItems={sidebarItems} userRole="Residential Admin">
@@ -285,10 +293,10 @@ export default function AdminDashboard() {
                 
                 {/* Tabs */}
                 <div className="flex p-1 bg-gray-100 rounded-lg w-fit">
-                  {["all", "income", "expenses"].map((tab) => (
+                  {["all", "credit", "debit"].map((tab) => (
                     <button
                       key={tab}
-                      onClick={() => { setTxLoading(true); setTxError(null); setActiveTab(tab); }}
+                      onClick={() => setActiveTab(tab)}
                       className={`px-4 py-1.5 text-xs font-semibold rounded-md capitalize transition-all ${
                         activeTab === tab ? "bg-white text-gray-900 shadow-sm" : "text-gray-500 hover:text-gray-700"
                       }`}
@@ -313,14 +321,14 @@ export default function AdminDashboard() {
                     {filteredTransactions.map((tx) => (
                       <tr key={tx.id} className="hover:bg-gray-50/50 transition-colors group cursor-default">
                         <td className="px-6 py-4 font-medium text-gray-900 flex items-center gap-3">
-                          <div className={`w-8 h-8 rounded-full flex items-center justify-center ${tx.type === 'income' ? 'bg-emerald-100 text-emerald-600' : 'bg-red-100 text-red-600'}`}>
-                            {tx.type === 'income' ? <TrendingUp size={14} /> : <TrendingUp size={14} className="rotate-180" />}
+                          <div className={`w-8 h-8 rounded-full flex items-center justify-center ${tx.direction === "credit" ? "bg-emerald-100 text-emerald-600" : "bg-red-100 text-red-600"}`}>
+                            {tx.direction === "credit" ? <TrendingUp size={14} /> : <TrendingUp size={14} className="rotate-180" />}
                           </div>
                           {tx.unit}
                         </td>
                         <td className="px-6 py-4 text-gray-500">{tx.category}</td>
                         <td className="px-6 py-4 text-gray-400 text-xs">{tx.date}</td>
-                        <td className={`px-6 py-4 text-right font-bold ${tx.type === 'income' ? 'text-emerald-600' : 'text-red-600'}`}>
+                        <td className={`px-6 py-4 text-right font-bold ${tx.direction === "credit" ? "text-emerald-600" : "text-red-600"}`}>
                           {tx.amount}
                         </td>
                       </tr>
