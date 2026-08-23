@@ -1,7 +1,7 @@
 from datetime import datetime
 from typing import Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 
 class AssigneeResponse(BaseModel):
@@ -65,8 +65,30 @@ class KnownIssueResponse(BaseModel):
     subscribed: bool
 
 
+class AssistantMessage(BaseModel):
+    role: Literal["user", "assistant"]
+    content: str = Field(..., min_length=1, max_length=2_000)
+
+    @field_validator("content")
+    @classmethod
+    def content_not_blank(cls, value: str) -> str:
+        value = value.strip()
+        if not value:
+            raise ValueError("Message cannot be blank")
+        return value
+
+
 class AssistantRequest(BaseModel):
     message: str = Field(..., min_length=3, max_length=2_000)
+    history: list[AssistantMessage] = Field(default_factory=list, max_length=10)
+
+    @field_validator("message")
+    @classmethod
+    def message_not_blank(cls, value: str) -> str:
+        value = value.strip()
+        if not value:
+            raise ValueError("Message cannot be blank")
+        return value
 
 
 class AssistantResponse(BaseModel):
@@ -81,4 +103,3 @@ class EscalationRequest(BaseModel):
 
 
 WorkOrderFilter = Literal["all", "urgent", "plumbing", "electrical"]
-

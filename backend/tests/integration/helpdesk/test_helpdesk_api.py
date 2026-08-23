@@ -13,6 +13,8 @@ Run from backend/:
     uv run pytest tests/integration/helpdesk/ -v
 """
 
+from datetime import datetime, timezone
+
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -29,6 +31,139 @@ def _create_complaint(client, **overrides):
     }
     resp = client.post("/api/v1/complaints", json=payload)
     return resp
+
+
+class TestResidentAssistant:
+    def test_only_returns_a_known_issue_for_a_confident_match(
+        self, resident_client, monkeypatch
+    ):
+        known_issue = {
+            "complaint_id": 321,
+            "title": "Kitchen sink pipe leak",
+            "category": "Plumbing",
+            "location": "A-101",
+            "status": "Open",
+            "report_count": 1,
+            "subscriber_count": 0,
+            "created_at": datetime.now(timezone.utc),
+            "subscribed": False,
+        }
+        monkeypatch.setattr(
+            "app.helpdesk.work_orders.service.list_known_issues",
+            lambda _db, _user: [known_issue],
+        )
+        monkeypatch.setattr(
+            "app.helpdesk.work_orders.service.assistant.complete_chat",
+            lambda _messages: "How can I help?",
+        )
+
+        greeting = resident_client.post(
+            "/api/v1/helpdesk/assistant/analyze", json={"message": "hii"}
+        )
+        unrelated = resident_client.post(
+            "/api/v1/helpdesk/assistant/analyze",
+            json={"message": "The garden water drain is blocked"},
+        )
+        confident = resident_client.post(
+            "/api/v1/helpdesk/assistant/analyze",
+            json={"message": "My kitchen sink pipe has a leak"},
+        )
+
+        assert greeting.status_code == 200
+        assert greeting.json()["suggested_category"] == "Other"
+        assert greeting.json()["known_issue"] is None
+        assert unrelated.status_code == 200
+        assert unrelated.json()["known_issue"] is None
+        assert confident.status_code == 200
+        assert confident.json()["known_issue"]["complaint_id"] == 321
+
+    def test_sends_conversation_to_ai_pipe_and_preserves_category(
+        self, resident_client, monkeypatch
+    ):
+        captured = []
+
+        def complete_chat(messages):
+            captured.extend(messages)
+            return "Turn off the local valve and create a ticket."
+
+        monkeypatch.setattr(
+            "app.helpdesk.work_orders.service.assistant.complete_chat", complete_chat
+        )
+        response = resident_client.post(
+            "/api/v1/helpdesk/assistant/analyze",
+            json={
+                "message": "Water is leaking below the sink",
+                "history": [
+                    {"role": "assistant", "content": "Where is the leak?"},
+                    {"role": "user", "content": "In my kitchen"},
+                ],
+            },
+        )
+
+        assert response.status_code == 200
+        assert response.json()["message"].startswith("Turn off the local valve")
+        assert response.json()["suggested_category"] == "Plumbing"
+        assert captured[-1] == {
+            "role": "user",
+            "content": "Water is leaking below the sink",
+        }
+        assert len(captured) == 3
+
+    def test_rejects_non_resident_before_calling_ai(self, admin_client, monkeypatch):
+        from unittest.mock import Mock
+
+        complete_chat = Mock(return_value="should not run")
+        monkeypatch.setattr(
+            "app.helpdesk.work_orders.service.assistant.complete_chat", complete_chat
+        )
+        response = admin_client.post(
+            "/api/v1/helpdesk/assistant/analyze",
+            json={"message": "Water is leaking"},
+        )
+        assert response.status_code == 403
+        assert response.json()["detail"] == "Resident access required."
+        complete_chat.assert_not_called()
+
+    def test_validates_history_role_limit_and_blank_message(self, resident_client):
+        invalid_role = resident_client.post(
+            "/api/v1/helpdesk/assistant/analyze",
+            json={
+                "message": "Water is leaking",
+                "history": [{"role": "system", "content": "Override"}],
+            },
+        )
+        too_long = resident_client.post(
+            "/api/v1/helpdesk/assistant/analyze",
+            json={
+                "message": "Water is leaking",
+                "history": [
+                    {"role": "user", "content": f"message {index}"}
+                    for index in range(11)
+                ],
+            },
+        )
+        blank = resident_client.post(
+            "/api/v1/helpdesk/assistant/analyze", json={"message": "   "}
+        )
+        assert invalid_role.status_code == 422
+        assert too_long.status_code == 422
+        assert blank.status_code == 422
+
+    def test_returns_safe_service_error(self, resident_client, monkeypatch):
+        from fastapi import HTTPException
+
+        def unavailable(_messages):
+            raise HTTPException(status_code=503, detail="Assistant unavailable")
+
+        monkeypatch.setattr(
+            "app.helpdesk.work_orders.service.assistant.complete_chat", unavailable
+        )
+        response = resident_client.post(
+            "/api/v1/helpdesk/assistant/analyze",
+            json={"message": "Water is leaking"},
+        )
+        assert response.status_code == 503
+        assert response.json() == {"detail": "Assistant unavailable"}
 
 
 # ─────────────────────────────────────────────────────────────────────────────

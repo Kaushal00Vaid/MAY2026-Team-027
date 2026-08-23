@@ -1,11 +1,13 @@
 from typing import Annotated, Literal
 
-from fastapi import APIRouter, Depends, File, Form, UploadFile
+from fastapi import APIRouter, Depends, File, Form, Request, UploadFile
 from sqlalchemy.orm import Session
 
 from app.db.database import get_db
 from app.db.models.user import User
 from app.dependencies import get_current_user
+from app.core.security import limiter
+from app.helpdesk.complaints.permissions import ensure_resident
 from app.helpdesk.work_orders import service
 from app.helpdesk.work_orders.schemas import (
     AssistantRequest,
@@ -52,12 +54,15 @@ def subscribe(
 
 
 @router.post("/assistant/analyze", response_model=AssistantResponse)
+@limiter.limit("10/minute")
 def analyze(
+    request: Request,
     data: AssistantRequest,
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    return service.analyze_message(db, user, data.message)
+    ensure_resident(user)
+    return service.analyze_message(db, user, data.message, data.history)
 
 
 @router.get("/maintenance-tasks", response_model=WorkOrderListResponse)

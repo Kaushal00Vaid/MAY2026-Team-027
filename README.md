@@ -107,91 +107,226 @@ MAY2026-Team-027/
 
 ---
 
-## Quick Start
+## Local Development Setup
 
 ### Prerequisites
 
-| Tool | Version |
-|------|---------|
-| Python | 3.12+ |
-| Node.js | 18+ (20+ recommended) |
-| PostgreSQL | 14+ |
-| `uv` (optional) | latest — [install](https://github.com/astral-sh/uv) |
+| Tool       | Supported version | Check                                |
+| ---------- | ----------------- | ------------------------------------ |
+| Python     | 3.12+             | `python --version` or `py --version` |
+| Node.js    | 20.19+ or 22.12+  | `node --version`                     |
+| npm        | 9+                | `npm --version`                      |
+| PostgreSQL | 14+               | `psql --version`                     |
+| Git        | Current stable    | `git --version`                      |
 
----
+The commands below assume the repository has been cloned and the terminal is at
+the repository root. `uv` is optional; the documented commands use standard
+Python and `pip` so they work on a clean installation.
 
-### Backend Setup
+### 1. Create the PostgreSQL database
+
+Start PostgreSQL, then create a database and user. Existing PostgreSQL credentials
+may be used instead.
+
+Ubuntu/Linux:
+
+```bash
+sudo systemctl enable --now postgresql
+sudo -u postgres psql
+```
+
+Windows PowerShell (after installing PostgreSQL and adding `psql` to `PATH`):
+
+```powershell
+psql -U postgres
+```
+
+Run the following inside `psql` on either operating system:
+
+```sql
+CREATE USER societysync WITH PASSWORD 'change-this-password';
+CREATE DATABASE societysync OWNER societysync;
+\q
+```
+
+### 2. Set up the backend
+
+Ubuntu/Linux:
 
 ```bash
 cd backend
-
-# 1. Create virtual environment
-uv venv
-# or: python -m venv .venv
-
-# 2. Activate
-# Windows:
-.venv\Scripts\activate
-# macOS/Linux:
+python3 -m venv .venv
 source .venv/bin/activate
-
-# 3. Install dependencies
-uv pip install -r requirements.txt
-# or: pip install -r requirements.txt
-
-# 4. Configure environment
+python -m pip install --upgrade pip
+python -m pip install -r requirements.txt
 cp .env.example .env
-# Edit .env and fill in DATABASE_URL, SECRET_KEY, etc.
-
-# 5. Run database migrations
-alembic upgrade head
-
-# 6. (Optional) Seed initial data
-python seed.py
-
-# 7. Start the development server
-uvicorn app.main:app --reload --port 8000
 ```
 
-The API will be available at: **http://localhost:8000**
-Interactive docs (Swagger UI): **http://localhost:8000/docs**
+Windows PowerShell:
 
----
+```powershell
+Set-Location backend
+py -3.12 -m venv .venv
+Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
+.\.venv\Scripts\Activate.ps1
+python -m pip install --upgrade pip
+python -m pip install -r requirements.txt
+Copy-Item .env.example .env
+```
 
-### Frontend Setup
+For Windows Command Prompt, activate with `.venv\Scripts\activate.bat` and copy
+the environment file with `copy .env.example .env`.
+
+Edit `backend/.env` and set at least:
+
+```env
+DATABASE_URL=postgresql://societysync:change-this-password@localhost:5432/societysync
+JWT_SECRET=replace-with-a-long-random-secret
+FRONTEND_URL=http://localhost:5173
+ENVIRONMENT=development
+
+# Required only for the Resident Helpdesk chatbot
+AIPIPE_API_KEY=your-ai-pipe-token
+AIPIPE_PROVIDER=auto
+AIPIPE_OPENAI_MODEL=gpt-5-nano
+AIPIPE_OPENROUTER_MODEL=openai/gpt-5-nano
+AIPIPE_GEMINI_MODEL=gemini-2.5-flash-lite
+```
+
+Keep `.env` private. Never place `AIPIPE_API_KEY`, database passwords, or JWT
+secrets in frontend variables or commit them to Git.
+
+Apply migrations and optionally load the demo data while the backend virtual
+environment is active:
+
+```bash
+python -m alembic upgrade head
+python seed.py
+```
+
+`python seed.py` is optional and intended for local/demo environments. Migrations
+must be applied before starting the API or scheduler.
+
+### 3. Set up the frontend
+
+Continue from the `backend` directory used above. The npm commands are the same
+in Bash, PowerShell, and Command Prompt:
+
+```bash
+cd ../frontend
+npm install
+```
+
+The frontend uses `http://localhost:8000` by default. If the backend uses another
+port, create `frontend/.env.local`:
+
+```env
+VITE_API_URL=http://localhost:8000
+```
+
+Restart Vite after changing a frontend environment variable.
+
+### 4. Run the application
+
+The API, scheduler, and frontend are separate long-running processes. Open three
+terminals and keep all three running.
+
+Ubuntu/Linux:
+
+Terminal 1 — backend API:
+
+```bash
+cd backend
+source .venv/bin/activate
+python -m uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
+```
+
+Terminal 2 — scheduler:
+
+```bash
+cd backend
+source .venv/bin/activate
+python scheduler.py
+```
+
+Terminal 3 — frontend:
 
 ```bash
 cd frontend
-
-# 1. Install dependencies
-npm install
-
-# 2. Start development server
-npm run dev
+npm run dev -- --host 127.0.0.1 --port 5173
 ```
 
-The app will be available at: **http://localhost:5173**
+Windows PowerShell:
 
-> **Note:** The frontend expects the backend at `http://localhost:8000`. This is configured in `frontend/src/api/axiosInstance.js` via the `VITE_API_URL` environment variable.
+Terminal 1 — backend API:
+
+```powershell
+Set-Location backend
+.\.venv\Scripts\Activate.ps1
+python -m uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
+```
+
+Terminal 2 — scheduler:
+
+```powershell
+Set-Location backend
+.\.venv\Scripts\Activate.ps1
+python scheduler.py
+```
+
+Terminal 3 — frontend:
+
+```powershell
+Set-Location frontend
+npm run dev -- --host 127.0.0.1 --port 5173
+```
+
+Open these URLs after startup:
+
+| Service                   | URL                          |
+| ------------------------- | ---------------------------- |
+| Web application           | http://localhost:5173        |
+| Backend health check      | http://localhost:8000/health |
+| Swagger API documentation | http://localhost:8000/docs   |
+
+Run only one scheduler instance per environment. Its database advisory locks
+prevent duplicate job execution, but a single dedicated process is the intended
+deployment model. Stop any development process with `Ctrl+C`.
+
+### 5. Common startup problems
+
+- **Frontend cannot reach the API:** confirm `/health` works, `VITE_API_URL` uses
+  the API's actual port, and `FRONTEND_URL` exactly matches the browser origin.
+- **Environment changes do not apply:** restart the backend after changing
+  `backend/.env`; restart Vite after changing `frontend/.env.local`.
+- **Database connection refused:** start PostgreSQL and verify `DATABASE_URL`.
+- **`alembic` or imports not found:** activate `backend/.venv` and run commands
+  from the `backend` directory.
+- **PowerShell blocks activation:** run
+  `Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass` in that terminal.
+- **Port already in use:** stop the existing process or use another port and set
+  the matching `VITE_API_URL`.
 
 ---
 
 ## Running Tests
 
+Activate the backend virtual environment first, then run from `backend`:
+
 ```bash
 cd backend
 
 # Unit tests only (no database required)
-uv run python -m pytest tests/unit/ -v
+python -m pytest tests/unit/ -v
 
 # Integration tests (requires running PostgreSQL & .env configured)
-uv run python -m pytest tests/integration/ -v
+python -m pytest tests/integration/ -v
 
 # Full test suite
-uv run python -m pytest tests/ -v
+python -m pytest tests/ -v
 
 # Run with short output
-uv run python -m pytest tests/ -q --tb=short
+python -m pytest tests/ -q --tb=short
 
 cd ../frontend
 
@@ -209,18 +344,18 @@ npm run build
 
 ## API Overview
 
-| Module | Base Path | Description |
-|--------|-----------|-------------|
-| Auth | `/auth/*` | Signup, login (password + OTP + Google OAuth), token refresh |
-| Users | `/users/*` | User listing & role management |
-| Finance | `/api/finance/*`, `/api/v1/finance/*` | Transactions, invoices, ledger, PDF reports |
-| Helpdesk | `/api/v1/complaints/*`, `/api/v1/helpdesk/*` | Complaints, comments, work orders |
-| Amenities | `/api/v1/amenities/*`, `/api/v1/bookings/*` | Amenity config & slot bookings |
-| Community | `/api/v1/community/*` | Notices, events, polls, discussions, directory |
-| Operations | `/api/v1/operations/*` | Staff tasks, inventory, shifts, attendance |
-| Security | `/api/v1/security/*` | Visitors, guest passes, access logs |
-| Analytics | `/api/v1/analytics/*` | Role-scoped dashboards & CSV export |
-| Realtime | `/api/v1/notifications/*`, `/ws` | Push notifications & WebSocket |
+| Module     | Base Path                                    | Description                                                  |
+| ---------- | -------------------------------------------- | ------------------------------------------------------------ |
+| Auth       | `/auth/*`                                    | Signup, login (password + OTP + Google OAuth), token refresh |
+| Users      | `/users/*`                                   | User listing & role management                               |
+| Finance    | `/api/finance/*`, `/api/v1/finance/*`        | Transactions, invoices, ledger, PDF reports                  |
+| Helpdesk   | `/api/v1/complaints/*`, `/api/v1/helpdesk/*` | Complaints, comments, work orders                            |
+| Amenities  | `/api/v1/amenities/*`, `/api/v1/bookings/*`  | Amenity config & slot bookings                               |
+| Community  | `/api/v1/community/*`                        | Notices, events, polls, discussions, directory               |
+| Operations | `/api/v1/operations/*`                       | Staff tasks, inventory, shifts, attendance                   |
+| Security   | `/api/v1/security/*`                         | Visitors, guest passes, access logs                          |
+| Analytics  | `/api/v1/analytics/*`                        | Role-scoped dashboards & CSV export                          |
+| Realtime   | `/api/v1/notifications/*`, `/ws`             | Push notifications & WebSocket                               |
 
 Full OpenAPI spec: [`backend/openapi.swagger.yaml`](backend/openapi.swagger.yaml)
 
@@ -228,20 +363,21 @@ Full OpenAPI spec: [`backend/openapi.swagger.yaml`](backend/openapi.swagger.yaml
 
 ## User Roles
 
-| Role | Access |
-|------|--------|
-| `super_admin` | Full platform access including user role management |
-| `admin` | Society management, finance, analytics, helpdesk oversight |
-| `committee_member` | Notices, events, finance reporting, helpdesk management |
-| `flat_owner` | Resident portal — complaints, bookings, community, payments |
-| `resident_rental` | Same as flat_owner |
-| `support_staff` | Operations, attendance, maintenance tasks, gate access |
+| Role               | Access                                                      |
+| ------------------ | ----------------------------------------------------------- |
+| `super_admin`      | Full platform access including user role management         |
+| `admin`            | Society management, finance, analytics, helpdesk oversight  |
+| `committee_member` | Notices, events, finance reporting, helpdesk management     |
+| `flat_owner`       | Resident portal — complaints, bookings, community, payments |
+| `resident_rental`  | Same as flat_owner                                          |
+| `support_staff`    | Operations, attendance, maintenance tasks, gate access      |
 
 ---
 
 ## Tech Stack
 
 ### Backend
+
 - **FastAPI** 0.138 — async REST API framework
 - **SQLAlchemy** 2.0 — ORM with PostgreSQL
 - **Pydantic** 2 — schema validation
@@ -252,6 +388,7 @@ Full OpenAPI spec: [`backend/openapi.swagger.yaml`](backend/openapi.swagger.yaml
 - **pytest** + **httpx** — test suite
 
 ### Frontend
+
 - **React 19** + **Vite** — UI framework & build tool
 - **React Router v7** — client-side routing
 - **Tailwind CSS v4** + **shadcn/ui** — styling & component library
@@ -263,31 +400,26 @@ Full OpenAPI spec: [`backend/openapi.swagger.yaml`](backend/openapi.swagger.yaml
 
 ## Documentation
 
-| Document | Description |
-|----------|-------------|
-| [`docs/db_design.md`](docs/db_design.md) | Full database schema documentation |
-| [`docs/schema.sql`](docs/schema.sql) | SQL DDL for all tables |
-| [`docs/er.png`](docs/er.png) | Entity-Relationship diagram |
-| [`backend/openapi.swagger.yaml`](backend/openapi.swagger.yaml) | OpenAPI 3.0 specification |
-| [`frontend/README.md`](frontend/README.md) | Frontend setup & architecture |
-| [`backend/README.md`](backend/README.md) | Backend setup & architecture |
+| Document                                                       | Description                        |
+| -------------------------------------------------------------- | ---------------------------------- |
+| [`docs/db_design.md`](docs/db_design.md)                       | Full database schema documentation |
+| [`docs/schema.sql`](docs/schema.sql)                           | SQL DDL for all tables             |
+| [`docs/er.png`](docs/er.png)                                   | Entity-Relationship diagram        |
+| [`backend/openapi.swagger.yaml`](backend/openapi.swagger.yaml) | OpenAPI 3.0 specification          |
+| [`frontend/README.md`](frontend/README.md)                     | Frontend setup & architecture      |
+| [`backend/README.md`](backend/README.md)                       | Backend setup & architecture       |
 
 ---
 
 ## Environment Variables
 
-Copy [`backend/.env.example`](backend/.env.example) to `backend/.env` and fill in:
+All supported backend settings and safe defaults are listed in
+[`backend/.env.example`](backend/.env.example). Copy it to the ignored
+`backend/.env` file and change values for the target environment. The most
+important groups are database, JWT, application/CORS, AI Pipe, scheduler,
+Twilio, and Google OAuth settings.
 
-```env
-DATABASE_URL=postgresql://user:password@localhost:5432/societysync
-SECRET_KEY=your-secret-key
-ALGORITHM=HS256
-ACCESS_TOKEN_EXPIRE_MINUTES=30
-REFRESH_TOKEN_EXPIRE_DAYS=7
-TWILIO_ACCOUNT_SID=...
-TWILIO_AUTH_TOKEN=...
-TWILIO_PHONE_NUMBER=...
-GOOGLE_CLIENT_ID=...
-GOOGLE_CLIENT_SECRET=...
-FRONTEND_URL=http://localhost:5173
-```
+The frontend has one optional build-time setting: `VITE_API_URL`. Put it in the
+ignored `frontend/.env.local` file when the API is not running at
+`http://localhost:8000`. Values prefixed with `VITE_` are visible in the browser
+and must never contain secrets.

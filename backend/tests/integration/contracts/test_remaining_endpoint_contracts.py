@@ -19,7 +19,11 @@ def test_google_callback_without_code_returns_to_sign_in(unauth_client):
     )
 
 
-def test_helpdesk_assistant_analyzes_resident_message(resident_client):
+def test_helpdesk_assistant_analyzes_resident_message(resident_client, monkeypatch):
+    monkeypatch.setattr(
+        "app.helpdesk.work_orders.service.assistant.complete_chat",
+        lambda _messages: "Turn off the local valve and create a ticket.",
+    )
     response = resident_client.post(
         "/api/v1/helpdesk/assistant/analyze",
         json={"message": "Water is leaking from the kitchen pipe"},
