@@ -57,13 +57,14 @@ def read_advanced_analytics(
 
 @router.get("/export")
 def read_export_analytics(
+    amenity_id: int | None = Query(None, gt=0),
     db: Session = Depends(get_db),
     current_user: User = Depends(require_roles("super_admin", "admin", "committee_member")),
 ):
     """
     Export analytics as CSV
     """
-    csv_content = export_analytics_csv(db)
+    csv_content = export_analytics_csv(db, amenity_id)
     return Response(
         content=csv_content, 
         media_type="text/csv", 

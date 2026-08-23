@@ -6,12 +6,14 @@ import AdminAnalytics from "@/pages/AdminAnalytics";
 
 const getAdminAdvancedAnalytics = vi.fn();
 const downloadAnalyticsExport = vi.fn();
+const auth = vi.hoisted(() => ({ roles: ["admin"] }));
 
 vi.mock("@/api/analytics", () => ({
   getAdminAdvancedAnalytics: (...args) => getAdminAdvancedAnalytics(...args),
   downloadAnalyticsExport: (...args) => downloadAnalyticsExport(...args),
 }));
-vi.mock("@/components/layout/DashboardLayout", () => ({ default: ({ children }) => <div>{children}</div> }));
+vi.mock("@/hooks/useAuth", () => ({ useAuth: () => ({ user: { roles: auth.roles } }) }));
+vi.mock("@/components/layout/DashboardLayout", () => ({ default: ({ children, sidebarItems, userRole }) => <div><span data-testid="role">{userRole}</span><nav>{sidebarItems.map((item) => <a key={item.href} href={item.href}>{item.label}</a>)}</nav>{children}</div> }));
 vi.mock("recharts", () => ({
   BarChart: ({ children }) => <div>{children}</div>, Bar: ({ children }) => <div>{children}</div>,
   XAxis: () => null, YAxis: () => null, CartesianGrid: () => null, Tooltip: () => null,
@@ -37,10 +39,11 @@ const analytics = {
 
 describe("AdminAnalytics", () => {
   beforeEach(() => {
+    auth.roles = ["admin"];
     getAdminAdvancedAnalytics.mockReset().mockResolvedValue({ data: analytics });
     downloadAnalyticsExport.mockReset();
   });
-  afterEach(cleanup);
+  afterEach(() => { cleanup(); vi.restoreAllMocks(); });
 
   it("loads real analytics and filters by amenity", async () => {
     render(<AdminAnalytics />);
@@ -70,6 +73,7 @@ describe("AdminAnalytics", () => {
     render(<AdminAnalytics />);
     fireEvent.click(await screen.findByRole("button", { name: "Export Report" }));
     expect(await screen.findByText("Analytics report downloaded.")).toBeTruthy();
+    expect(downloadAnalyticsExport).toHaveBeenCalledWith({ amenityId: 1 });
     expect(URL.revokeObjectURL).toHaveBeenCalledWith("blob:report");
     click.mockRestore();
   });
@@ -91,5 +95,36 @@ describe("AdminAnalytics", () => {
     fireEvent.click(screen.getByRole("button", { name: "Retry" }));
     expect(await screen.findByText("₹1.2L")).toBeTruthy();
     expect(getAdminAdvancedAnalytics).toHaveBeenCalledTimes(2);
+  });
+
+  it("prevents duplicate export requests", async () => {
+    let resolveExport;
+    downloadAnalyticsExport.mockImplementationOnce(() => new Promise((resolve) => { resolveExport = resolve; }));
+    URL.createObjectURL = vi.fn(() => "blob:report");
+    URL.revokeObjectURL = vi.fn();
+    vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => undefined);
+    render(<AdminAnalytics />);
+    const button = await screen.findByRole("button", { name: "Export Report" });
+    fireEvent.click(button); fireEvent.click(button);
+    expect(downloadAnalyticsExport).toHaveBeenCalledTimes(1);
+    resolveExport({ data: new Blob(["report"]) });
+    expect(await screen.findByText("Analytics report downloaded.")).toBeTruthy();
+  });
+
+  it("renders true Pareto empty state and role-aware navigation", async () => {
+    getAdminAdvancedAnalytics.mockResolvedValueOnce({ data: { ...analytics, pareto: [] } });
+    render(<AdminAnalytics />);
+    expect(await screen.findByText("No complaint data is available.")).toBeTruthy();
+    expect(screen.queryByText("No Complaints")).toBeNull();
+    expect(screen.queryByRole("link", { name: "User Roles" })).toBeNull();
+    expect(screen.getByTestId("role").textContent).toBe("Residential Admin");
+    expect(screen.queryByText(/analyze facility utilization/i)).toBeNull();
+  });
+
+  it("styles provider resolution severity from SLA status", async () => {
+    getAdminAdvancedAnalytics.mockResolvedValueOnce({ data: { ...analytics, vendors: [{ ...vendors[0], res: "7.3", sla: "Escalated" }] } });
+    render(<AdminAnalytics />);
+    const resolution = await screen.findByText("7.3");
+    expect(resolution.className).toContain("text-red-600");
   });
 });

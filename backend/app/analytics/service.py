@@ -1,7 +1,9 @@
 import csv
+from collections import defaultdict
 from io import StringIO
 
-from sqlalchemy.orm import Session
+from fastapi import HTTPException
+from sqlalchemy.orm import Session, selectinload
 from sqlalchemy import func
 from datetime import datetime, timezone, timedelta
 from zoneinfo import ZoneInfo
@@ -120,12 +122,13 @@ def _heatmap_slots(amenity: Amenity, bookings: list[AmenityBooking], week_start)
     bucket_minutes = operating_minutes / slot_count
     counts = [[0 for _ in range(slot_count)] for _ in range(7)]
     for booking in bookings:
-        day_index = (booking.starts_at.date() - week_start).days
+        local_start = _as_utc(booking.starts_at).astimezone(IST)
+        day_index = (local_start.date() - week_start).days
         if not 0 <= day_index < 7:
             continue
         booking_minutes = (
-            booking.starts_at.hour * 60
-            + booking.starts_at.minute
+            local_start.hour * 60
+            + local_start.minute
             - amenity.operating_start.hour * 60
             - amenity.operating_start.minute
         )
@@ -433,15 +436,23 @@ def get_advanced_analytics(db: Session, amenity_id: int | None = None) -> Advanc
         name = category if category else "Other"
         pareto.append(ParetoData(name=name, value=count))
     pareto.sort(key=lambda x: x.value, reverse=True)
-    if not pareto:
-        pareto = [ParetoData(name="No Complaints", value=0)]
-        
     # 2. Vendors Data
     vendors = []
-    staff_users = db.query(User).filter(User.staff_type.isnot(None)).all()
+    staff_users = db.query(User).filter(
+        User.staff_type.isnot(None), User.is_active.is_(True)
+    ).order_by(User.first_name, User.last_name).all()
+    tasks_by_staff = defaultdict(list)
+    if staff_users:
+        work_orders = db.query(MaintenanceWorkOrder).options(
+            selectinload(MaintenanceWorkOrder.complaint)
+        ).filter(
+            MaintenanceWorkOrder.assigned_to.in_([staff.user_id for staff in staff_users])
+        ).all()
+        for work_order in work_orders:
+            tasks_by_staff[work_order.assigned_to].append(work_order)
     now = datetime.now(timezone.utc)
     for staff in staff_users:
-        tasks = db.query(MaintenanceWorkOrder).filter(MaintenanceWorkOrder.assigned_to == staff.user_id).all()
+        tasks = tasks_by_staff[staff.user_id]
         completed_tasks = [t for t in tasks if t.resolved_at]
         res = "0.0"
         sla = "Within SLA"
@@ -483,17 +494,24 @@ def get_advanced_analytics(db: Session, amenity_id: int | None = None) -> Advanc
     # 4. Current-week heatmap for the selected active amenity.
     active_amenities = db.query(Amenity).filter(Amenity.is_active).order_by(Amenity.name).all()
     selected_amenity = next((item for item in active_amenities if item.id == amenity_id), None)
+    if amenity_id is not None and selected_amenity is None:
+        raise HTTPException(status_code=404, detail="Active amenity not found.")
     if selected_amenity is None and active_amenities:
         selected_amenity = active_amenities[0]
-    week_start = (now - timedelta(days=now.weekday())).date()
+    local_now = now.astimezone(IST)
+    week_start = (local_now - timedelta(days=local_now.weekday())).date()
     heatmap = []
     if selected_amenity:
         week_end = week_start + timedelta(days=7)
         bookings = db.query(AmenityBooking).filter(
             AmenityBooking.amenity_id == selected_amenity.id,
             AmenityBooking.status.in_(["confirmed", "completed"]),
-            AmenityBooking.starts_at >= datetime.combine(week_start, datetime.min.time(), tzinfo=timezone.utc),
-            AmenityBooking.starts_at < datetime.combine(week_end, datetime.min.time(), tzinfo=timezone.utc),
+            AmenityBooking.starts_at >= datetime.combine(
+                week_start, datetime.min.time(), tzinfo=IST
+            ).astimezone(timezone.utc),
+            AmenityBooking.starts_at < datetime.combine(
+                week_end, datetime.min.time(), tzinfo=IST
+            ).astimezone(timezone.utc),
         ).all()
         heatmap = _heatmap_slots(selected_amenity, bookings, week_start)
         
@@ -506,8 +524,8 @@ def get_advanced_analytics(db: Session, amenity_id: int | None = None) -> Advanc
         selected_amenity_id=selected_amenity.id if selected_amenity else None,
     )
     
-def export_analytics_csv(db: Session) -> str:
-    analytics = get_advanced_analytics(db)
+def export_analytics_csv(db: Session, amenity_id: int | None = None) -> str:
+    analytics = get_advanced_analytics(db, amenity_id)
     output = StringIO()
     writer = csv.writer(output)
     writer.writerow(["REPORT: Advanced Analytics"])

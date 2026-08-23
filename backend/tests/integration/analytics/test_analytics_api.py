@@ -137,6 +137,10 @@ class TestAdvancedAnalytics:
         assert resp.status_code == 200
         assert isinstance(resp.json(), dict)
 
+    def test_explicit_unavailable_amenity_returns_404(self, admin_client):
+        resp = admin_client.get("/api/v1/analytics/advanced?amenity_id=999999")
+        assert resp.status_code == 404
+
 
 class TestAnalyticsExport:
     def test_export_as_admin_returns_csv(self, admin_client):
@@ -171,3 +175,19 @@ class TestAnalyticsExport:
         assert resp.status_code == 200
         assert "content-disposition" in resp.headers
         assert "analytics_export.csv" in resp.headers["content-disposition"]
+
+    def test_export_uses_selected_amenity(self, admin_client):
+        created = admin_client.post(
+            "/api/v1/amenities",
+            json={"name": "Export Selection Gym", "slot_minutes": 60},
+        )
+        assert created.status_code == 201
+        amenity_id = created.json()["id"]
+
+        resp = admin_client.get(f"/api/v1/analytics/export?amenity_id={amenity_id}")
+        assert resp.status_code == 200
+        assert "Amenity Utilization,Export Selection Gym" in resp.text
+
+    def test_export_rejects_unavailable_amenity(self, admin_client):
+        resp = admin_client.get("/api/v1/analytics/export?amenity_id=999999")
+        assert resp.status_code == 404

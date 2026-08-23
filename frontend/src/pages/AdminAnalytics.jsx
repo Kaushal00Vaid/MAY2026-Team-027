@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import {
   LayoutDashboard,
   WalletCards,
@@ -29,8 +29,9 @@ import {
 } from 'recharts';
 import DashboardLayout from "@/components/layout/DashboardLayout";
 import { getAdminAdvancedAnalytics, downloadAnalyticsExport } from "@/api/analytics";
+import { useAuth } from "@/hooks/useAuth";
 
-const sidebarItems = [
+const baseSidebarItems = [
   { label: "Dashboard", icon: LayoutDashboard, active: false, href: "/admin" },
   { label: "Finance", icon: WalletCards, active: false, href: "/admin/finance" },
   { label: "Helpdesk", icon: Headset, active: false, href: "/admin/helpdesk" },
@@ -38,10 +39,11 @@ const sidebarItems = [
   { label: "Amenities", icon: CalendarCheck, active: false, href: "/admin/amenities" },
   { label: "Community", icon: Users, active: false, href: "/admin/community" },
   { label: "Analytics", icon: BarChart3, active: true, href: "/admin/analytics" },
-  { label: "User Roles", icon: UserCog, active: false, href: "/admin/users" },
 ];
 
 export default function AdminAnalytics() {
+  const { user } = useAuth();
+  const requestId = useRef(0); const exportingRef = useRef(false);
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -52,11 +54,14 @@ export default function AdminAnalytics() {
   const [retryKey, setRetryKey] = useState(0);
 
   useEffect(() => {
+    const current = ++requestId.current;
+    setLoading(true); setError("");
     getAdminAdvancedAnalytics({ amenityId })
-      .then(res => { setData(res.data); setError(""); })
-      .catch(() => setError("Unable to load analytics."))
-      .finally(() => setLoading(false));
+      .then(res => { if (current === requestId.current) setData(res.data); })
+      .catch(() => { if (current === requestId.current) setError("Unable to load analytics."); })
+      .finally(() => { if (current === requestId.current) setLoading(false); });
   }, [amenityId, retryKey]);
+  useEffect(() => () => { requestId.current += 1; }, []);
 
   useEffect(() => {
     let timer;
@@ -67,10 +72,11 @@ export default function AdminAnalytics() {
   }, [toast]);
 
   const handleExport = async () => {
-    if (exporting) return;
+    if (exportingRef.current) return;
+    exportingRef.current = true;
     setExporting(true);
     try {
-      const response = await downloadAnalyticsExport();
+      const response = await downloadAnalyticsExport({ amenityId: amenityId ?? data?.selected_amenity_id ?? null });
       const url = window.URL.createObjectURL(new Blob([response.data]));
       const link = document.createElement('a');
       link.href = url;
@@ -83,13 +89,19 @@ export default function AdminAnalytics() {
     } catch {
       setToast({ type: "error", title: "Export failed", message: "Please try downloading the report again." });
     } finally {
+      exportingRef.current = false;
       setExporting(false);
     }
   };
 
+  const userRoles = (user?.roles || []).map((role) => typeof role === "string" ? role : role.role_name || role.name).filter(Boolean);
+  const isSuperAdmin = userRoles.includes("super_admin");
+  const sidebarItems = isSuperAdmin ? [...baseSidebarItems, { label: "User Roles", icon: UserCog, href: "/admin/users" }] : baseSidebarItems;
+  const userRole = isSuperAdmin ? "Super Admin" : userRoles.includes("committee_member") ? "Committee Member" : "Residential Admin";
+
   if (loading) {
     return (
-      <DashboardLayout sidebarItems={sidebarItems} userRole="Residential Admin">
+      <DashboardLayout sidebarItems={sidebarItems} userRole={userRole}>
         <div className="flex items-center justify-center h-[80vh]">
           <Loader2 className="animate-spin text-[#0f2336]" size={48} />
         </div>
@@ -99,17 +111,17 @@ export default function AdminAnalytics() {
 
   if (error || !data) {
     return (
-      <DashboardLayout sidebarItems={sidebarItems} userRole="Residential Admin">
+      <DashboardLayout sidebarItems={sidebarItems} userRole={userRole}>
         <div className="p-8">
           <div role="alert" className="text-red-500 font-bold">{error || "Failed to load"}</div>
-          <button onClick={() => { setError(""); setLoading(true); setRetryKey((value) => value + 1); }} className="mt-4 px-4 py-2 bg-[#0f2336] text-white text-sm font-semibold rounded-lg">Retry</button>
+          <div className="flex gap-3 mt-4"><button onClick={() => { setError(""); setRetryKey((value) => value + 1); }} className="px-4 py-2 bg-[#0f2336] text-white text-sm font-semibold rounded-lg">Retry</button>{amenityId !== null && <button onClick={() => setAmenityId(null)} className="px-4 py-2 border text-sm font-semibold rounded-lg">Reset amenity filter</button>}</div>
         </div>
       </DashboardLayout>
     );
   }
 
   return (
-    <DashboardLayout sidebarItems={sidebarItems} userRole="Residential Admin">
+    <DashboardLayout sidebarItems={sidebarItems} userRole={userRole}>
       <div className="p-6 md:p-8 max-w-[1400px] mx-auto space-y-6 animate-in fade-in duration-500 relative">
         
         {/* Toast Notification */}
@@ -128,10 +140,7 @@ export default function AdminAnalytics() {
         
         {/* Header Section */}
         <div className="flex flex-col md:flex-row md:items-end justify-between gap-4 mb-8">
-          <div>
-            <h1 className="text-3xl font-extrabold text-[#0f2336] tracking-tight">Resource Optimization</h1>
-            <p className="text-sm text-gray-500 mt-1">Analyze facility utilization and operational efficiency metrics.</p>
-          </div>
+          <h1 className="text-3xl font-extrabold text-[#0f2336] tracking-tight">Resource Optimization</h1>
           <button 
             disabled={exporting}
             onClick={handleExport}
@@ -153,7 +162,7 @@ export default function AdminAnalytics() {
                 aria-label="Select amenity"
                 value={amenityId ?? data.selected_amenity_id ?? ""}
                 disabled={!data.amenities.length}
-                onChange={(event) => { setLoading(true); setAmenityId(Number(event.target.value)); }}
+                onChange={(event) => setAmenityId(Number(event.target.value))}
                 className="bg-gray-50 border border-gray-200 rounded-lg px-3 py-1.5 text-sm font-medium text-gray-700 cursor-pointer hover:bg-gray-100 transition-colors disabled:cursor-not-allowed"
               >
                 {!data.amenities.length && <option value="">No active amenities</option>}
@@ -194,7 +203,7 @@ export default function AdminAnalytics() {
             <h3 className="text-lg font-bold text-[#0f2336] self-start w-full text-left mb-4">Financial Efficiency</h3>
             
             <div className="w-full h-[220px] relative">
-              <ResponsiveContainer width="100%" height="100%">
+              {data.pareto.length ? <ResponsiveContainer width="100%" height="100%">
                 <RadialBarChart 
                   cx="50%" 
                   cy="50%" 
@@ -214,7 +223,7 @@ export default function AdminAnalytics() {
                     cornerRadius={10}
                   />
                 </RadialBarChart>
-              </ResponsiveContainer>
+              </ResponsiveContainer> : <div className="h-full flex items-center justify-center text-sm text-gray-500">No complaint data is available.</div>}
               <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
                 <div className="text-4xl font-extrabold text-[#0f2336]">{data.financial.ratio}%</div>
                 <div className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mt-1">Collection Ratio</div>
@@ -284,10 +293,7 @@ export default function AdminAnalytics() {
                     }`}>
                       <td className="px-6 md:px-8 py-5 font-semibold text-[#0f2336]">{v.name}</td>
                       <td className="px-6 md:px-8 py-5 text-gray-500">{v.type}</td>
-                      <td className={`px-6 md:px-8 py-5 font-medium ${
-                        v.res === '12.5' ? 'text-red-500' :
-                        v.res === '24.0+' ? 'text-red-600 font-bold' : 'text-gray-700'
-                      }`}>{v.res}</td>
+                      <td className={`px-6 md:px-8 py-5 font-medium ${v.sla.includes('Escalated') ? 'text-red-600 font-bold' : v.sla.includes('Warning') ? 'text-orange-600' : 'text-gray-700'}`}>{v.res}</td>
                       <td className="px-6 md:px-8 py-5">
                         <span className={`px-2.5 py-1 rounded-md text-[10px] font-bold uppercase tracking-wider ${
                           v.sla === 'Within SLA' ? 'bg-blue-50 text-blue-600' :

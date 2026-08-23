@@ -29,8 +29,11 @@ export const getResidentAnalytics = () => {
  *
  * @returns {Promise<AxiosResponse>}
  */
-export const downloadAnalyticsExport = () => {
-  return axiosInstance.get("/api/v1/analytics/export", { responseType: 'blob' });
+export const downloadAnalyticsExport = ({ amenityId } = {}) => {
+  return axiosInstance.get("/api/v1/analytics/export", {
+    params: amenityId ? { amenity_id: amenityId } : {},
+    responseType: 'blob',
+  });
 };
 
 /**
