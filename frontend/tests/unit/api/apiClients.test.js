@@ -48,9 +48,11 @@ describe("auth, users, and analytics API clients", () => {
 
   it("maps user-management operations", () => {
     users.listUsers(10, 25);
+    users.listManagedUsers({ page: 2, pageSize: 20, search: " A-101 ", role: "flat_owner" });
     users.getCurrentUser();
     users.updateUserRole(7, "admin");
     expect(http.get).toHaveBeenCalledWith("/users/", { params: { skip: 10, limit: 25 } });
+    expect(http.get).toHaveBeenCalledWith("/users/manage", { params: { page: 2, page_size: 20, search: "A-101", role: "flat_owner" } });
     expect(http.get).toHaveBeenCalledWith("/users/me");
     expect(http.patch).toHaveBeenCalledWith("/users/7/role", { role_name: "admin" });
   });
@@ -65,7 +67,7 @@ describe("auth, users, and analytics API clients", () => {
     expect(http.get).toHaveBeenCalledWith("/api/v1/analytics/advanced", { params: { amenity_id: 4 } });
     expect(http.get).toHaveBeenCalledWith("/api/v1/analytics/resident");
     expect(http.get).toHaveBeenCalledWith("/api/v1/analytics/staff");
-    expect(http.get).toHaveBeenCalledWith("/api/v1/analytics/export", { responseType: "blob" });
+    expect(http.get).toHaveBeenCalledWith("/api/v1/analytics/export", { params: {}, responseType: "blob" });
   });
 });
 
@@ -122,12 +124,12 @@ describe("community, operations, security, and realtime API clients", () => {
     community.listNotices(); community.createNotice({ title: "Notice" }); community.markNoticeRead(1);
     community.listEvents(); community.updateRsvp(2, "going"); community.listVolunteers();
     community.signupVolunteer(3); community.withdrawVolunteer(3); community.getActivePoll();
-    community.votePoll(4, 5); community.listDiscussions(); community.listDirectory(" alice ");
+    community.votePoll(4, 5); community.listDiscussions(); community.listDirectory({ search: " alice " });
     expect(http.post).toHaveBeenCalledWith("/api/v1/community/notices/1/read");
     expect(http.put).toHaveBeenCalledWith("/api/v1/community/events/2/rsvp", { status: "going" });
     expect(http.delete).toHaveBeenCalledWith("/api/v1/community/volunteers/3/signup");
     expect(http.post).toHaveBeenCalledWith("/api/v1/community/polls/4/votes", { option_id: 5 });
-    expect(http.get).toHaveBeenCalledWith("/api/v1/community/directory", { params: { search: "alice", page_size: 100 } });
+    expect(http.get).toHaveBeenCalledWith("/api/v1/community/directory", { params: { search: "alice", page: 1, page_size: 10 } });
   });
 
   it("maps all operations routes", () => {
