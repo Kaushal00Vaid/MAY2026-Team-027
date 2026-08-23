@@ -82,3 +82,26 @@ This document records the verified behavior of each Admin page. It is updated pa
 - Search/filter changes reset pagination; realtime refreshes retain the active search, filter, and page.
 - Ticket, statistics, assignee, and known-issue loading failures display an error; empty filters and comment lists have explicit empty states.
 - If a ticket is created but its attachment upload fails, the ticket remains saved and the UI reports the partial result without creating another complaint.
+
+## Security
+
+### Access
+
+- `super_admin`, `admin`, and `committee_member` accounts can open Admin Security and manage the complete visitor lifecycle.
+- Gate actions and access logs are also available to active support-staff accounts whose staff type is Security. Residents can view only their own visitors and access data through resident pages.
+- The User Roles destination is shown only to `super_admin` accounts.
+
+### Features and actions
+
+- **Live Visitor Log** lists visitor requests in newest-first order, supports visitor/purpose/vehicle/target-unit search, and paginates twenty records at a time.
+- Selecting a Pending visitor allows approval or denial using optimistic version checks. Approved visitors can record entry; Inside visitors can record exit. Denied, expired, and exited records are read-only.
+- **Recent Access Audit** shows the latest twenty immutable security events, including approvals, denials, expiries, visitor entry/exit, guest PIN entry, and resident entry where recorded.
+- Every successful lifecycle action updates the visitor row, adds an access-log row, and sends the relevant resident/requester notification in one database transaction.
+
+### Validation and expected states
+
+- Visitor name, target unit, and purpose cannot be blank after whitespace is removed.
+- Pending visitor approval requests expire after fifteen minutes. Expiry increments the visitor version and writes a `visitor_expired` audit event.
+- Concurrent decisions use the visitor version and return a conflict instead of overwriting a newer decision.
+- Search changes reset to page 1; realtime refresh retains the current search and page and updates or closes open visitor details.
+- Visitor-list and access-audit failures are isolated so either working section remains usable. Both sections provide loading, empty, and error states.

@@ -1,7 +1,7 @@
 from datetime import datetime
 from typing import Literal
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 
 class VisitorCreate(BaseModel):
@@ -17,6 +17,12 @@ class VisitorCreate(BaseModel):
     @classmethod
     def strip(cls, value):
         return value.strip() if value else value
+
+    @model_validator(mode="after")
+    def required_text_not_blank(self):
+        if not self.visitor_name or not self.target_unit or not self.purpose:
+            raise ValueError("Visitor name, target unit, and purpose cannot be blank.")
+        return self
 
 
 class DecisionRequest(BaseModel):
