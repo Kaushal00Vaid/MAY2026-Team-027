@@ -35,6 +35,23 @@ class AmenityUpdate(BaseModel):
     weekly_limit: int | None = Field(None, ge=1, le=50)
     is_active: bool | None = None
 
+    @field_validator("description")
+    @classmethod
+    def strip_description(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        value = value.strip()
+        if not value:
+            raise ValueError("Value cannot be blank.")
+        return value
+
+    @field_validator("image_url")
+    @classmethod
+    def normalize_image_url(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        return value.strip() or None
+
 
 class AmenityResponse(BaseModel):
     id: int

@@ -12,9 +12,13 @@ Covers:
 Run from backend/:
     uv run pytest tests/integration/amenities/ -v
 """
-from datetime import date, datetime, timezone, timedelta
 
+from datetime import date, datetime, timedelta, timezone
+from zoneinfo import ZoneInfo
 
+from app.dependencies import get_current_user
+from app.main import app
+from conftest import _make_admin, _make_resident
 
 # ─────────────────────────────────────────────────────────────────────────────
 # TC-AME: Amenities
@@ -64,7 +68,9 @@ class TestAmenitiesCreate:
 
     def test_create_amenity_as_committee_returns_201(self, committee_client):
         """TC-AME-06: POST /api/v1/amenities as committee member → 201."""
-        resp = committee_client.post("/api/v1/amenities", json=self._amenity_payload(name="Pool"))
+        resp = committee_client.post(
+            "/api/v1/amenities", json=self._amenity_payload(name="Pool")
+        )
         assert resp.status_code == 201
 
     def test_create_amenity_as_resident_returns_403(self, resident_client):
@@ -106,7 +112,12 @@ class TestAmenitiesUpdate:
     def _create_amenity(self, client):
         resp = client.post(
             "/api/v1/amenities",
-            json={"name": "Update Test", "capacity": 5, "slot_minutes": 30, "weekly_limit": 2},
+            json={
+                "name": "Update Test",
+                "capacity": 5,
+                "slot_minutes": 30,
+                "weekly_limit": 2,
+            },
         )
         assert resp.status_code == 201
         return resp.json()["id"]
@@ -127,6 +138,50 @@ class TestAmenitiesUpdate:
         """TC-AME-14: PATCH amenity as resident → 403."""
         resp = resident_client.patch("/api/v1/amenities/1", json={"capacity": 5})
         assert resp.status_code == 403
+
+    def test_update_rejects_whitespace_only_description(self, admin_client):
+        aid = self._create_amenity(admin_client)
+        resp = admin_client.patch(
+            f"/api/v1/amenities/{aid}", json={"description": "   "}
+        )
+        assert resp.status_code == 422
+
+    def test_update_normalizes_blank_image_url(self, admin_client):
+        aid = self._create_amenity(admin_client)
+        resp = admin_client.patch(f"/api/v1/amenities/{aid}", json={"image_url": "   "})
+        assert resp.status_code == 200
+        assert resp.json()["image_url"] is None
+
+    def test_schedule_change_rejected_with_future_booking(self, admin_client):
+        aid = self._create_amenity(admin_client)
+        tomorrow = datetime.now(ZoneInfo("Asia/Kolkata")).date() + timedelta(days=1)
+        starts_at = datetime.combine(
+            tomorrow,
+            datetime.min.time().replace(hour=6),
+            tzinfo=ZoneInfo("Asia/Kolkata"),
+        )
+        app.dependency_overrides[get_current_user] = _make_resident
+        booking = admin_client.post(
+            "/api/v1/bookings",
+            json={
+                "amenity_id": aid,
+                "starts_at": starts_at.isoformat(),
+                "purpose": "Fitness",
+            },
+            headers={"Idempotency-Key": "schedule-guard-test"},
+        )
+        assert booking.status_code == 201
+
+        app.dependency_overrides[get_current_user] = _make_admin
+        rejected = admin_client.patch(
+            f"/api/v1/amenities/{aid}", json={"operating_start": "07:00"}
+        )
+        assert rejected.status_code == 409
+        assert "upcoming bookings" in rejected.json()["detail"].lower()
+
+        unchanged = admin_client.get("/api/v1/amenities?include_inactive=true").json()
+        item = next(amenity for amenity in unchanged if amenity["id"] == aid)
+        assert item["operating_start"] == "06:00:00"
 
 
 class TestAmenitiesAvailability:
@@ -153,12 +208,20 @@ class TestAmenitiesAvailability:
     def test_inactive_amenity_has_no_available_slots_for_admin(self, admin_client):
         created = admin_client.post(
             "/api/v1/amenities",
-            json={"name": "Inactive Schedule Test", "operating_start": "06:00", "operating_end": "09:00", "slot_minutes": 60},
+            json={
+                "name": "Inactive Schedule Test",
+                "operating_start": "06:00",
+                "operating_end": "09:00",
+                "slot_minutes": 60,
+            },
         )
         amenity_id = created.json()["id"]
-        assert admin_client.patch(
-            f"/api/v1/amenities/{amenity_id}", json={"is_active": False}
-        ).status_code == 200
+        assert (
+            admin_client.patch(
+                f"/api/v1/amenities/{amenity_id}", json={"is_active": False}
+            ).status_code
+            == 200
+        )
         tomorrow = date.today() + timedelta(days=1)
         response = admin_client.get(
             f"/api/v1/amenities/{amenity_id}/availability?start_date={tomorrow}&days=1"

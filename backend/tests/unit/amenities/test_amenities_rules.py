@@ -4,6 +4,7 @@ Unit tests for amenities permissions, schema validation, and service helpers.
 
 Tests are pure Python — no HTTP, no database.
 """
+
 from datetime import date, datetime, timezone
 from types import SimpleNamespace
 
@@ -12,7 +13,7 @@ from fastapi import HTTPException
 from pydantic import ValidationError
 
 from app.amenities.permissions import ensure_member, ensure_operational, ensure_resident
-from app.amenities.schemas import AmenityCreate, BookingCreate
+from app.amenities.schemas import AmenityCreate, AmenityUpdate, BookingCreate
 from app.amenities.service import _week_bounds
 
 
@@ -105,9 +106,20 @@ def test_amenity_contract_validates_zero_weekly_limit():
 
 def test_valid_amenity_create():
     """A valid AmenityCreate should not raise."""
-    a = AmenityCreate(name="Swimming Pool", capacity=20, slot_minutes=60, weekly_limit=3)
+    a = AmenityCreate(
+        name="Swimming Pool", capacity=20, slot_minutes=60, weekly_limit=3
+    )
     assert a.name == "Swimming Pool"
     assert a.capacity == 20
+
+
+def test_amenity_update_rejects_blank_description():
+    with pytest.raises(ValidationError):
+        AmenityUpdate(description="   ")
+
+
+def test_amenity_update_normalizes_blank_image_url():
+    assert AmenityUpdate(image_url="   ").image_url is None
 
 
 # ── Schema: BookingCreate ─────────────────────────────────────────────────
