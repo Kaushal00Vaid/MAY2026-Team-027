@@ -16,6 +16,10 @@ class NoticeCreate(BaseModel):
         self.title = self.title.strip()
         self.body = self.body.strip()
         self.target_value = self.target_value.strip() if self.target_value else None
+        if not self.title:
+            raise ValueError("Notice title cannot be blank")
+        if not self.body:
+            raise ValueError("Notice body cannot be blank")
         if self.target_type != "all" and not self.target_value:
             raise ValueError("A block or flat value is required for targeted notices")
         if self.target_type == "all":

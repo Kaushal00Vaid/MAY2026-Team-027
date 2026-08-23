@@ -131,3 +131,26 @@ This document records the verified behavior of each Admin page. It is updated pa
 - Schedule and booking-summary requests load independently. A summary failure does not hide working availability, and only the latest facility/week response can update the page.
 - Schedule transitions display loading and empty states without leaving stale slots actionable. Realtime refresh retains the current facility and week and reconciles open booking details.
 - Repeated cancellation submissions are blocked while the first action is pending, and action failures appear beside the booking action.
+
+## Community
+
+### Access
+
+- `super_admin`, `admin`, and `committee_member` accounts can view active discussions, search the resident directory, and broadcast notices.
+- Community membership APIs are available to residents and operational Admin roles; support staff are excluded. Directory and notice-broadcast endpoints separately enforce operational Admin access.
+- User Roles and Add Resident destinations are shown only to `super_admin` accounts.
+
+### Features and actions
+
+- **Active Discussions** lists active threads in most-recently-updated order with author/unit, reply count, and like count. Results are paginated ten at a time and open into a read-only detail view.
+- **Resident Directory** lists owners and tenants with unit, active status, and join date. Search matches resident first name, last name, or flat number and resets directory pagination.
+- **Broadcast Notice** delivers an all-resident, block-specific, or flat-specific notice to active matching residents and creates realtime notifications in the same transaction.
+- Discussions and directory data load and retry independently. A resident search queries only the directory, while realtime Community events refresh both sections without resetting current pages/search.
+
+### Validation and expected states
+
+- Notice title and body cannot be blank after whitespace is removed. A block or flat target is required for targeted broadcasts and must match at least one active resident.
+- Notice submission is guarded against repeated requests. Failures remain in the open form with its values preserved; success resets/closes the form and displays a confirmation.
+- Directory and discussion pages use server totals and provide previous/next controls when more than ten records exist.
+- Only the latest request for each section updates the UI. Open discussion details update from refreshed data or close if that thread is no longer active/on the current page.
+- Discussion counts/authors and directory roles are loaded with bounded database queries rather than per-row lookups.
