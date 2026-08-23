@@ -1,4 +1,5 @@
 import os
+import re
 import uuid
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -30,6 +31,79 @@ DEFAULT_INSTRUCTIONS = {
     "Electrical": ["Make the area safe", "Diagnose and repair", "Upload proof of work"],
     "Lift / Elevator": ["Secure the lift area", "Run diagnostics", "Upload proof of work"],
 }
+
+ASSISTANT_CATEGORY_KEYWORDS = {
+    "Plumbing": ["water", "leak", "pipe", "drain", "sink", "tap"],
+    "Electrical": ["light", "power", "electric", "socket", "wiring"],
+    "Lift / Elevator": ["lift", "elevator"],
+    "Billing": ["bill", "invoice", "payment", "charge", "receipt"],
+    "Noise": ["noise", "music", "loud"],
+}
+ASSISTANT_STOP_WORDS = {
+    "a", "an", "and", "are", "at", "be", "for", "from", "has", "have",
+    "help", "i", "in", "is", "it", "my", "of", "on", "or", "please",
+    "problem", "the", "there", "this", "to", "with", "issue", "not",
+    "working",
+}
+
+
+def _assistant_token(token: str) -> str:
+    aliases = {
+        "elevator": "lift",
+        "leakage": "leak",
+        "leaking": "leak",
+        "lights": "light",
+        "pipes": "pipe",
+    }
+    return aliases.get(token, token)
+
+
+def _assistant_tokens(text: str | None) -> set[str]:
+    return {
+        _assistant_token(token)
+        for token in re.findall(r"[a-z0-9]+", (text or "").lower())
+        if len(token) >= 3 and token not in ASSISTANT_STOP_WORDS
+    }
+
+
+def _assistant_category(message: str) -> str:
+    tokens = _assistant_tokens(message)
+    matches = [
+        (name, len(tokens & set(words)))
+        for name, words in ASSISTANT_CATEGORY_KEYWORDS.items()
+    ]
+    category, score = max(matches, key=lambda item: item[1])
+    return category if score else "Other"
+
+
+def _confident_known_issue_match(
+    issues: list[dict], user: User, message: str, category: str
+) -> dict | None:
+    if category == "Other":
+        return None
+    message_tokens = _assistant_tokens(message)
+    resident_locations = {
+        value.lower() for value in (user.flat_number, user.building_block) if value
+    }
+    candidates = []
+    for issue in issues:
+        if issue["category"].lower() != category.lower():
+            continue
+        issue_tokens = _assistant_tokens(issue["title"])
+        shared = message_tokens & issue_tokens
+        if len(shared) < 2:
+            continue
+        location = (issue.get("location") or "").lower()
+        location_tokens = _assistant_tokens(location)
+        location_is_relevant = (
+            not location
+            or location == "common area"
+            or any(value in location or location in value for value in resident_locations)
+            or bool(message_tokens & location_tokens)
+        )
+        if location_is_relevant:
+            candidates.append((len(shared), len(shared) / len(issue_tokens or {""}), issue))
+    return max(candidates, default=(0, 0, None), key=lambda item: (item[0], item[1]))[2]
 
 
 def _roles(user: User) -> set[str]:
@@ -368,20 +442,9 @@ def subscribe_known_issue(db: Session, user: User, complaint_id: int) -> dict:
 
 
 def analyze_message(db: Session, user: User, message: str, history=()) -> dict:
-    lowered = message.lower()
-    keywords = {
-        "Plumbing": ["water", "leak", "pipe", "drain"],
-        "Electrical": ["light", "power", "electric", "socket"],
-        "Lift / Elevator": ["lift", "elevator"],
-        "Billing": ["bill", "invoice", "payment"],
-        "Noise": ["noise", "music", "loud"],
-    }
-    category = next(
-        (name for name, words in keywords.items() if any(word in lowered for word in words)),
-        "Maintenance",
-    )
+    category = _assistant_category(message)
     issues = list_known_issues(db, user)
-    match = next((item for item in issues if item["category"].lower() == category.lower()), None)
+    match = _confident_known_issue_match(issues, user, message, category)
     conversation = [
         {"role": item.role, "content": item.content.strip()}
         for item in history

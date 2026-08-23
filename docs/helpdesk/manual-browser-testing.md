@@ -90,6 +90,9 @@ in `backend/.env` and must never use a frontend `VITE_` variable. Verify that a
 resident can ask a follow-up question, receives a concise response, and can still
 use the suggested category and known-issue subscription flow. Also verify that an
 unavailable AI service shows a retry/ticket message without losing the typed text.
+Greetings and general questions must not prefill a ticket or display a possible
+duplicate. A duplicate card requires an explicit category, meaningful title-term
+overlap, and a location relevant to the resident or their message.
 With `AIPIPE_PROVIDER=auto`, an AI Pipe login token uses the documented OpenAI
 compatible endpoint. Native `sk-`, `sk-or-`, and `AIza` keys select the OpenAI,
 OpenRouter, and Gemini AI Pipe payloads respectively.

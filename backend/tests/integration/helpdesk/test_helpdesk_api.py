@@ -13,6 +13,8 @@ Run from backend/:
     uv run pytest tests/integration/helpdesk/ -v
 """
 
+from datetime import datetime, timezone
+
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -32,6 +34,49 @@ def _create_complaint(client, **overrides):
 
 
 class TestResidentAssistant:
+    def test_only_returns_a_known_issue_for_a_confident_match(
+        self, resident_client, monkeypatch
+    ):
+        known_issue = {
+            "complaint_id": 321,
+            "title": "Kitchen sink pipe leak",
+            "category": "Plumbing",
+            "location": "A-101",
+            "status": "Open",
+            "report_count": 1,
+            "subscriber_count": 0,
+            "created_at": datetime.now(timezone.utc),
+            "subscribed": False,
+        }
+        monkeypatch.setattr(
+            "app.helpdesk.work_orders.service.list_known_issues",
+            lambda _db, _user: [known_issue],
+        )
+        monkeypatch.setattr(
+            "app.helpdesk.work_orders.service.assistant.complete_chat",
+            lambda _messages: "How can I help?",
+        )
+
+        greeting = resident_client.post(
+            "/api/v1/helpdesk/assistant/analyze", json={"message": "hii"}
+        )
+        unrelated = resident_client.post(
+            "/api/v1/helpdesk/assistant/analyze",
+            json={"message": "The garden water drain is blocked"},
+        )
+        confident = resident_client.post(
+            "/api/v1/helpdesk/assistant/analyze",
+            json={"message": "My kitchen sink pipe has a leak"},
+        )
+
+        assert greeting.status_code == 200
+        assert greeting.json()["suggested_category"] == "Other"
+        assert greeting.json()["known_issue"] is None
+        assert unrelated.status_code == 200
+        assert unrelated.json()["known_issue"] is None
+        assert confident.status_code == 200
+        assert confident.json()["known_issue"]["complaint_id"] == 321
+
     def test_sends_conversation_to_ai_pipe_and_preserves_category(
         self, resident_client, monkeypatch
     ):

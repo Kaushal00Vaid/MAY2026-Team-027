@@ -45,6 +45,22 @@ describe("ResidentHelpdesk assistant", () => {
     expect(await screen.findByText(/shut off the local valve/i)).toBeTruthy();
   });
 
+  it("does not prefill or display a ticket for a general greeting", async () => {
+    api.analyzeIssue.mockResolvedValueOnce({
+      data: { message: "Hello! How can I help?", suggested_category: "Other", known_issue: null },
+    });
+    render(<ResidentHelpdesk />);
+    await screen.findByText("No tickets found.");
+    const input = screen.getByRole("textbox", { name: "Message Support Assistant" });
+    fireEvent.change(input, { target: { value: "hii" } });
+    fireEvent.click(screen.getByRole("button", { name: "Send message" }));
+
+    expect(await screen.findByText("Hello! How can I help?")).toBeTruthy();
+    expect(screen.queryByText("Possible Duplicate Issue Detected")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Escalate to Human" }));
+    expect(screen.getByPlaceholderText("Issue title").value).toBe("");
+  });
+
   it("prevents a duplicate send while the assistant is responding", async () => {
     api.analyzeIssue.mockReturnValue(new Promise(() => undefined));
     render(<ResidentHelpdesk />);

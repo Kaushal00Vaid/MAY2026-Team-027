@@ -126,7 +126,9 @@ export default function ResidentHelpdesk() {
       const { data } = await analyzeIssue(text, history);
       setChat((items) => [...items, { role: "bot", text: data.message }]);
       setAssistantIssue(data.known_issue);
-      setForm((current) => ({ ...current, title: text.slice(0, 255), description: text, category: data.suggested_category }));
+      if (data.suggested_category !== "Other") {
+        setForm((current) => ({ ...current, title: text.slice(0, 255), description: text, category: data.suggested_category }));
+      }
     } catch (requestError) {
       const assistantError = errorMessage(requestError, "The assistant is temporarily unavailable. Please retry or create a ticket.");
       setError(assistantError);
