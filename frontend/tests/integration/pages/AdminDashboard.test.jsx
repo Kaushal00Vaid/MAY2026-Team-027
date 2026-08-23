@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import AdminDashboard from "@/pages/AdminDashboard";
 
@@ -8,6 +8,7 @@ const getAdminAnalytics = vi.fn();
 const getFinanceLedger = vi.fn();
 const downloadAnalyticsExport = vi.fn();
 const navigate = vi.fn();
+let currentUser;
 
 vi.mock("react-router-dom", () => ({ useNavigate: () => navigate }));
 vi.mock("@/api/analytics", () => ({
@@ -17,7 +18,15 @@ vi.mock("@/api/analytics", () => ({
 vi.mock("@/features/finance/api", () => ({
   getFinanceLedger: (...args) => getFinanceLedger(...args),
 }));
-vi.mock("@/components/layout/DashboardLayout", () => ({ default: ({ children }) => <div>{children}</div> }));
+vi.mock("@/hooks/useAuth", () => ({ useAuth: () => ({ user: currentUser }) }));
+vi.mock("@/components/layout/DashboardLayout", () => ({
+  default: ({ children, sidebarItems, userRole }) => (
+    <div data-testid="layout" data-user-role={userRole}>
+      <nav>{sidebarItems.map((item) => <span key={item.label}>{item.label}</span>)}</nav>
+      {children}
+    </div>
+  ),
+}));
 vi.mock("recharts", () => ({
   AreaChart: () => <div data-testid="revenue-chart"/>, Area: () => null,
   XAxis: () => null, YAxis: () => null, CartesianGrid: () => null, Tooltip: () => null,
@@ -43,6 +52,7 @@ const analytics = {
 
 describe("AdminDashboard", () => {
   beforeEach(() => {
+    currentUser = { roles: ["super_admin"] };
     getAdminAnalytics.mockReset().mockResolvedValue({ data: analytics });
     getFinanceLedger.mockReset().mockResolvedValue({ data: { items: [], total: 0, page: 1, page_size: 10 } });
     downloadAnalyticsExport.mockReset();
@@ -58,6 +68,44 @@ describe("AdminDashboard", () => {
 
     fireEvent.change(screen.getByRole("combobox"), { target: { value: "12" } });
     await waitFor(() => expect(getAdminAnalytics).toHaveBeenLastCalledWith({ months: 12 }));
+  });
+
+  it("ignores an obsolete analytics response after the range changes", async () => {
+    let resolveSix;
+    let resolveTwelve;
+    getAdminAnalytics.mockImplementation(({ months }) => new Promise((resolve) => {
+      if (months === 6) resolveSix = resolve;
+      else resolveTwelve = resolve;
+    }));
+
+    render(<AdminDashboard />);
+    fireEvent.change(screen.getByRole("combobox"), { target: { value: "12" } });
+
+    await act(async () => resolveTwelve({ data: {
+      ...analytics,
+      stats: { ...analytics.stats, current_collections: { amount: 120000, percentage_change: 0 } },
+    } }));
+    expect(await screen.findByText("₹1,20,000")).toBeTruthy();
+
+    await act(async () => resolveSix({ data: {
+      ...analytics,
+      stats: { ...analytics.stats, current_collections: { amount: 60000, percentage_change: 0 } },
+    } }));
+    expect(screen.getByText("₹1,20,000")).toBeTruthy();
+    expect(screen.queryByText("₹60,000")).toBeNull();
+  });
+
+  it("only exposes User Roles navigation and labeling to the correct admin role", () => {
+    currentUser = { roles: ["committee_member"] };
+    const { unmount } = render(<AdminDashboard />);
+    expect(screen.queryByText("User Roles")).toBeNull();
+    expect(screen.getByTestId("layout").getAttribute("data-user-role")).toBe("Committee Member");
+    unmount();
+
+    currentUser = { roles: ["super_admin"] };
+    render(<AdminDashboard />);
+    expect(screen.getByText("User Roles")).toBeTruthy();
+    expect(screen.getByTestId("layout").getAttribute("data-user-role")).toBe("Super Admin");
   });
 
   it("explains SLA breaches and expands activity without leaving the dashboard", async () => {
@@ -97,18 +145,12 @@ describe("AdminDashboard", () => {
     click.mockRestore();
   });
 
-  it("renders and filters recent transactions from the canonical finance ledger", async () => {
-    getFinanceLedger.mockResolvedValue({
-      data: {
-        items: [
-          { id: 1, unit: "A-101", description: "Maintenance payment", category: "Maintenance", direction: "credit", amount_display: "₹2,500.00", date: "2026-08-23T08:00:00Z" },
-          { id: 2, unit: null, description: "ABC Plumbing — Pipe repair", category: "Repairs", direction: "debit", amount_display: "₹800.00", date: "2026-08-22T08:00:00Z" },
-        ],
-        total: 2,
-        page: 1,
-        page_size: 10,
-      },
-    });
+  it("requests and renders each canonical ledger direction before pagination", async () => {
+    const credit = { id: 1, unit: "A-101", description: "Maintenance payment", category: "Maintenance", direction: "credit", amount_display: "₹2,500.00", date: "2026-08-23T08:00:00Z" };
+    const debit = { id: 2, unit: null, description: "ABC Plumbing — Pipe repair", category: "Repairs", direction: "debit", amount_display: "₹800.00", date: "2026-08-22T08:00:00Z" };
+    getFinanceLedger.mockImplementation((_page, _pageSize, direction) => Promise.resolve({
+      data: { items: direction === "credit" ? [credit] : direction === "debit" ? [debit] : [credit, debit], total: direction ? 1 : 2, page: 1, page_size: 10 },
+    }));
 
     render(<AdminDashboard />);
 
@@ -116,14 +158,29 @@ describe("AdminDashboard", () => {
     expect(screen.getByText("ABC Plumbing — Pipe repair")).toBeTruthy();
     expect(screen.getByText("Cr ₹2,500.00")).toBeTruthy();
     expect(screen.getByText("Dr ₹800.00")).toBeTruthy();
-    expect(getFinanceLedger).toHaveBeenCalledWith(1, 10);
+    expect(getFinanceLedger).toHaveBeenCalledWith(1, 10, undefined);
 
     fireEvent.click(screen.getByRole("button", { name: "credit" }));
-    expect(screen.getByText("A-101")).toBeTruthy();
+    expect(await screen.findByText("A-101")).toBeTruthy();
     expect(screen.queryByText("ABC Plumbing — Pipe repair")).toBeNull();
+    expect(getFinanceLedger).toHaveBeenLastCalledWith(1, 10, "credit");
 
     fireEvent.click(screen.getByRole("button", { name: "debit" }));
+    expect(await screen.findByText("ABC Plumbing — Pipe repair")).toBeTruthy();
     expect(screen.queryByText("A-101")).toBeNull();
-    expect(screen.getByText("ABC Plumbing — Pipe repair")).toBeTruthy();
+    expect(getFinanceLedger).toHaveBeenLastCalledWith(1, 10, "debit");
+  });
+
+  it("keeps the activity empty state and hides expansion for short feeds", async () => {
+    getAdminAnalytics.mockResolvedValue({ data: { ...analytics, activity_feed: [] } });
+    const { unmount } = render(<AdminDashboard />);
+    expect(await screen.findByText("No recent activity.")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: /view all/i })).toBeNull();
+    unmount();
+
+    getAdminAnalytics.mockResolvedValue({ data: { ...analytics, activity_feed: analytics.activity_feed.slice(0, 4) } });
+    render(<AdminDashboard />);
+    await screen.findByText("Ticket 4 updated");
+    expect(screen.queryByRole("button", { name: /view all/i })).toBeNull();
   });
 });

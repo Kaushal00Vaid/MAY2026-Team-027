@@ -477,12 +477,14 @@ def admin_summary(db, user):
     }
 
 
-def ledger(db, user, page, page_size):
+def ledger(db, user, page, page_size, direction=None):
     ensure_ops(user)
-    total = db.scalar(select(func.count(LedgerEntry.id))) or 0
+    filters = [LedgerEntry.direction == direction] if direction else []
+    total = db.scalar(select(func.count(LedgerEntry.id)).where(*filters)) or 0
     items = list(
         db.scalars(
             select(LedgerEntry)
+            .where(*filters)
             .order_by(LedgerEntry.created_at.desc())
             .offset((page - 1) * page_size)
             .limit(page_size)

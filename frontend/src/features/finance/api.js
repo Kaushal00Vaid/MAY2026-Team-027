@@ -4,8 +4,10 @@ const base = "/api/v1/finance";
 
 export const getResidentFinance = () => axiosInstance.get(`${base}/resident-summary`);
 export const getAdminFinance = () => axiosInstance.get(`${base}/admin-summary`);
-export const getFinanceLedger = (page = 1, pageSize = 20) =>
-  axiosInstance.get(`${base}/ledger`, { params: { page, page_size: pageSize } });
+export const getFinanceLedger = (page = 1, pageSize = 20, direction) =>
+  axiosInstance.get(`${base}/ledger`, {
+    params: { page, page_size: pageSize, ...(direction ? { direction } : {}) },
+  });
 export const generateBulkInvoices = (data, idempotencyKey) =>
   axiosInstance.post(`${base}/invoices/bulk`, data, {
     headers: { "Idempotency-Key": idempotencyKey },

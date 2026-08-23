@@ -200,6 +200,32 @@ class TestFinanceV1Ledger:
         assert resp.status_code == 200
         assert len(resp.json()["items"]) <= 5
 
+    def test_ledger_filters_direction_before_pagination(self, admin_client):
+        expense = admin_client.post(
+            "/api/v1/finance/expenses",
+            json={
+                "vendor": "Dashboard filter test",
+                "category": "Repairs",
+                "description": "Filtered ledger entry",
+                "amount_paise": 10_000,
+                "expense_date": "2026-08-23",
+            },
+        )
+        assert expense.status_code == 201
+
+        resp = admin_client.get(
+            "/api/v1/finance/ledger?direction=debit&page=1&page_size=100"
+        )
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["total"] == len(data["items"])
+        assert data["total"] >= 1
+        assert all(item["direction"] == "debit" for item in data["items"])
+
+    def test_ledger_rejects_invalid_direction(self, admin_client):
+        resp = admin_client.get("/api/v1/finance/ledger?direction=expense")
+        assert resp.status_code == 422
+
     def test_ledger_unauthenticated_returns_401(self, unauth_client):
         """TC-FINv1-08: GET ledger without auth → 401."""
         resp = unauth_client.get("/api/v1/finance/ledger")
