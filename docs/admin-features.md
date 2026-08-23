@@ -54,3 +54,31 @@ This document records the verified behavior of each Admin page. It is updated pa
 - A zero-invoice result explains whether all eligible flats were already invoiced or no eligible resident flats exist.
 - Loading failures offer a retry. Action failures remain in the relevant form, and successful actions refresh the first ledger page.
 - An empty ledger and missing fund allocations display explicit empty states.
+
+## Helpdesk
+
+### Access
+
+- `super_admin`, `admin`, and `committee_member` accounts can view and manage all complaints.
+- Residents can create and view their own complaints; support staff can view only complaints assigned to them. These scopes are enforced in backend queries.
+- The User Roles destination is shown only to `super_admin` accounts.
+
+### Features and actions
+
+- **Current Pipeline** lists complaints in most-recently-updated order, supports debounced text search and an Open-only filter, and paginates twenty tickets at a time.
+- **Helpdesk metrics** show active, unassigned, approaching-SLA, breached, and resolved-today counts across the society.
+- **Escalation Center** displays an active Open/In Progress complaint whose SLA deadline has passed and opens the same update workflow.
+- **Raise Ticket** records an Admin-reported complaint with category, description, location, priority, and an optional JPEG, PNG, WebP, or PDF attachment up to 5 MB. A potential-duplicate warning is based on matching open category and location.
+- **Assign to Staff / Vendor** validates an active support-staff assignee, creates or updates a work order, moves an Open complaint to In Progress, and stores one instruction per nonblank notes line.
+- **Mark as Resolved** records the resolution time, synchronizes an associated work order, adds status history, updates resolved-today metrics, and notifies affected users.
+- **Escalate to Committee** timestamps and versions the escalation and records its note in status history.
+- Optional internal Admin notes are stored transactionally with assignment and resolution updates and are hidden from resident comment views.
+
+### Validation and expected states
+
+- Category and description cannot be blank after whitespace is removed.
+- SLA deadlines are assigned from priority: Critical 4 hours, High 24 hours, Medium/Normal 48 hours, and Low 72 hours.
+- Concurrent edits use the complaint version and return a conflict instead of overwriting newer changes.
+- Search/filter changes reset pagination; realtime refreshes retain the active search, filter, and page.
+- Ticket, statistics, assignee, and known-issue loading failures display an error; empty filters and comment lists have explicit empty states.
+- If a ticket is created but its attachment upload fails, the ticket remains saved and the UI reports the partial result without creating another complaint.

@@ -37,6 +37,10 @@ def _create_complaint(client, **overrides):
 
 
 class TestComplaintsCreate:
+    def test_create_complaint_rejects_whitespace_required_text(self, admin_client):
+        resp = _create_complaint(admin_client, category="   ", description="   ")
+        assert resp.status_code == 422
+
     def test_create_complaint_valid_returns_201(self, resident_client):
         """TC-HD-01: Valid complaint creation → 201 with correct shape."""
         resp = _create_complaint(
@@ -149,6 +153,55 @@ class TestComplaintGet:
 
 
 class TestComplaintUpdate:
+    def test_resolve_and_reopen_synchronizes_work_order_and_internal_note(self, admin_client):
+        complaint = _create_complaint(admin_client, title="Lifecycle test").json()
+        assignee = admin_client.get("/api/v1/helpdesk/assignees").json()[0]
+        assigned = admin_client.patch(
+            f"/api/v1/complaints/{complaint['id']}",
+            json={
+                "assigned_to": assignee["user_id"],
+                "work_order_notes": "Inspect\nRepair",
+                "expected_version": complaint["version"],
+            },
+        )
+        assert assigned.status_code == 200
+        resolved = admin_client.patch(
+            f"/api/v1/complaints/{complaint['id']}",
+            json={
+                "status": "Resolved",
+                "status_note": "Verified by admin",
+                "internal_note": "Resident confirmed the repair",
+                "expected_version": assigned.json()["version"],
+            },
+        )
+        assert resolved.status_code == 200
+        assert resolved.json()["resolved_at"] is not None
+        assert all(
+            task["complaint_id"] != complaint["id"]
+            for task in admin_client.get("/api/v1/helpdesk/maintenance-tasks").json()["items"]
+        )
+        comments = admin_client.get(
+            f"/api/v1/complaints/{complaint['id']}/comments"
+        ).json()
+        assert any(
+            item["body"] == "Resident confirmed the repair" and item["is_internal"]
+            for item in comments
+        )
+
+        reopened = admin_client.patch(
+            f"/api/v1/complaints/{complaint['id']}",
+            json={
+                "status": "In Progress",
+                "expected_version": resolved.json()["version"],
+            },
+        )
+        assert reopened.status_code == 200
+        assert reopened.json()["resolved_at"] is None
+        assert any(
+            task["complaint_id"] == complaint["id"]
+            for task in admin_client.get("/api/v1/helpdesk/maintenance-tasks").json()["items"]
+        )
+
     def test_update_complaint_status_returns_200(self, admin_client):
         """TC-HD-16: PATCH /api/v1/complaints/{id} with valid status → 200."""
         complaint = _create_complaint(admin_client).json()

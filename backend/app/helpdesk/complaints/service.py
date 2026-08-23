@@ -12,6 +12,7 @@ from app.helpdesk.complaints.models import ComplaintStatusHistory
 from app.helpdesk.complaints.permissions import ensure_can_create, ensure_operational, is_operational
 from app.helpdesk.complaints.schemas import CommentCreate, ComplaintCreate, ComplaintUpdate
 from app.helpdesk.work_orders.service import upsert_work_order
+from app.helpdesk.work_orders.models import MaintenanceWorkOrder
 
 
 SLA_HOURS = {"Critical": 4, "High": 24, "Medium": 48, "Low": 72, "Normal": 48}
@@ -170,6 +171,7 @@ def update_complaint(
         )
 
     previous_status = complaint.status
+    now = datetime.now(timezone.utc)
     if data.status is not None:
         next_status = data.status.value
         if next_status != previous_status and next_status not in STATUS_TRANSITIONS[previous_status]:
@@ -183,10 +185,32 @@ def update_complaint(
     if data.work_order_notes is not None:
         complaint.work_order_notes = data.work_order_notes.strip() or None
 
+    work_order = db.scalar(
+        select(MaintenanceWorkOrder)
+        .where(MaintenanceWorkOrder.complaint_id == complaint.id)
+        .with_for_update()
+    )
+    if complaint.status == "Resolved" and previous_status != "Resolved":
+        complaint.resolved_at = now
+        if work_order and work_order.status != "Resolved":
+            work_order.status = "Resolved"
+            work_order.resolved_at = now
+            work_order.resolution_notes = data.status_note or work_order.resolution_notes
+            work_order.version += 1
+    elif previous_status == "Resolved" and complaint.status == "In Progress":
+        complaint.resolved_at = None
+        complaint.resolution_notes = None
+        if work_order:
+            work_order.status = "Assigned"
+            work_order.resolved_at = None
+            work_order.resolution_notes = None
+            work_order.version += 1
+
     changed = (
         complaint.status != previous_status
         or data.assigned_to is not None
         or data.work_order_notes is not None
+        or data.internal_note is not None
     )
     if not changed:
         return complaint
@@ -202,6 +226,15 @@ def update_complaint(
                 note=data.status_note or (
                     "Work order assigned" if data.assigned_to is not None else None
                 ),
+            )
+        )
+    if data.internal_note:
+        db.add(
+            ComplaintComment(
+                complaint_id=complaint.id,
+                user_id=user.user_id,
+                body=data.internal_note,
+                is_internal=True,
             )
         )
     recipients = {complaint.user_id}
