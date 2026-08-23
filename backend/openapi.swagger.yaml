@@ -1616,6 +1616,77 @@ paths:
       - Platform-Enabler
       x-sprint: Sprint 1
       x-implementation: backend/app/users/router.py
+  /users/manage:
+    get:
+      tags:
+      - Users
+      summary: Manage Users
+      description: Paginated, searchable user-role management data. Super admin only.
+      operationId: manage_users_users_manage_get
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: page
+        in: query
+        required: false
+        schema:
+          type: integer
+          minimum: 1
+          default: 1
+          title: Page
+      - name: page_size
+        in: query
+        required: false
+        schema:
+          type: integer
+          maximum: 100
+          minimum: 1
+          default: 20
+          title: Page Size
+      - name: search
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+            maxLength: 200
+          - type: 'null'
+          title: Search
+      - name: role
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - $ref: '#/components/schemas/RoleName'
+          - type: 'null'
+          title: Role
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedUsersResponse'
+        '401':
+          $ref: '#/components/responses/AuthenticationError'
+        '403':
+          $ref: '#/components/responses/AuthorizationError'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+        '429':
+          $ref: '#/components/responses/RateLimitError'
+        '500':
+          $ref: '#/components/responses/ServerError'
+      x-user-stories:
+      - Platform-Enabler
+      x-sprint: Final Admin Audit
+      x-implementation: backend/app/users/router.py
+      x-required-roles:
+      - super_admin
   /users/{user_id}/role:
     patch:
       tags:
@@ -3187,7 +3258,7 @@ paths:
     post:
       tags:
       - Helpdesk - Operations
-      summary: Analyze
+      summary: Analyze Resident Helpdesk Message
       operationId: analyze_api_v1_helpdesk_assistant_analyze_post
       requestBody:
         content:
@@ -3216,6 +3287,12 @@ paths:
           $ref: '#/components/responses/ConflictError'
         '429':
           $ref: '#/components/responses/RateLimitError'
+        '503':
+          description: AI Pipe is unavailable, rejected the configured model, or is not configured
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
         '500':
           $ref: '#/components/responses/ServerError'
       security:
@@ -3227,15 +3304,16 @@ paths:
       - US-5.2.4
       x-sprint: Sprint 2
       x-implementation: backend/app/helpdesk/work_orders/router.py
-      description: 'Analyze
-
-
-        **User-story mapping:** Categorized complaints with geo-tagged attachments., Known-issues board to avoid
-        duplicate complaints., Assign complaints to staff with an SLA., Staff update assigned work from a mobile
-        workflow.
-
-
-        **Implemented in:** `backend/app/helpdesk/work_orders/router.py`'
+      x-required-roles:
+      - flat_owner
+      - resident_rental
+      x-rate-limit: 10 requests per minute
+      description: |
+        Sends a bounded multi-turn Resident Helpdesk conversation to AI Pipe.
+        The server retains the AI credential, applies safety guardrails, suggests
+        a complaint category, and returns a possible known issue only when the
+        deterministic category, meaningful-title overlap, and location checks
+        are sufficiently confident. General greetings return no known issue.
   /api/v1/helpdesk/maintenance-tasks:
     get:
       tags:
@@ -6204,6 +6282,24 @@ components:
       - staff_type
       - on_duty
       title: AssigneeResponse
+    AssistantMessage:
+      properties:
+        role:
+          type: string
+          enum:
+          - user
+          - assistant
+          title: Role
+        content:
+          type: string
+          maxLength: 2000
+          minLength: 1
+          title: Content
+      type: object
+      required:
+      - role
+      - content
+      title: AssistantMessage
     AssistantRequest:
       properties:
         message:
@@ -6211,6 +6307,12 @@ components:
           maxLength: 2000
           minLength: 3
           title: Message
+        history:
+          items:
+            $ref: '#/components/schemas/AssistantMessage'
+          type: array
+          maxItems: 10
+          title: History
       type: object
       required:
       - message
@@ -6503,6 +6605,18 @@ components:
         created_count:
           type: integer
           title: Created Count
+        eligible_flat_count:
+          type: integer
+          title: Eligible Flat Count
+          default: 0
+        duplicate_flat_count:
+          type: integer
+          title: Duplicate Flat Count
+          default: 0
+        skipped_resident_count:
+          type: integer
+          title: Skipped Resident Count
+          default: 0
         period:
           type: string
           title: Period
@@ -6512,6 +6626,10 @@ components:
         amount_display:
           type: string
           title: Amount Display
+        message:
+          type: string
+          title: Message
+          default: ''
       type: object
       required:
       - run_id
@@ -6813,6 +6931,12 @@ components:
             maxLength: 2000
           - type: 'null'
           title: Status Note
+        internal_note:
+          anyOf:
+          - type: string
+            maxLength: 2000
+          - type: 'null'
+          title: Internal Note
       type: object
       required:
       - expected_version
@@ -7858,6 +7982,35 @@ components:
       - page
       - page_size
       title: PaginatedNotices
+    PaginatedUsersResponse:
+      properties:
+        items:
+          items:
+            $ref: '#/components/schemas/UserMeResponse'
+          type: array
+          title: Items
+        total:
+          type: integer
+          title: Total
+        page:
+          type: integer
+          title: Page
+        page_size:
+          type: integer
+          title: Page Size
+        role_counts:
+          additionalProperties:
+            type: integer
+          type: object
+          title: Role Counts
+      type: object
+      required:
+      - items
+      - total
+      - page
+      - page_size
+      - role_counts
+      title: PaginatedUsersResponse
     ParetoData:
       properties:
         name:
