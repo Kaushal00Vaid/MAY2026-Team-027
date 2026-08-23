@@ -105,3 +105,29 @@ This document records the verified behavior of each Admin page. It is updated pa
 - Concurrent decisions use the visitor version and return a conflict instead of overwriting a newer decision.
 - Search changes reset to page 1; realtime refresh retains the current search and page and updates or closes open visitor details.
 - Visitor-list and access-audit failures are isolated so either working section remains usable. Both sections provide loading, empty, and error states.
+
+## Amenities
+
+### Access
+
+- `super_admin`, `admin`, and `committee_member` accounts can view all active and inactive facilities, society booking details, and manage facility configuration and bookings.
+- Residents see only active facilities and their own booking identities through the Resident Amenities page. Backend permission and query scopes enforce these boundaries.
+- The User Roles destination is shown only to `super_admin` accounts.
+
+### Features and actions
+
+- The facility selector switches between configured amenities; inactive facilities remain visible to operational Admin roles and are clearly marked.
+- The seven-day schedule uses Asia/Kolkata dates and times and shows every configured operating slot. Operational roles can open a booked slot to view its resident, unit, purpose, and status.
+- **Add Amenity** creates a uniquely named facility with its operating hours, slot duration, weekly household limit, capacity, description, and optional image.
+- **Edit** updates supported facility settings. Operating hours and slot duration define generated availability; capacity is facility information and does not reserve attendee places.
+- **Deactivate** hides a facility from residents and prevents new bookings. Facilities with future confirmed bookings must have those bookings cancelled first. The same protection applies before changing schedule-defining settings.
+- **Cancel Booking** cancels a future confirmed booking, releases the slot/quota, persists the cancellation actor/time, and notifies affected operational users and the resident.
+- The booking count uses the complete server-side total for the selected facility and displayed date range, independent of response pagination.
+
+### Validation and expected states
+
+- Names and descriptions cannot be blank after whitespace is removed; names are unique without regard to case.
+- Opening time must precede closing time. Capacity, slot duration, and weekly household limits must remain within API limits.
+- Schedule and booking-summary requests load independently. A summary failure does not hide working availability, and only the latest facility/week response can update the page.
+- Schedule transitions display loading and empty states without leaving stale slots actionable. Realtime refresh retains the current facility and week and reconciles open booking details.
+- Repeated cancellation submissions are blocked while the first action is pending, and action failures appear beside the booking action.

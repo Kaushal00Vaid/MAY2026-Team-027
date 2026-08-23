@@ -90,7 +90,15 @@ def update_amenity(db: Session, user: User, amenity_id: int, data) -> dict:
     if not item:
         raise HTTPException(status_code=404, detail="Amenity not found.")
     changes = data.model_dump(exclude_unset=True)
-    if changes.get("is_active") is False and item.is_active:
+    schedule_changes = {
+        "operating_start",
+        "operating_end",
+        "slot_minutes",
+    } & changes.keys()
+    requires_clear_schedule = (
+        changes.get("is_active") is False and item.is_active
+    ) or any(changes[key] != getattr(item, key) for key in schedule_changes)
+    if requires_clear_schedule:
         upcoming = (
             db.scalar(
                 select(func.count(AmenityBooking.id)).where(
@@ -102,9 +110,14 @@ def update_amenity(db: Session, user: User, amenity_id: int, data) -> dict:
             or 0
         )
         if upcoming:
+            action = (
+                "deactivating this amenity"
+                if changes.get("is_active") is False and item.is_active
+                else "changing its schedule"
+            )
             raise HTTPException(
                 status_code=409,
-                detail="Cancel upcoming bookings before deactivating this amenity.",
+                detail=f"Cancel upcoming bookings before {action}.",
             )
     for key, value in changes.items():
         setattr(item, key, value)
@@ -200,7 +213,9 @@ def availability(
                 {
                     "starts_at": cursor,
                     "ends_at": end,
-                    "available": amenity.is_active and cursor > now and collision is None,
+                    "available": amenity.is_active
+                    and cursor > now
+                    and collision is None,
                     "booking": _booking_dict(db, collision) if visible else None,
                 }
             )
@@ -307,7 +322,8 @@ def create_booking(db: Session, user: User, data, key: str) -> dict:
     db.flush()
     add_notifications(
         db,
-        {user.user_id} | user_ids_for_roles(db, ["super_admin", "admin", "committee_member"]),
+        {user.user_id}
+        | user_ids_for_roles(db, ["super_admin", "admin", "committee_member"]),
         event_type="booking.created",
         title="Amenity booking confirmed",
         message=f"{amenity.name} has been booked for {local:%d %b, %I:%M %p}.",
@@ -356,7 +372,9 @@ def list_bookings(
             < datetime.combine(end_date, time.min, tzinfo=IST).astimezone(timezone.utc)
         )
     if start_date and end_date and end_date <= start_date:
-        raise HTTPException(status_code=422, detail="End date must be after start date.")
+        raise HTTPException(
+            status_code=422, detail="End date must be after start date."
+        )
     if amenity_id:
         criteria.append(AmenityBooking.amenity_id == amenity_id)
     query = select(AmenityBooking).where(*criteria)
@@ -390,7 +408,8 @@ def cancel_booking(db: Session, user: User, booking_id: int) -> dict:
     amenity = db.get(Amenity, item.amenity_id)
     add_notifications(
         db,
-        {item.resident_id} | user_ids_for_roles(db, ["super_admin", "admin", "committee_member"]),
+        {item.resident_id}
+        | user_ids_for_roles(db, ["super_admin", "admin", "committee_member"]),
         event_type="booking.cancelled",
         title="Amenity booking cancelled",
         message=f"The {amenity.name if amenity else 'amenity'} booking was cancelled.",
