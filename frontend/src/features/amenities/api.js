@@ -16,7 +16,22 @@ export const amenitiesError = (error, fallback) => {
   return typeof detail === "string" ? detail : fallback;
 };
 
+const IST = "Asia/Kolkata";
+const istParts = (date) => Object.fromEntries(
+  new Intl.DateTimeFormat("en-CA", {
+    timeZone: IST, year: "numeric", month: "2-digit", day: "2-digit",
+  }).formatToParts(new Date(date)).filter(({ type }) => type !== "literal").map(({ type, value }) => [type, value]),
+);
+
 export const localDate = (date) => {
-  const value = new Date(date);
-  return `${value.getFullYear()}-${String(value.getMonth() + 1).padStart(2, "0")}-${String(value.getDate()).padStart(2, "0")}`;
+  const { year, month, day } = istParts(date);
+  return `${year}-${month}-${day}`;
 };
+
+export const istTime = (date) => new Intl.DateTimeFormat("en-IN", {
+  timeZone: IST, hour: "2-digit", minute: "2-digit",
+}).format(new Date(date));
+
+export const istDateTime = (date) => new Intl.DateTimeFormat("en-IN", {
+  timeZone: IST, dateStyle: "medium", timeStyle: "short",
+}).format(new Date(date));

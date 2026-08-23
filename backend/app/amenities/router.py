@@ -66,10 +66,14 @@ def bookings(
     page: int = Query(1, ge=1),
     page_size: int = Query(50, ge=1, le=100),
     start_date: date | None = None,
+    end_date: date | None = None,
+    amenity_id: int | None = Query(None, gt=0),
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
-    items, total = service.list_bookings(db, user, page, page_size, start_date)
+    items, total = service.list_bookings(
+        db, user, page, page_size, start_date, end_date, amenity_id
+    )
     return {"items": items, "total": total, "page": page, "page_size": page_size}
 
 

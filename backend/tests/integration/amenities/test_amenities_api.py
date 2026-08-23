@@ -150,6 +150,23 @@ class TestAmenitiesAvailability:
         resp = resident_client.get("/api/v1/amenities/1/availability")
         assert resp.status_code == 422
 
+    def test_inactive_amenity_has_no_available_slots_for_admin(self, admin_client):
+        created = admin_client.post(
+            "/api/v1/amenities",
+            json={"name": "Inactive Schedule Test", "operating_start": "06:00", "operating_end": "09:00", "slot_minutes": 60},
+        )
+        amenity_id = created.json()["id"]
+        assert admin_client.patch(
+            f"/api/v1/amenities/{amenity_id}", json={"is_active": False}
+        ).status_code == 200
+        tomorrow = date.today() + timedelta(days=1)
+        response = admin_client.get(
+            f"/api/v1/amenities/{amenity_id}/availability?start_date={tomorrow}&days=1"
+        )
+        assert response.status_code == 200
+        assert response.json()["slots"]
+        assert not any(slot["available"] for slot in response.json()["slots"])
+
 
 # ─────────────────────────────────────────────────────────────────────────────
 # TC-BOOK: Bookings
@@ -171,6 +188,23 @@ class TestBookings:
         data = resp.json()
         assert "items" in data
         assert "total" in data
+
+    def test_list_bookings_accepts_amenity_and_date_range_filters(self, admin_client):
+        start = date.today()
+        end = start + timedelta(days=7)
+        response = admin_client.get(
+            f"/api/v1/bookings?amenity_id=1&start_date={start}&end_date={end}"
+        )
+        assert response.status_code == 200
+        assert all(item["amenity_id"] == 1 for item in response.json()["items"])
+
+    def test_list_bookings_rejects_reversed_date_range(self, admin_client):
+        start = date.today()
+        end = start - timedelta(days=1)
+        response = admin_client.get(
+            f"/api/v1/bookings?start_date={start}&end_date={end}"
+        )
+        assert response.status_code == 422
 
     def test_list_bookings_unauthenticated_returns_401(self, unauth_client):
         """TC-BOOK-02: GET /api/v1/bookings without auth → 401."""
