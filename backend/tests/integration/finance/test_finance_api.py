@@ -233,6 +233,19 @@ class TestFinanceV1Ledger:
 
 
 class TestFinanceV1BulkInvoices:
+    def test_bulk_invoice_rejects_due_date_before_period(self, admin_client):
+        resp = admin_client.post(
+            "/api/v1/finance/invoices/bulk",
+            json={
+                "period": "2099-12",
+                "purpose": "Invalid due date",
+                "amount_paise": 120_000,
+                "due_date": "2099-11-30",
+            },
+            headers={"Idempotency-Key": "finance-invalid-date"},
+        )
+        assert resp.status_code == 422
+
     def test_bulk_invoices_report_duplicate_flats_clearly(self, admin_client):
         payload = {
             "period": "2099-12",
@@ -261,6 +274,39 @@ class TestFinanceV1BulkInvoices:
 
 
 class TestFinanceV1Expenses:
+    def test_create_expense_persists_matching_ledger_debit(self, admin_client):
+        resp = admin_client.post(
+            "/api/v1/finance/expenses",
+            json={
+                "category": "Cleaning",
+                "amount_paise": 5000,
+                "vendor": "CleanCo",
+                "description": "Monthly cleaning",
+                "expense_date": "2026-08-11",
+            },
+        )
+        assert resp.status_code == 201
+        ledger = admin_client.get("/api/v1/finance/ledger?direction=debit&page_size=100")
+        assert ledger.status_code == 200
+        assert any(
+            item["description"] == "CleanCo — Monthly cleaning"
+            and item["amount_paise"] == 5000
+            for item in ledger.json()["items"]
+        )
+
+    def test_create_expense_rejects_whitespace_text(self, admin_client):
+        resp = admin_client.post(
+            "/api/v1/finance/expenses",
+            json={
+                "category": "   ",
+                "amount_paise": 5000,
+                "vendor": "CleanCo",
+                "description": "Monthly cleaning",
+                "expense_date": "2026-08-11",
+            },
+        )
+        assert resp.status_code == 422
+
     def test_create_expense_forbidden_for_resident(self, resident_client):
         """TC-FINv1-09: POST /api/v1/finance/expenses as resident → 403."""
         resp = resident_client.post(

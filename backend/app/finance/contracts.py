@@ -1,7 +1,7 @@
 from datetime import date, datetime
 from typing import Literal
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 
 class BulkInvoiceCreate(BaseModel):
@@ -17,6 +17,13 @@ class BulkInvoiceCreate(BaseModel):
         if not value:
             raise ValueError("Purpose cannot be blank.")
         return value
+
+    @model_validator(mode="after")
+    def validate_due_date(self):
+        period_start = date.fromisoformat(f"{self.period}-01")
+        if self.due_date < period_start:
+            raise ValueError("Due date cannot be earlier than the billing period.")
+        return self
 
 
 class PaymentCreate(BaseModel):
@@ -35,7 +42,10 @@ class ExpenseCreate(BaseModel):
     @field_validator("vendor", "category", "description")
     @classmethod
     def strip(cls, value: str) -> str:
-        return value.strip()
+        value = value.strip()
+        if not value:
+            raise ValueError("Value cannot be blank.")
+        return value
 
 
 class InvoiceResponse(BaseModel):
