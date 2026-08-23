@@ -14,6 +14,8 @@ Run from backend/:
     uv run pytest tests/integration/security/ -v
 """
 
+from datetime import datetime, timedelta, timezone
+
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -57,6 +59,13 @@ class TestResidentId:
 
 
 class TestVisitors:
+    def test_create_visitor_rejects_whitespace_required_text(self, staff_client):
+        resp = staff_client.post(
+            "/api/v1/security/visitors",
+            json=self._visitor_payload(visitor_name="   ", purpose="   "),
+        )
+        assert resp.status_code == 422
+
     def _visitor_payload(self, **overrides):
         return {
             "visitor_name": "Test Visitor",
@@ -87,6 +96,16 @@ class TestVisitors:
         """TC-SEC-08: GET visitors?status=pending → 200."""
         resp = staff_client.get("/api/v1/security/visitors?status=pending")
         assert resp.status_code == 200
+
+    def test_list_visitors_searches_target_unit(self, staff_client):
+        created = staff_client.post(
+            "/api/v1/security/visitors",
+            json=self._visitor_payload(visitor_name="Unit search visitor"),
+        )
+        assert created.status_code == 201
+        resp = staff_client.get("/api/v1/security/visitors?search=A-101")
+        assert resp.status_code == 200
+        assert any(item["id"] == created.json()["id"] for item in resp.json()["items"])
 
     def test_list_visitors_invalid_status_returns_422(self, staff_client):
         """TC-SEC-09: GET visitors?status=unknown → 422."""
@@ -138,6 +157,34 @@ class TestVisitors:
             json={"decision": "approved", "expected_version": 1},
         )
         assert resp.status_code == 404
+
+    def test_decision_persists_expiry_before_returning_conflict(
+        self, staff_client, admin_client, monkeypatch
+    ):
+        created = staff_client.post(
+            "/api/v1/security/visitors", json=self._visitor_payload()
+        ).json()
+        monkeypatch.setattr(
+            "app.security.service.now",
+            lambda: datetime.now(timezone.utc) + timedelta(hours=1),
+        )
+        decision = admin_client.post(
+            f"/api/v1/security/visitors/{created['id']}/decision",
+            json={"decision": "approved", "expected_version": created["version"]},
+        )
+        assert decision.status_code == 409
+        visitors = staff_client.get(
+            f"/api/v1/security/visitors?search={created['visitor_name']}"
+        ).json()["items"]
+        expired = next(item for item in visitors if item["id"] == created["id"])
+        assert expired["status"] == "expired"
+        assert expired["version"] == created["version"] + 1
+        logs = staff_client.get("/api/v1/security/access-logs").json()
+        assert any(
+            item["event_type"] == "visitor_expired"
+            and item["subject_name"] == created["visitor_name"]
+            for item in logs
+        )
 
     def test_entry_nonexistent_visitor_returns_404(self, staff_client):
         """TC-SEC-15: POST /visitors/99999/entry → 404."""

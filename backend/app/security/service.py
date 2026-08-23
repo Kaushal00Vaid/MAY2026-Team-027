@@ -194,6 +194,9 @@ def list_visitors(db, user, page, page_size, search=None, status=None):
                 Visitor.visitor_name.ilike(pattern),
                 Visitor.purpose.ilike(pattern),
                 Visitor.vehicle_number.ilike(pattern),
+                Visitor.resident_id.in_(
+                    select(User.user_id).where(User.flat_number.ilike(pattern))
+                ),
             )
         )
     total = db.scalar(select(func.count(Visitor.id)).where(*filters)) or 0
@@ -212,6 +215,7 @@ def decide(db, user, visitor_id, decision, version, note=None):
         raise HTTPException(
             status_code=403, detail="Resident or admin decision required."
         )
+    expire_visitors(db)
     item = db.scalar(select(Visitor).where(Visitor.id == visitor_id).with_for_update())
     if not item or (is_resident(user) and item.resident_id != user.user_id):
         raise HTTPException(status_code=404, detail="Visitor request not found.")
