@@ -45,6 +45,30 @@ def _notice_dict(notice: Notice, is_read: bool = False) -> dict:
     }
 
 
+def _notice_filters(user: User) -> list:
+    filters = [
+        Notice.is_active.is_(True),
+        or_(Notice.expires_at.is_(None), Notice.expires_at > _now()),
+    ]
+    if not is_operational(user):
+        filters.append(
+            or_(
+                Notice.target_type == "all",
+                and_(
+                    Notice.target_type == "block",
+                    func.lower(Notice.target_value)
+                    == (user.building_block or "").lower(),
+                ),
+                and_(
+                    Notice.target_type == "flat",
+                    func.lower(Notice.target_value)
+                    == (user.flat_number or "").lower(),
+                ),
+            )
+        )
+    return filters
+
+
 def create_notice(db: Session, user: User, data: NoticeCreate) -> dict:
     ensure_operational(user)
     if data.expires_at and data.expires_at <= _now():
@@ -96,15 +120,7 @@ def create_notice(db: Session, user: User, data: NoticeCreate) -> dict:
 
 def list_notices(db: Session, user: User, page: int, page_size: int) -> tuple[list[dict], int]:
     ensure_community_member(user)
-    filters = [Notice.is_active.is_(True), or_(Notice.expires_at.is_(None), Notice.expires_at > _now())]
-    if not is_operational(user):
-        filters.append(
-            or_(
-                Notice.target_type == "all",
-                and_(Notice.target_type == "block", func.lower(Notice.target_value) == (user.building_block or "").lower()),
-                and_(Notice.target_type == "flat", func.lower(Notice.target_value) == (user.flat_number or "").lower()),
-            )
-        )
+    filters = _notice_filters(user)
     total = db.scalar(select(func.count(Notice.id)).where(*filters)) or 0
     notices = list(db.scalars(select(Notice).where(*filters).order_by(Notice.published_at.desc()).offset((page - 1) * page_size).limit(page_size)).all())
     read_ids = set(db.scalars(select(NoticeDelivery.notice_id).where(NoticeDelivery.user_id == user.user_id, NoticeDelivery.read_at.is_not(None))).all())
@@ -112,8 +128,11 @@ def list_notices(db: Session, user: User, page: int, page_size: int) -> tuple[li
 
 
 def mark_notice_read(db: Session, user: User, notice_id: int) -> dict:
-    items, _ = list_notices(db, user, 1, 100)
-    if notice_id not in {item["id"] for item in items}:
+    ensure_community_member(user)
+    notice = db.scalar(
+        select(Notice).where(Notice.id == notice_id, *_notice_filters(user))
+    )
+    if not notice:
         raise HTTPException(status_code=404, detail="Notice not found.")
     delivery = db.scalar(select(NoticeDelivery).where(NoticeDelivery.notice_id == notice_id, NoticeDelivery.user_id == user.user_id))
     if not delivery:
@@ -121,7 +140,7 @@ def mark_notice_read(db: Session, user: User, notice_id: int) -> dict:
         db.add(delivery)
     delivery.read_at = _now()
     db.commit()
-    return next(item | {"is_read": True} for item in items if item["id"] == notice_id)
+    return _notice_dict(notice, True)
 
 
 def list_events(db: Session, user: User) -> list[dict]:
@@ -176,6 +195,16 @@ def signup_volunteer(db: Session, user: User, opportunity_id: int) -> dict:
 
 def withdraw_volunteer(db: Session, user: User, opportunity_id: int) -> dict:
     ensure_community_member(user)
+    item = db.scalar(
+        select(VolunteerOpportunity)
+        .where(
+            VolunteerOpportunity.id == opportunity_id,
+            VolunteerOpportunity.is_active.is_(True),
+        )
+        .with_for_update()
+    )
+    if not item or (item.closes_at and item.closes_at <= _now()):
+        raise HTTPException(status_code=404, detail="Volunteer opportunity not found.")
     signup = db.scalar(select(VolunteerSignup).where(VolunteerSignup.opportunity_id == opportunity_id, VolunteerSignup.user_id == user.user_id))
     if signup:
         db.delete(signup)

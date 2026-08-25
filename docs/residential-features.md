@@ -39,4 +39,15 @@ Helpdesk is available to authenticated flat owners and rental residents. Complai
 
 The page uses the protected complaints and Helpdesk endpoints. Internal comments and other residents' private ticket details are not returned.
 
+## Community
+
+Community is available to authenticated flat owners and rental residents.
+
+- **Notices:** Shows active, unexpired notices addressed to everyone, the resident's block, or the resident's flat. The modal loads older notices in bounded pages and records read state per resident.
+- **Polls:** Shows the current active poll, records one final vote per resident, and displays results after voting. A missing poll has a non-actionable empty state.
+- **Events:** Shows active events in society-local time. Residents can navigate event pages and confirm or cancel their RSVP subject to event capacity.
+- **Volunteering:** Shows every active, unexpired opportunity with previous/next controls. Signup capacity and withdrawals are validated transactionally.
+
+The page uses the protected Community endpoints. Notice targeting, poll votes, RSVPs, and volunteer signups are persisted and scoped to the authenticated resident.
+
 The remaining resident pages will be documented as each page completes its audit cycle.
