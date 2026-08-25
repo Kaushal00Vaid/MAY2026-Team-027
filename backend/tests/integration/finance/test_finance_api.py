@@ -11,6 +11,14 @@ Run from backend/:
     uv run pytest tests/integration/finance/ -v
 """
 
+from datetime import date, timedelta
+
+from sqlalchemy import func, select
+
+from app.db.database import get_db
+from app.finance.models import Invoice, LedgerEntry
+from app.main import app
+
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -171,6 +179,34 @@ class TestFinanceV1ResidentSummary:
         """TC-FINv1-03: GET resident-summary without auth → 401."""
         resp = unauth_client.get("/api/v1/finance/resident-summary")
         assert resp.status_code in (401, 403)
+
+    def test_repeated_summary_refresh_adds_late_fee_delta_once(self, resident_client):
+        session = next(app.dependency_overrides[get_db]())
+        invoice = Invoice(
+            invoice_number="INV-RESIDENT-REFRESH-IDEMPOTENCY",
+            resident_id=9_000_001,
+            purpose="Late fee regression",
+            period="2026-01",
+            base_amount_paise=10_000,
+            late_fee_paise=0,
+            status="issued",
+            due_date=date.today() - timedelta(days=40),
+        )
+        session.add(invoice)
+        session.commit()
+
+        first = resident_client.get("/api/v1/finance/resident-summary")
+        second = resident_client.get("/api/v1/finance/resident-summary")
+
+        assert first.status_code == 200
+        assert second.status_code == 200
+        fee_debits = session.scalar(
+            select(func.count(LedgerEntry.id)).where(
+                LedgerEntry.invoice_id == invoice.id,
+                LedgerEntry.category == "Late Fee",
+            )
+        )
+        assert fee_debits == 1
 
 
 class TestFinanceV1AdminSummary:

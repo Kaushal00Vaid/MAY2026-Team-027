@@ -142,6 +142,15 @@ def payment_dict(item):
     }
 
 
+def resident_invoice_query(user_id: int):
+    return (
+        select(Invoice)
+        .where(Invoice.resident_id == user_id)
+        .order_by(Invoice.due_date.desc())
+        .with_for_update()
+    )
+
+
 def ledger_dict(db, item):
     user = db.get(User, item.resident_id) if item.resident_id else None
     reference = (
@@ -376,11 +385,7 @@ def pay(db: Session, user: User, data, key: str):
 def resident_summary(db, user):
     ensure_resident(user)
     invoices = list(
-        db.scalars(
-            select(Invoice)
-            .where(Invoice.resident_id == user.user_id)
-            .order_by(Invoice.due_date.desc())
-        ).all()
+        db.scalars(resident_invoice_query(user.user_id)).all()
     )
     for item in invoices:
         refresh_invoice(item, db)
@@ -423,7 +428,7 @@ def resident_summary(db, user):
 
 def admin_summary(db, user):
     ensure_ops(user)
-    invoices = list(db.scalars(select(Invoice)).all())
+    invoices = list(db.scalars(select(Invoice).with_for_update()).all())
     [refresh_invoice(i, db) for i in invoices]
     db.commit()
     outstanding = sum(

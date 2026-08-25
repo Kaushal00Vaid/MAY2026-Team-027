@@ -11,6 +11,7 @@ from types import SimpleNamespace
 import pytest
 from fastapi import HTTPException
 from pydantic import ValidationError
+from sqlalchemy.dialects import postgresql
 
 from app.finance.contracts import BulkInvoiceCreate, PaymentCreate
 from app.finance.operations import (
@@ -18,6 +19,7 @@ from app.finance.operations import (
     ensure_resident,
     late_fee,
     money,
+    resident_invoice_query,
     simple_pdf,
 )
 
@@ -47,6 +49,15 @@ def test_no_late_fee_for_future_due_date():
     """A due date in the future means 0 days overdue → no fee."""
     today = date(2026, 8, 7)
     assert late_fee(10_000, today + timedelta(days=1), today) == 0
+
+
+def test_resident_invoice_refresh_locks_rows():
+    statement = str(
+        resident_invoice_query(42).compile(
+            dialect=postgresql.dialect(), compile_kwargs={"literal_binds": True}
+        )
+    )
+    assert "FOR UPDATE" in statement
 
 
 # ── Money formatting ───────────────────────────────────────────────────────
