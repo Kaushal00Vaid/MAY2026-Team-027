@@ -50,4 +50,13 @@ Community is available to authenticated flat owners and rental residents.
 
 The page uses the protected Community endpoints. Notice targeting, poll votes, RSVPs, and volunteer signups are persisted and scoped to the authenticated resident.
 
-The remaining resident pages will be documented as each page completes its audit cycle.
+## Analytics
+
+Resident Analytics is the read-only summary embedded in the resident Dashboard. It is available to flat owners and rental residents and is scoped to the authenticated user.
+
+- **Balance:** Shows open invoice totals and the earliest due date.
+- **Tickets:** Shows the five most recently updated tickets and links to authorized Helpdesk details.
+- **Bookings and events:** Shows current/upcoming resident-relevant activity in society-local time.
+- **Notices:** Shows active notices targeted to the resident, including the notice creator when available.
+
+The data is served by `GET /api/v1/analytics/resident`; administrative and staff roles cannot access this endpoint.
