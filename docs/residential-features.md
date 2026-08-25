@@ -27,4 +27,16 @@ Financials is available to authenticated flat owners and rental residents. Data 
 
 The page uses `GET /api/v1/finance/resident-summary`; payments, statements, and receipts use the corresponding protected finance endpoints. Finance administration endpoints remain unavailable to residents.
 
+## Helpdesk
+
+Helpdesk is available to authenticated flat owners and rental residents. Complaint records, comments, history, and attachments are restricted to the signed-in resident's tickets.
+
+- **Support assistant:** Provides bounded AI Pipe guidance, suggests a ticket category, and shows a related known issue only after a confident category, wording, and resident-location match.
+- **Known issues:** Shows active issues for the resident's exact flat, exact block, or common area. Residents may subscribe to those visible issues for updates.
+- **Tickets:** Creates a complaint with priority and an optional validated attachment. If an attachment fails after creation, the created ticket is retained and reported accurately.
+- **Ticket history:** Loads the resident's ticket history in bounded pages. Dashboard links open the authorized ticket directly even when it is not in the currently loaded page.
+- **Ticket details:** Shows status history, public comments, resolution notes, and downloadable attachments. Residents can add public updates to their own tickets.
+
+The page uses the protected complaints and Helpdesk endpoints. Internal comments and other residents' private ticket details are not returned.
+
 The remaining resident pages will be documented as each page completes its audit cycle.

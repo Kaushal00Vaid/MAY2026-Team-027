@@ -29,6 +29,7 @@ const statusColor = (status) => ({
 }[status] || "bg-gray-100 text-gray-700");
 
 const INITIAL_FORM = { title: "", description: "", category: "Maintenance", priority: "Medium" };
+const TICKET_PAGE_SIZE = 20;
 
 export default function ResidentHelpdesk() {
   const location = useLocation();
@@ -38,6 +39,8 @@ export default function ResidentHelpdesk() {
   const assistantSendingRef = useRef(false);
   const chatEndRef = useRef(null);
   const [tickets, setTickets] = useState([]);
+  const [ticketPage, setTicketPage] = useState(1);
+  const [ticketTotal, setTicketTotal] = useState(0);
   const [knownIssues, setKnownIssues] = useState([]);
   const [showAll, setShowAll] = useState(false);
   const [showModal, setShowModal] = useState(location.state?.action === "new");
@@ -55,14 +58,18 @@ export default function ResidentHelpdesk() {
   const [error, setError] = useState("");
   const [toast, setToast] = useState("");
 
-  const load = async () => {
+  const load = async (page = 1, append = false) => {
     setLoading(true); setError("");
     try {
       const [{ data: complaintData }, { data: issueData }] = await Promise.all([
-        listComplaints({ page_size: 100, sort_by: "updated_at", sort_order: "desc" }),
+        listComplaints({ page, page_size: TICKET_PAGE_SIZE, sort_by: "updated_at", sort_order: "desc" }),
         listKnownIssues(),
       ]);
-      setTickets(complaintData.items);
+      setTickets((current) => append
+        ? [...new Map([...current, ...complaintData.items].map((item) => [item.id, item])).values()]
+        : complaintData.items);
+      setTicketPage(complaintData.page);
+      setTicketTotal(complaintData.total);
       setKnownIssues(issueData);
     } catch (requestError) {
       setError(errorMessage(requestError, "Unable to load Helpdesk data."));
@@ -70,7 +77,7 @@ export default function ResidentHelpdesk() {
   };
 
   useEffect(() => { void Promise.resolve().then(load); }, []);
-  useRealtimeRefresh(["helpdesk"], load);
+  useRealtimeRefresh(["helpdesk"], () => load());
   useEffect(() => {
     if (!toast) return undefined;
     const timer = setTimeout(() => setToast(""), 3000);
@@ -92,22 +99,25 @@ export default function ResidentHelpdesk() {
   };
 
   useEffect(() => {
-    if (deepLinkHandled.current || !location.state?.ticketId || tickets.length === 0) return;
-    const target = tickets.find((ticket) => ticket.id === Number(location.state.ticketId));
-    if (!target) return;
+    if (deepLinkHandled.current || !location.state?.ticketId) return;
     deepLinkHandled.current = true;
-    // Resolve the dashboard deep link after its ticket is present in the API result.
-
-    void openDetails(target);
-  }, [location.state?.ticketId, tickets]);
+    void openDetails({ id: Number(location.state.ticketId) });
+  }, [location.state?.ticketId]);
 
   const submitTicket = async (event) => {
     event.preventDefault(); setSaving(true); setError("");
     try {
       const { data } = await createComplaint({ ...form, description: form.description || form.title });
-      if (attachment) await uploadAttachment(data.id, attachment);
+      let attachmentFailed = false;
+      if (attachment) {
+        try { await uploadAttachment(data.id, attachment); }
+        catch { attachmentFailed = true; }
+      }
       setForm(INITIAL_FORM); setAttachment(null); setShowModal(false);
-      setToast("Ticket created successfully."); await load();
+      setToast(attachmentFailed
+        ? `Ticket #${data.id} was created, but its attachment could not be uploaded.`
+        : "Ticket created successfully.");
+      await load();
     } catch (requestError) { setError(errorMessage(requestError, "Unable to create the ticket.")); }
     finally { setSaving(false); }
   };
@@ -133,6 +143,10 @@ export default function ResidentHelpdesk() {
       const assistantError = errorMessage(requestError, "The assistant is temporarily unavailable. Please retry or create a ticket.");
       setError(assistantError);
       setMessage(text);
+      setChat((items) => {
+        const last = items.at(-1);
+        return last?.role === "user" && last.text === text ? items.slice(0, -1) : items;
+      });
     } finally {
       assistantSendingRef.current = false;
       setAssistantSending(false);
@@ -178,8 +192,8 @@ export default function ResidentHelpdesk() {
   return <DashboardLayout sidebarItems={getResidentSidebarItems("/resident/helpdesk")} userRole="Resident Portal" userName={userName}>
     <div className="p-6 md:p-8 max-w-7xl mx-auto h-[calc(100vh-4rem)] flex flex-col relative">
       {toast && <div className="fixed bottom-6 right-6 bg-[#0f2336] text-white px-6 py-4 rounded-xl shadow-2xl flex gap-3 z-50"><CheckCircle2 className="text-emerald-400" size={20}/><span className="text-sm font-bold">{toast}</span><button onClick={() => setToast("")}><X size={16}/></button></div>}
-      <div className="mb-6 flex items-center justify-between"><div><h1 className="text-3xl font-extrabold text-[#0f2336]">Smart Helpdesk</h1><p className="text-gray-500 mt-2">Instant support powered by AI. Resolve issues quickly or connect with management.</p></div><button onClick={() => setShowModal(true)} className="hidden md:flex items-center gap-2 px-4 py-2.5 bg-[#0f2336] text-white rounded-xl text-sm font-semibold"><Plus size={16}/>New Ticket</button></div>
-      {error && <div className="mb-4 p-3 rounded-xl bg-red-50 border border-red-100 text-sm font-semibold text-red-600">{error}</div>}
+      <div className="mb-6 flex items-center justify-between"><h1 className="text-3xl font-extrabold text-[#0f2336]">Smart Helpdesk</h1><button onClick={() => setShowModal(true)} className="hidden md:flex items-center gap-2 px-4 py-2.5 bg-[#0f2336] text-white rounded-xl text-sm font-semibold"><Plus size={16}/>New Ticket</button></div>
+      {error && <div role="alert" className="mb-4 p-3 rounded-xl bg-red-50 border border-red-100 text-sm font-semibold text-red-600">{error}</div>}
       <div className="flex-1 flex flex-col lg:flex-row gap-6 min-h-0">
         <div className="flex-1 bg-white rounded-3xl border border-gray-100 shadow-sm flex flex-col overflow-hidden">
           <div className="h-16 border-b flex items-center justify-between px-6 bg-gray-50/50"><div className="flex gap-3 items-center"><div className="w-10 h-10 bg-blue-100 text-blue-600 rounded-full flex items-center justify-center"><Bot size={20}/></div><div><h3 className="font-bold text-[#0f2336]">Support Assistant</h3><span className="text-xs text-gray-500">AI support</span></div></div><button onClick={() => setShowModal(true)} className="px-4 py-1.5 bg-white border rounded-lg text-xs font-bold text-gray-600">Escalate to Human</button></div>
@@ -194,7 +208,7 @@ export default function ResidentHelpdesk() {
 
         <div className="lg:w-80 shrink-0 flex flex-col gap-6 overflow-y-auto pr-1 pb-4">
           <div className="bg-white rounded-3xl p-6 border shadow-sm"><h3 className="font-bold text-[#0f2336] mb-4 text-lg">Frequent Requests</h3><div className="space-y-2">{quickRequests.map((request) => <button key={request.label} onClick={() => { setForm({...INITIAL_FORM, title: request.label, category: request.category}); setShowModal(true); }} className="w-full flex items-center gap-3 p-3 text-left rounded-xl hover:bg-gray-50"><request.icon size={16} className="text-blue-600"/><span className="text-sm font-semibold text-gray-700">{request.label}</span></button>)}</div>{knownIssues.length > 0 && <div className="mt-5 pt-4 border-t"><h4 className="text-xs font-bold uppercase text-gray-400 mb-2">Known Issues</h4>{knownIssues.slice(0, 2).map((issue) => <button key={issue.complaint_id} onClick={() => setAssistantIssue(issue)} className="block w-full text-left text-xs p-2 rounded-lg hover:bg-orange-50"><strong>{issue.title}</strong><span className="block text-gray-500">{issue.location || "Common area"} • {issue.status}</span></button>)}</div>}</div>
-          <div className="bg-white rounded-3xl p-6 border shadow-sm flex-1"><div className="flex justify-between mb-5"><h3 className="font-bold text-[#0f2336] text-lg">{showAll ? "My Tickets" : "My Open Tickets"}</h3><button onClick={() => setShowAll((value) => !value)} className="text-xs font-bold text-primary">{showAll ? "Open Only" : "View All"}</button></div>{loading && <p className="text-sm text-gray-500">Loading tickets…</p>}{!loading && visibleTickets.length === 0 && <p className="text-sm text-gray-500">No tickets found.</p>}<div className="space-y-4">{visibleTickets.map((ticket) => <button key={ticket.id} onClick={() => openDetails(ticket)} className="w-full text-left p-4 rounded-2xl border hover:shadow-sm"><div className="flex justify-between mb-2"><span className="text-xs font-bold text-gray-400">TK-{ticket.id}</span><span className={`text-[10px] font-bold px-2.5 py-1 rounded-full ${statusColor(ticket.status)}`}>{ticket.status}</span></div><div className="font-bold text-sm text-[#0f2336]">{ticket.title || ticket.category}</div><div className="text-xs text-gray-500">Updated {new Date(ticket.updated_at).toLocaleString()}</div></button>)}</div></div>
+          <div className="bg-white rounded-3xl p-6 border shadow-sm flex-1"><div className="flex justify-between mb-5"><h3 className="font-bold text-[#0f2336] text-lg">{showAll ? "My Tickets" : "My Open Tickets"}</h3><button onClick={() => setShowAll((value) => !value)} className="text-xs font-bold text-primary">{showAll ? "Open Only" : "View All"}</button></div>{loading && tickets.length === 0 && <p role="status" className="text-sm text-gray-500">Loading tickets…</p>}{!loading && visibleTickets.length === 0 && <p className="text-sm text-gray-500">No tickets found.</p>}<div className="space-y-4">{visibleTickets.map((ticket) => <button key={ticket.id} onClick={() => openDetails(ticket)} className="w-full text-left p-4 rounded-2xl border hover:shadow-sm"><div className="flex justify-between mb-2"><span className="text-xs font-bold text-gray-400">TK-{ticket.id}</span><span className={`text-[10px] font-bold px-2.5 py-1 rounded-full ${statusColor(ticket.status)}`}>{ticket.status}</span></div><div className="font-bold text-sm text-[#0f2336]">{ticket.title || ticket.category}</div><div className="text-xs text-gray-500">Updated {new Date(ticket.updated_at).toLocaleString()}</div></button>)}</div>{tickets.length < ticketTotal && <button disabled={loading} onClick={() => load(ticketPage + 1, true)} className="mt-5 w-full py-2.5 border rounded-xl text-sm font-bold disabled:opacity-50">{loading ? "Loading…" : "Load More Tickets"}</button>}</div>
         </div>
       </div>
 

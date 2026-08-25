@@ -6,7 +6,7 @@ from pathlib import Path
 from zoneinfo import ZoneInfo
 
 from fastapi import HTTPException, UploadFile
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session, joinedload
 
 from app.config import settings
@@ -17,7 +17,7 @@ from app.db.models.user import User
 from app.realtime.service import add_notifications
 from app.helpdesk.attachments.validation import ALLOWED_MIME_TYPES, matches_declared_type
 from app.helpdesk.complaints.models import ComplaintAttachment, ComplaintStatusHistory
-from app.helpdesk.complaints.permissions import ensure_operational, is_operational
+from app.helpdesk.complaints.permissions import ensure_operational, ensure_resident, is_operational
 from app.helpdesk.work_orders.models import (
     KnownIssueSubscription,
     MaintenanceWorkOrder,
@@ -82,9 +82,7 @@ def _confident_known_issue_match(
     if category == "Other":
         return None
     message_tokens = _assistant_tokens(message)
-    resident_locations = {
-        value.lower() for value in (user.flat_number, user.building_block) if value
-    }
+    resident_locations = _resident_known_issue_locations(user)
     candidates = []
     for issue in issues:
         if issue["category"].lower() != category.lower():
@@ -93,14 +91,8 @@ def _confident_known_issue_match(
         shared = message_tokens & issue_tokens
         if len(shared) < 2:
             continue
-        location = (issue.get("location") or "").lower()
-        location_tokens = _assistant_tokens(location)
-        location_is_relevant = (
-            not location
-            or location == "common area"
-            or any(value in location or location in value for value in resident_locations)
-            or bool(message_tokens & location_tokens)
-        )
+        location = _normalize_known_issue_location(issue.get("location"))
+        location_is_relevant = location in resident_locations
         if location_is_relevant:
             candidates.append((len(shared), len(shared) / len(issue_tokens or {""}), issue))
     return max(candidates, default=(0, 0, None), key=lambda item: (item[0], item[1]))[2]
@@ -108,6 +100,21 @@ def _confident_known_issue_match(
 
 def _roles(user: User) -> set[str]:
     return {item.role.role_name.value for item in user.roles}
+
+
+def _normalize_known_issue_location(location: str | None) -> str:
+    return " ".join((location or "common area").strip().lower().split())
+
+
+def _resident_known_issue_locations(user: User) -> set[str]:
+    locations = {"common area"}
+    if user.building_block:
+        block = _normalize_known_issue_location(user.building_block)
+        locations.update({block, f"block {block}"})
+    if user.flat_number:
+        flat = _normalize_known_issue_location(user.flat_number)
+        locations.update({flat, f"flat {flat}"})
+    return locations
 
 
 def _ensure_support_staff(user: User) -> None:
@@ -379,13 +386,17 @@ def get_helpdesk_stats(db: Session, user: User) -> dict:
 
 
 def list_known_issues(db: Session, user: User) -> list[dict]:
-    active = list(
-        db.scalars(
-            select(Complaint)
-            .where(Complaint.status.in_(["Open", "In Progress"]))
-            .order_by(Complaint.created_at)
-        ).all()
-    )
+    query = select(Complaint).where(Complaint.status.in_(["Open", "In Progress"]))
+    if not is_operational(user):
+        ensure_resident(user)
+        visible_locations = _resident_known_issue_locations(user)
+        query = query.where(
+            or_(
+                Complaint.location.is_(None),
+                func.lower(func.trim(Complaint.location)).in_(visible_locations),
+            )
+        )
+    active = list(db.scalars(query.order_by(Complaint.created_at)).all())
     subscription_counts = dict(
         db.execute(
             select(KnownIssueSubscription.complaint_id, func.count(KnownIssueSubscription.id))
@@ -422,12 +433,14 @@ def list_known_issues(db: Session, user: User) -> list[dict]:
 
 
 def subscribe_known_issue(db: Session, user: User, complaint_id: int) -> dict:
-    complaint = db.scalar(
-        select(Complaint).where(
-            Complaint.id == complaint_id, Complaint.status.in_(["Open", "In Progress"])
-        )
+    if not is_operational(user):
+        ensure_resident(user)
+    visible_issues = list_known_issues(db, user)
+    visible = next(
+        (item for item in visible_issues if item["complaint_id"] == complaint_id),
+        None,
     )
-    if not complaint:
+    if not visible:
         raise HTTPException(status_code=404, detail="Known issue not found.")
     existing = db.scalar(
         select(KnownIssueSubscription).where(
@@ -438,7 +451,11 @@ def subscribe_known_issue(db: Session, user: User, complaint_id: int) -> dict:
     if not existing:
         db.add(KnownIssueSubscription(complaint_id=complaint_id, user_id=user.user_id))
         db.commit()
-    return next(item for item in list_known_issues(db, user) if item["complaint_id"] == complaint_id)
+    return next(
+        item
+        for item in list_known_issues(db, user)
+        if item["complaint_id"] == complaint_id
+    )
 
 
 def analyze_message(db: Session, user: User, message: str, history=()) -> dict:
