@@ -116,7 +116,7 @@ describe("ResidentDashboard", () => {
     expect(navigate).toHaveBeenLastCalledWith("/resident/helpdesk", { state: { ticketId: "12" } });
 
     fireEvent.click(screen.getByRole("button", { name: /rsvp \/ info/i }));
-    expect(navigate).toHaveBeenLastCalledWith("/resident/community");
+    expect(navigate).toHaveBeenLastCalledWith("/resident/community", { state: { eventId: 9 } });
 
     fireEvent.click(screen.getByRole("button", { name: /view all/i }));
     expect(navigate).toHaveBeenLastCalledWith("/resident/community", { state: { view: "notices" } });

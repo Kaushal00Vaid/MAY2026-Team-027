@@ -300,7 +300,7 @@ export default function ResidentDashboard() {
                     <div className="flex-1 flex flex-col justify-center">
                       <div className="font-bold text-sm text-[#0f2336]">{e.title}</div>
                       <div className="text-xs text-gray-500 mt-1">{e.location} • {e.time_str}</div>
-                      <button onClick={() => navigate("/resident/community")} className="mt-2 w-fit px-3 py-1 bg-white border border-gray-200 text-gray-700 text-[10px] font-bold uppercase tracking-wider rounded-md hover:bg-gray-50 transition">
+                      <button onClick={() => navigate("/resident/community", { state: { eventId: e.id } })} className="mt-2 w-fit px-3 py-1 bg-white border border-gray-200 text-gray-700 text-[10px] font-bold uppercase tracking-wider rounded-md hover:bg-gray-50 transition">
                         RSVP / Info
                       </button>
                     </div>

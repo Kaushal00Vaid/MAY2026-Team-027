@@ -4,7 +4,7 @@ from io import StringIO
 
 from fastapi import HTTPException
 from sqlalchemy.orm import Session, selectinload
-from sqlalchemy import func
+from sqlalchemy import and_, func, or_
 from datetime import datetime, timezone, timedelta
 from zoneinfo import ZoneInfo
 
@@ -319,8 +319,9 @@ def get_admin_analytics(db: Session, months: int = 6) -> AdminAnalyticsResponse:
         activity_feed=top_feed
     )
 
-def get_resident_analytics(db: Session, user_id: int) -> ResidentAnalyticsResponse:
+def get_resident_analytics(db: Session, user: User) -> ResidentAnalyticsResponse:
     now = datetime.now(timezone.utc)
+    user_id = user.user_id
     
     # 1. Balance
     invoices = db.query(Invoice).filter(
@@ -359,10 +360,9 @@ def get_resident_analytics(db: Session, user_id: int) -> ResidentAnalyticsRespon
         ))
         
     # 3. Bookings
-    start_of_today = now.replace(hour=0, minute=0, second=0, microsecond=0)
     upcoming_bookings = db.query(AmenityBooking).filter(
         AmenityBooking.resident_id == user_id,
-        AmenityBooking.starts_at >= start_of_today,
+        AmenityBooking.ends_at > now,
         AmenityBooking.status == 'confirmed'
     ).order_by(AmenityBooking.starts_at.asc()).limit(3).all()
     
@@ -372,13 +372,15 @@ def get_resident_analytics(db: Session, user_id: int) -> ResidentAnalyticsRespon
         # We can just fetch it manually if needed, or assume it's backpopulated (needs a join ideally).
         amenity = db.query(Amenity).filter(Amenity.id == b.amenity_id).first()
         amenity_name = amenity.name if amenity else "Amenity"
-        is_today = b.starts_at.date() == now.date()
+        local_start = _as_utc(b.starts_at).astimezone(IST)
+        local_end = _as_utc(b.ends_at).astimezone(IST)
+        is_today = local_start.date() == now.astimezone(IST).date()
         bookings.append(ResidentBooking(
             id=b.id,
             title=b.purpose or amenity_name,
             amenity_name=amenity_name,
-            starts_at=b.starts_at.strftime("%H:%M"),
-            ends_at=b.ends_at.strftime("%H:%M"),
+            starts_at=local_start.strftime("%H:%M"),
+            ends_at=local_end.strftime("%H:%M"),
             is_today=is_today
         ))
         
@@ -390,22 +392,33 @@ def get_resident_analytics(db: Session, user_id: int) -> ResidentAnalyticsRespon
     
     events = []
     for e in upcoming_events:
+        local_start = _as_utc(e.starts_at).astimezone(IST)
         events.append(ResidentEvent(
             id=e.id,
             title=e.title,
             location=e.location,
-            date_str=e.starts_at.strftime("%d %b %Y"),
-            time_str=e.starts_at.strftime("%H:%M"),
-            month=e.starts_at.strftime("%b"),
-            day=e.starts_at.strftime("%d")
+            date_str=local_start.strftime("%d %b %Y"),
+            time_str=local_start.strftime("%H:%M"),
+            month=local_start.strftime("%b"),
+            day=local_start.strftime("%d")
         ))
         
     # 5. Notices
     active_notices = db.query(Notice).filter(
-        Notice.is_active
+        Notice.is_active.is_(True),
+        or_(Notice.expires_at.is_(None), Notice.expires_at > now),
+        or_(
+            Notice.target_type == "all",
+            and_(
+                Notice.target_type == "block",
+                func.lower(Notice.target_value) == (user.building_block or "").lower(),
+            ),
+            and_(
+                Notice.target_type == "flat",
+                func.lower(Notice.target_value) == (user.flat_number or "").lower(),
+            ),
+        ),
     ).order_by(Notice.published_at.desc()).limit(5).all()
-    
-    # Simple target filtering logic could go here, but assuming 'all' for dashboard display
     
     notices = []
     colors = ["blue", "orange", "emerald", "purple", "gray"]

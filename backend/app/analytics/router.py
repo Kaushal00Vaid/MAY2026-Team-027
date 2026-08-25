@@ -42,7 +42,7 @@ def read_resident_analytics(
     Retrieve personalized analytics for the Resident Dashboard.
     Available to any active authenticated user (primarily residents).
     """
-    return get_resident_analytics(db, current_user.user_id)
+    return get_resident_analytics(db, current_user)
 
 @router.get("/advanced", response_model=AdvancedAnalyticsResponse)
 def read_advanced_analytics(

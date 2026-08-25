@@ -9,7 +9,8 @@ const api = vi.hoisted(() => ({
   markNoticeRead: vi.fn(), signupVolunteer: vi.fn(), withdrawVolunteer: vi.fn(), updateRsvp: vi.fn(), votePoll: vi.fn(),
 }));
 
-vi.mock("react-router-dom", () => ({ useLocation: () => ({ state: null }) }));
+const route = vi.hoisted(() => ({ state: null }));
+vi.mock("react-router-dom", () => ({ useLocation: () => ({ state: route.state }) }));
 vi.mock("@/hooks/useAuth", () => ({ useAuth: () => ({ user: { first_name: "Riya", last_name: "Shah" } }) }));
 vi.mock("@/components/layout/DashboardLayout", () => ({ default: ({ children }) => <div>{children}</div> }));
 vi.mock("@/features/realtime/useRealtimeRefresh", () => ({ useRealtimeRefresh: () => undefined }));
@@ -30,6 +31,7 @@ const opportunity = { id: 5, title: "Clean-up", description: "Sunday drive", spo
 
 describe("ResidentCommunity", () => {
   beforeEach(() => {
+    route.state = null;
     api.listNotices.mockReset().mockResolvedValue({ data: { items: [] } });
     api.listEvents.mockReset().mockResolvedValue({ data: events });
     api.getActivePoll.mockReset().mockResolvedValue({ data: poll });
@@ -51,6 +53,14 @@ describe("ResidentCommunity", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Next events" }));
     expect(screen.getByText("Event 3")).toBeTruthy();
+    expect(screen.queryByText("Event 1")).toBeNull();
+  });
+
+  it("opens the page containing an event selected from the dashboard", async () => {
+    route.state = { eventId: 3 };
+    render(<ResidentCommunity />);
+
+    expect(await screen.findByText("Event 3")).toBeTruthy();
     expect(screen.queryByText("Event 1")).toBeNull();
   });
 
