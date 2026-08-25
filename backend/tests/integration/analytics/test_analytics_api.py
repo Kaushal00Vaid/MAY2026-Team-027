@@ -17,6 +17,7 @@ from datetime import datetime, time, timedelta, timezone
 
 from app.amenities.models import Amenity, AmenityBooking
 from app.community.models import CommunityEvent, Notice
+from app.db.models.user import User
 from app.db.database import get_db
 from app.main import app
 
@@ -113,6 +114,31 @@ class TestResidentAnalytics:
         titles = {item["title"] for item in response.json()["notices"]}
         assert {"Global", "Own block", "Own flat"}.issubset(titles)
         assert titles.isdisjoint({"Other block", "Other flat", "Expired", "Inactive"})
+
+    def test_dashboard_notice_includes_creator_name_with_management_fallback(self, resident_client):
+        session = next(app.dependency_overrides[get_db]())
+        creator = User(
+            first_name="Priya",
+            last_name="Menon",
+            email="analytics-notice-creator@example.com",
+            flat_number="A-101",
+            building_block="A",
+            is_active=True,
+        )
+        session.add(creator)
+        session.flush()
+        session.add_all([
+            Notice(title="Named notice", body="Created by resident manager", target_type="all", created_by=creator.user_id, is_active=True),
+            Notice(title="System notice", body="No creator", target_type="all", created_by=None, is_active=True),
+        ])
+        session.commit()
+
+        response = resident_client.get("/api/v1/analytics/resident")
+
+        assert response.status_code == 200
+        notices = {item["title"]: item for item in response.json()["notices"]}
+        assert notices["Named notice"]["from_author"] == "Priya Menon"
+        assert notices["System notice"]["from_author"] == "Management"
 
     def test_dashboard_excludes_ended_bookings_and_formats_society_time(self, resident_client):
         session = next(app.dependency_overrides[get_db]())

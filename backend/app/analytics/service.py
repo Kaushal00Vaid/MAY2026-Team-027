@@ -404,7 +404,10 @@ def get_resident_analytics(db: Session, user: User) -> ResidentAnalyticsResponse
         ))
         
     # 5. Notices
-    active_notices = db.query(Notice).filter(
+    active_notices = db.query(Notice, User.first_name, User.last_name).outerjoin(
+        User,
+        and_(User.user_id == Notice.created_by, User.is_active.is_(True)),
+    ).filter(
         Notice.is_active.is_(True),
         or_(Notice.expires_at.is_(None), Notice.expires_at > now),
         or_(
@@ -422,13 +425,15 @@ def get_resident_analytics(db: Session, user: User) -> ResidentAnalyticsResponse
     
     notices = []
     colors = ["blue", "orange", "emerald", "purple", "gray"]
-    for i, n in enumerate(active_notices):
-        # We don't have the author's name directly in Notice, so we use a fallback or fetch user
+    for i, (n, author_first_name, author_last_name) in enumerate(active_notices):
+        author_name = " ".join(
+            part for part in (author_first_name, author_last_name) if part
+        ) or "Management"
         notices.append(ResidentNotice(
             id=n.id,
             title=n.title,
             desc=n.body[:150] + ("..." if len(n.body) > 150 else ""),
-            from_author="Management", # mock author for now
+            from_author=author_name,
             time_str=time_ago_str(n.published_at),
             color=colors[i % len(colors)]
         ))
