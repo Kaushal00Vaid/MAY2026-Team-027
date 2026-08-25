@@ -125,6 +125,7 @@ describe("community, operations, security, and realtime API clients", () => {
     community.listEvents(); community.updateRsvp(2, "going"); community.listVolunteers();
     community.signupVolunteer(3); community.withdrawVolunteer(3); community.getActivePoll();
     community.votePoll(4, 5); community.listDiscussions(); community.listDirectory({ search: " alice " });
+    expect(http.get).toHaveBeenCalledWith("/api/v1/community/notices", { params: { page: 1, page_size: 20 } });
     expect(http.post).toHaveBeenCalledWith("/api/v1/community/notices/1/read");
     expect(http.put).toHaveBeenCalledWith("/api/v1/community/events/2/rsvp", { status: "going" });
     expect(http.delete).toHaveBeenCalledWith("/api/v1/community/volunteers/3/signup");

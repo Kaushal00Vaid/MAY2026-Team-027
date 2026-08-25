@@ -17,6 +17,14 @@ Run from backend/:
     uv run pytest tests/integration/community/ -v
 """
 
+from datetime import datetime, timedelta, timezone
+
+from sqlalchemy import select
+
+from app.community.models import Notice, VolunteerOpportunity, VolunteerSignup
+from app.db.database import get_db
+from app.main import app
+
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -169,6 +177,36 @@ class TestNotices:
         resp = resident_client.post("/api/v1/community/notices/99999/read")
         assert resp.status_code == 404
 
+    def test_mark_read_authorizes_notice_beyond_first_hundred(self, resident_client):
+        session = next(app.dependency_overrides[get_db]())
+        session.add_all([
+            Notice(
+                title=f"Newer notice {index}",
+                body="Body",
+                target_type="all",
+                published_at=datetime(2099, 1, 1, tzinfo=timezone.utc) + timedelta(minutes=index),
+                is_active=True,
+            )
+            for index in range(100)
+        ])
+        oldest = Notice(
+            title="Authorized old notice",
+            body="Body",
+            target_type="all",
+            published_at=datetime(1990, 1, 1, tzinfo=timezone.utc),
+            is_active=True,
+        )
+        session.add(oldest)
+        session.commit()
+
+        response = resident_client.post(
+            f"/api/v1/community/notices/{oldest.id}/read"
+        )
+
+        assert response.status_code == 200
+        assert response.json()["id"] == oldest.id
+        assert response.json()["is_read"] is True
+
 
 # ─────────────────────────────────────────────────────────────────────────────
 # TC-COM-EVENTS: Events
@@ -242,6 +280,33 @@ class TestVolunteers:
         """TC-COM-23: POST volunteer signup as staff → 403."""
         resp = staff_client.post("/api/v1/community/volunteers/1/signup")
         assert resp.status_code == 403
+
+    def test_expired_withdrawal_does_not_delete_signup(self, resident_client):
+        session = next(app.dependency_overrides[get_db]())
+        opportunity = VolunteerOpportunity(
+            title="Closed opportunity",
+            description="No longer accepting changes",
+            volunteers_needed=2,
+            closes_at=datetime.now(timezone.utc) - timedelta(minutes=1),
+            is_active=True,
+        )
+        session.add(opportunity)
+        session.flush()
+        signup = VolunteerSignup(
+            opportunity_id=opportunity.id,
+            user_id=9_000_001,
+        )
+        session.add(signup)
+        session.commit()
+
+        response = resident_client.delete(
+            f"/api/v1/community/volunteers/{opportunity.id}/signup"
+        )
+
+        assert response.status_code == 404
+        assert session.scalar(
+            select(VolunteerSignup).where(VolunteerSignup.id == signup.id)
+        ) is not None
 
 
 # ─────────────────────────────────────────────────────────────────────────────

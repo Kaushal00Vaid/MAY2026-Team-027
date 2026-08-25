@@ -2,7 +2,8 @@ import axiosInstance from "@/api/axiosInstance";
 
 const base = "/api/v1/community";
 
-export const listNotices = () => axiosInstance.get(`${base}/notices`, { params: { page_size: 100 } });
+export const listNotices = ({ page = 1, page_size = 20 } = {}) =>
+  axiosInstance.get(`${base}/notices`, { params: { page, page_size } });
 export const createNotice = (data) => axiosInstance.post(`${base}/notices`, data);
 export const markNoticeRead = (id) => axiosInstance.post(`${base}/notices/${id}/read`);
 export const listEvents = () => axiosInstance.get(`${base}/events`);
