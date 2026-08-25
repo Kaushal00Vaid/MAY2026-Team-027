@@ -15,6 +15,8 @@ Run from backend/:
 
 from datetime import datetime, timezone
 
+from app.main import app
+
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -164,6 +166,68 @@ class TestResidentAssistant:
         )
         assert response.status_code == 503
         assert response.json() == {"detail": "Assistant unavailable"}
+
+
+class TestResidentKnownIssuePrivacy:
+    def test_known_issues_and_subscription_are_scoped_to_resident_location(
+        self, resident_client, admin_client
+    ):
+        from app.dependencies import get_current_user
+        from tests.conftest import _make_admin, _make_resident
+
+        app.dependency_overrides[get_current_user] = _make_resident
+        own = _create_complaint(
+            resident_client,
+            title="Own block plumbing issue",
+            category="Plumbing",
+            location="Block A",
+        ).json()
+        app.dependency_overrides[get_current_user] = _make_admin
+        hidden = _create_complaint(
+            admin_client,
+            title="Private Block B issue",
+            category="Electrical",
+            location="Block B",
+        ).json()
+        app.dependency_overrides[get_current_user] = _make_resident
+
+        response = resident_client.get("/api/v1/helpdesk/known-issues")
+
+        assert response.status_code == 200
+        ids = {item["complaint_id"] for item in response.json()}
+        assert own["id"] in ids
+        assert hidden["id"] not in ids
+        denied = resident_client.post(
+            f"/api/v1/helpdesk/known-issues/{hidden['id']}/subscribe"
+        )
+        assert denied.status_code == 404
+        app.dependency_overrides[get_current_user] = _make_admin
+        assert hidden["id"] in {
+            item["complaint_id"]
+            for item in admin_client.get("/api/v1/helpdesk/known-issues").json()
+        }
+
+    def test_exact_block_scope_does_not_match_unrelated_location(
+        self, resident_client, admin_client
+    ):
+        from app.dependencies import get_current_user
+        from tests.conftest import _make_admin, _make_resident
+
+        app.dependency_overrides[get_current_user] = _make_admin
+        unrelated = _create_complaint(
+            admin_client,
+            title="Garden electrical issue",
+            category="Electrical",
+            location="Garden",
+        ).json()
+        app.dependency_overrides[get_current_user] = _make_resident
+
+        response = resident_client.get("/api/v1/helpdesk/known-issues")
+
+        assert response.status_code == 200
+        assert unrelated["id"] not in {
+            item["complaint_id"] for item in response.json()
+        }
 
 
 # ─────────────────────────────────────────────────────────────────────────────
