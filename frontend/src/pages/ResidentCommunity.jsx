@@ -38,7 +38,8 @@ export default function ResidentCommunity() {
         setNotices(mappedNotices.map((item) => ({ ...item, is_read: true })));
       } else setNotices(mappedNotices);
       setEvents(eventData.map((item, index) => { const start = new Date(item.starts_at); const end = new Date(item.ends_at); return { ...item, month: start.toLocaleString(undefined, { month: "short" }).toUpperCase(), day: String(start.getDate()).padStart(2, "0"), time: `${start.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })} - ${end.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`, loc: item.location, color: index % 2 ? "bg-gray-100 text-gray-600" : "bg-blue-100 text-blue-600" }; }));
-      setEventPage(0);
+      const selectedEventIndex = eventData.findIndex((item) => item.id === location.state?.eventId);
+      setEventPage(selectedEventIndex >= 0 ? Math.floor(selectedEventIndex / 2) : 0);
       applyPoll(pollData); const first = volunteerData[0] || null; setOpportunity(first); setSignedUp(Boolean(first?.signed_up));
     } catch (requestError) { setError(communityError(requestError, "Unable to load Community Hub.")); }
     finally { setLoading(false); }

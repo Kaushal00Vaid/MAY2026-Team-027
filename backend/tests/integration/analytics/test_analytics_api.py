@@ -13,6 +13,13 @@ Run from backend/:
     uv run pytest tests/integration/analytics/ -v
 """
 
+from datetime import datetime, time, timedelta, timezone
+
+from app.amenities.models import Amenity, AmenityBooking
+from app.community.models import CommunityEvent, Notice
+from app.db.database import get_db
+from app.main import app
+
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -85,6 +92,84 @@ class TestResidentAnalytics:
         resp = resident_client.get("/api/v1/analytics/resident")
         assert resp.status_code == 200
         assert isinstance(resp.json(), dict)
+
+    def test_dashboard_notices_are_scoped_and_unexpired(self, resident_client):
+        session = next(app.dependency_overrides[get_db]())
+        now = datetime.now(timezone.utc)
+        session.add_all([
+            Notice(title="Global", body="Visible", target_type="all", is_active=True),
+            Notice(title="Own block", body="Visible", target_type="block", target_value="a", is_active=True),
+            Notice(title="Own flat", body="Visible", target_type="flat", target_value="A-101", is_active=True),
+            Notice(title="Other block", body="Hidden", target_type="block", target_value="B", is_active=True),
+            Notice(title="Other flat", body="Hidden", target_type="flat", target_value="A-102", is_active=True),
+            Notice(title="Expired", body="Hidden", target_type="all", expires_at=now - timedelta(minutes=1), is_active=True),
+            Notice(title="Inactive", body="Hidden", target_type="all", is_active=False),
+        ])
+        session.commit()
+
+        response = resident_client.get("/api/v1/analytics/resident")
+
+        assert response.status_code == 200
+        titles = {item["title"] for item in response.json()["notices"]}
+        assert {"Global", "Own block", "Own flat"}.issubset(titles)
+        assert titles.isdisjoint({"Other block", "Other flat", "Expired", "Inactive"})
+
+    def test_dashboard_excludes_ended_bookings_and_formats_society_time(self, resident_client):
+        session = next(app.dependency_overrides[get_db]())
+        now = datetime.now(timezone.utc)
+        amenity = Amenity(
+            name="Dashboard timezone amenity",
+            description="Analytics regression fixture",
+            capacity=2,
+            operating_start=time(0, 0),
+            operating_end=time(23, 59),
+            slot_minutes=60,
+            weekly_limit=5,
+        )
+        session.add(amenity)
+        session.flush()
+        session.add_all([
+            AmenityBooking(
+                amenity_id=amenity.id,
+                resident_id=9_000_001,
+                starts_at=now - timedelta(hours=2),
+                ends_at=now - timedelta(hours=1),
+                purpose="Ended booking",
+                status="confirmed",
+                idempotency_key="dashboard-ended-booking",
+            ),
+            AmenityBooking(
+                amenity_id=amenity.id,
+                resident_id=9_000_001,
+                starts_at=now - timedelta(minutes=15),
+                ends_at=now + timedelta(minutes=15),
+                purpose="Current booking",
+                status="confirmed",
+                idempotency_key="dashboard-current-booking",
+            ),
+        ])
+        utc_event_start = (now + timedelta(days=2)).replace(hour=20, minute=0, second=0, microsecond=0)
+        session.add(CommunityEvent(
+            title="Timezone boundary event",
+            description="Date changes in India",
+            location="Clubhouse",
+            starts_at=utc_event_start,
+            ends_at=utc_event_start + timedelta(hours=1),
+            is_active=True,
+        ))
+        session.commit()
+
+        response = resident_client.get("/api/v1/analytics/resident")
+
+        assert response.status_code == 200
+        data = response.json()
+        booking_titles = {item["title"] for item in data["bookings"]}
+        assert "Current booking" in booking_titles
+        assert "Ended booking" not in booking_titles
+        event = next(item for item in data["events"] if item["title"] == "Timezone boundary event")
+        expected_local = utc_event_start.astimezone(timezone(timedelta(hours=5, minutes=30)))
+        assert event["date_str"] == expected_local.strftime("%d %b %Y")
+        assert event["time_str"] == "01:30"
 
 
 class TestStaffAnalytics:
