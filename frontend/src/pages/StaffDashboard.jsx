@@ -44,7 +44,6 @@ export default function StaffDashboard() {
         <div className="flex flex-col lg:flex-row justify-between gap-6 mb-8">
           <div>
             <h1 className="text-3xl md:text-4xl font-extrabold text-[#0f2336] tracking-tight">Staff Overview</h1>
-            <p className="text-gray-500 mt-2 text-base">Daily operational analytics and active status.</p>
           </div>
           <button disabled={loading} onClick={refresh} className="self-start inline-flex items-center gap-2 px-4 py-2.5 bg-white border border-gray-200 hover:bg-gray-50 disabled:opacity-50 text-sm font-semibold text-gray-700 rounded-xl transition-colors">
             <RefreshCw size={16} className={loading ? "animate-spin" : ""} /> Refresh
@@ -58,11 +57,13 @@ export default function StaffDashboard() {
           </div>
         )}
 
-        {loading ? (
+        {loading && (
           <div className="h-72 flex justify-center items-center">
             <Loader2 className="animate-spin text-gray-500" size={32} />
           </div>
-        ) : (
+        )}
+
+        {!loading && analytics && (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
             
             {/* Gate Activity */}
@@ -152,13 +153,13 @@ export default function StaffDashboard() {
                     {analytics.events.map((e) => (
                       <button type="button" onClick={() => navigate("/gate/operations")} key={e.id} className="p-5 rounded-xl bg-purple-50/50 border border-purple-100 text-left hover:bg-purple-50 transition-colors">
                         <div className="text-xs font-bold text-purple-500 uppercase tracking-wider mb-2">
-                          {new Date(e.starts_at).toLocaleDateString("en-IN", { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}
+                          {new Date(e.starts_at).toLocaleDateString("en-IN", { timeZone: "Asia/Kolkata", weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}
                         </div>
                         <h4 className="text-lg font-bold text-[#0f2336] mb-4">{e.title}</h4>
                         <div className="flex items-center gap-3">
                           <div className="flex -space-x-3">
-                            {[...Array(Math.min(3, e.rsvp_count || 1))].map((_, i) => (
-                              <div key={i} className="w-8 h-8 rounded-full border-2 border-white bg-purple-200 flex items-center justify-center text-xs font-bold text-purple-700">
+                            {[...Array(Math.min(3, e.rsvp_count || 0))].map((_, i) => (
+                              <div key={i} aria-label="Confirmed guest" className="w-8 h-8 rounded-full border-2 border-white bg-purple-200 flex items-center justify-center text-xs font-bold text-purple-700">
                                 <Users size={12} />
                               </div>
                             ))}
