@@ -2,6 +2,17 @@ import axiosInstance from "@/api/axiosInstance";
 
 const base = "/api/v1/security";
 export const listVisitors = (params = {}) => axiosInstance.get(`${base}/visitors`, { params });
+export const listAllVisitors = async (params = {}) => {
+  const items = []; let page = 1; let total;
+  do {
+    const response = await listVisitors({ ...params, page, page_size: 100 });
+    const batch = Array.isArray(response.data?.items) ? response.data.items : [];
+    total = Number(response.data?.total) || 0; items.push(...batch);
+    if (!batch.length) break;
+    page += 1;
+  } while (items.length < total && page <= 100);
+  return items;
+};
 export const createVisitor = (data) => axiosInstance.post(`${base}/visitors`, data);
 export const decideVisitor = (id, decision, expectedVersion, note) => axiosInstance.post(`${base}/visitors/${id}/decision`, { decision, expected_version: expectedVersion, note });
 export const visitorEntry = (id) => axiosInstance.post(`${base}/visitors/${id}/entry`);

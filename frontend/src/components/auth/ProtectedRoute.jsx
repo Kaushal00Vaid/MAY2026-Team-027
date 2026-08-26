@@ -14,7 +14,7 @@ import { useAuth } from "@/hooks/useAuth";
  *     </ProtectedRoute>
  *   } />
  */
-export default function ProtectedRoute({ children, allowedRoles }) {
+export default function ProtectedRoute({ children, allowedRoles, allowedStaffTypes }) {
   const { isAuthenticated, isLoading, user } = useAuth();
   const location = useLocation();
 
@@ -40,6 +40,13 @@ export default function ProtectedRoute({ children, allowedRoles }) {
     const userRoles = user?.roles || [];
     const hasRole = allowedRoles.some((r) => userRoles.includes(r));
     if (!hasRole) {
+      return <Navigate to="/unauthorized" replace />;
+    }
+  }
+
+  if (allowedStaffTypes?.length) {
+    const staffType = user?.staff_type?.trim().toLowerCase();
+    if (!allowedStaffTypes.some((value) => value.toLowerCase() === staffType)) {
       return <Navigate to="/unauthorized" replace />;
     }
   }

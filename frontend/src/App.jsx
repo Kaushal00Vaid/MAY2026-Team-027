@@ -126,7 +126,7 @@ function App() {
             <ProtectedRoute allowedRoles={STAFF_ROLES}><StaffDashboard /></ProtectedRoute>
           } />
           <Route path="/gate" element={
-            <ProtectedRoute allowedRoles={STAFF_ROLES}><SecurityDashboard /></ProtectedRoute>
+            <ProtectedRoute allowedRoles={STAFF_ROLES} allowedStaffTypes={["security"]}><SecurityDashboard /></ProtectedRoute>
           } />
           <Route path="/gate/maintenance" element={
             <ProtectedRoute allowedRoles={STAFF_ROLES}><StaffMaintenance /></ProtectedRoute>
