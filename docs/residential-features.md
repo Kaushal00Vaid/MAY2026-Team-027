@@ -71,3 +71,14 @@ Amenities is available to authenticated flat owners and rental residents.
 - **My Bookings:** Shows the resident's bookings and allows cancellation of eligible confirmed bookings.
 
 The page uses the protected amenities and booking endpoints. Booking dates and times are displayed in Asia/Kolkata regardless of browser timezone.
+
+## Digital ID
+
+Digital ID is available to authenticated flat owners and rental residents.
+
+- **Resident pass:** Displays a short-lived signed QR credential that refreshes automatically.
+- **Guest passes:** Creates one-use guest PINs, lists the resident's passes, and allows active passes to be revoked.
+- **Visitor approvals:** Shows pending requests for the resident's unit and records approve/deny decisions with optimistic concurrency protection.
+- **Access activity:** Shows the resident's recent access logs.
+
+Security timestamps are displayed in Asia/Kolkata. The backend validates pass signatures, expiry, resident ownership, and role permissions before recording access activity.
