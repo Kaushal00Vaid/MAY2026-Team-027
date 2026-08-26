@@ -57,3 +57,14 @@ Inventory is available to authenticated support staff and lets them manage socie
 - **Export:** Downloads the current active inventory as CSV.
 
 Inventory actions use operations authorization, server-side validation, database transactions, and stock-movement history.
+
+## Staff Roster
+
+Staff Roster is available to support staff for their own schedule and attendance, and to operational administrators for society-wide scheduling.
+
+- **Personal attendance:** Support staff can check in once and check out once for the current Asia/Kolkata day.
+- **Schedule view and export:** Staff see their own shifts; operational administrators see and can export the full roster.
+- **Shift management:** Operational administrators can assign active support staff and set a shift Active, On Leave, or Inactive.
+- **Scheduling safeguards:** The backend rejects overlapping active shifts and prevents conflicting shifts from being reactivated.
+
+Roster assignments, status changes, and attendance records are authorization-checked and persisted through operations endpoints.

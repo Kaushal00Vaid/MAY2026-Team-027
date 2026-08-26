@@ -300,20 +300,16 @@ def list_shifts(db, user):
     ]
 
 
-def create_shift(db, user, data):
-    ensure_ops(user)
-    staff = db.get(User, data.staff_id)
-    if not staff or not is_staff(staff):
-        raise HTTPException(status_code=422, detail="Shift user must be support staff.")
-    if data.start_time == data.end_time:
-        raise HTTPException(status_code=422, detail="Shift start and end cannot match.")
+def _ensure_no_shift_overlap(db, staff_id, start_time, end_time, days_mask, exclude_id=None):
     patterns = db.scalars(
         select(ShiftAssignment).where(
-            ShiftAssignment.staff_id == data.staff_id,
+            ShiftAssignment.staff_id == staff_id,
             ShiftAssignment.status == "active",
         )
     ).all()
     for old in patterns:
+        if exclude_id and old.id == exclude_id:
+            continue
 
         def ranges(start, end):
             start_min = start.hour * 60 + start.minute
@@ -327,12 +323,24 @@ def create_shift(db, user, data):
         overlaps = any(
             a < d and c < b
             for a, b in ranges(old.start_time, old.end_time)
-            for c, d in ranges(data.start_time, data.end_time)
+            for c, d in ranges(start_time, end_time)
         )
-        if old.days_mask & data.days_mask and overlaps:
+        if old.days_mask & days_mask and overlaps:
             raise HTTPException(
                 status_code=409, detail="This staff member has an overlapping shift."
             )
+
+
+def create_shift(db, user, data):
+    ensure_ops(user)
+    staff = db.get(User, data.staff_id)
+    if not staff or not staff.is_active or not is_staff(staff):
+        raise HTTPException(status_code=422, detail="Shift user must be active support staff.")
+    if data.start_time == data.end_time:
+        raise HTTPException(status_code=422, detail="Shift start and end cannot match.")
+    _ensure_no_shift_overlap(
+        db, data.staff_id, data.start_time, data.end_time, data.days_mask
+    )
     item = ShiftAssignment(**data.model_dump(), assigned_by=user.user_id)
     db.add(item)
     db.flush()
@@ -347,6 +355,15 @@ def shift_status(db, user, shift_id, data):
     item = db.get(ShiftAssignment, shift_id)
     if not item:
         raise HTTPException(status_code=404, detail="Shift not found.")
+    if data.status == "active":
+        _ensure_no_shift_overlap(
+            db,
+            item.staff_id,
+            item.start_time,
+            item.end_time,
+            item.days_mask,
+            exclude_id=item.id,
+        )
     item.status = data.status
     add_notifications(db, [item.staff_id], event_type="roster.changed", title="Shift status updated", message=f"Your shift is now {item.status.replace('_', ' ')}.", resource_type="shift", resource_id=item.id, payload={"scope": "roster", "status": item.status})
     db.commit()

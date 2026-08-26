@@ -14,6 +14,9 @@ Run from backend/:
 """
 
 
+from app.db.database import get_db
+from app.db.models.user import User
+from app.main import app
 from tests.conftest import STAFF_ID
 
 
@@ -249,6 +252,16 @@ class TestShifts:
         resp = _create_shift(staff_client)
         assert resp.status_code == 403
 
+    def test_create_shift_for_inactive_staff_returns_422(self, admin_client):
+        """TC-OPS-27a: inactive support staff cannot receive a new shift."""
+        session = next(app.dependency_overrides[get_db]())
+        session.get(User, STAFF_ID).is_active = False
+        session.commit()
+
+        resp = _create_shift(admin_client)
+        assert resp.status_code == 422
+        assert "active support staff" in resp.json()["detail"]
+
     def test_create_shift_invalid_days_mask_returns_422(self, admin_client):
         """TC-OPS-28: POST shift with days_mask=128 (out of range) → 422."""
         resp = _create_shift(admin_client, days_mask=128)
@@ -275,6 +288,30 @@ class TestShifts:
             json={"status": "inactive"},
         )
         assert resp.status_code == 404
+
+    def test_reactivating_overlapping_shift_returns_409(self, admin_client):
+        """TC-OPS-31a: an on-leave shift cannot bypass overlap checks on reactivation."""
+        first_id = _create_shift(admin_client).json()["id"]
+        assert admin_client.patch(
+            f"/api/v1/operations/shifts/{first_id}/status",
+            json={"status": "on_leave"},
+        ).status_code == 200
+        second_id = _create_shift(admin_client).json()["id"]
+
+        resp = admin_client.patch(
+            f"/api/v1/operations/shifts/{first_id}/status",
+            json={"status": "active"},
+        )
+        assert resp.status_code == 409
+
+        assert admin_client.patch(
+            f"/api/v1/operations/shifts/{second_id}/status",
+            json={"status": "on_leave"},
+        ).status_code == 200
+        assert admin_client.patch(
+            f"/api/v1/operations/shifts/{first_id}/status",
+            json={"status": "active"},
+        ).status_code == 200
 
     def test_shifts_export_returns_csv(self, admin_client):
         """TC-OPS-32: GET /api/v1/operations/shifts/export → CSV."""
