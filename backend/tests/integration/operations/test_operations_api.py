@@ -296,7 +296,7 @@ class TestShifts:
             f"/api/v1/operations/shifts/{first_id}/status",
             json={"status": "on_leave"},
         ).status_code == 200
-        second_id = _create_shift(admin_client).json()["id"]
+        second_id = _create_shift(admin_client, days_mask=63).json()["id"]
 
         resp = admin_client.patch(
             f"/api/v1/operations/shifts/{first_id}/status",
