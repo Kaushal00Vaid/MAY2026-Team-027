@@ -36,6 +36,7 @@ export default function StaffMaintenance() {
   const [checkedSteps, setCheckedSteps] = useState({});
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [dutySaving, setDutySaving] = useState(false);
   const [error, setError] = useState("");
   const [toastMessage, setToastMessage] = useState("");
 
@@ -49,9 +50,13 @@ export default function StaffMaintenance() {
       ]);
       setTasks(taskData.items);
       setDutyStatusValue(dutyData.on_duty);
-      setSelectedTask((current) =>
-        taskData.items.find((item) => item.id === current?.id) || taskData.items[0] || null,
-      );
+      const nextTask = taskData.items.find((item) => item.id === selectedTask?.id) || taskData.items[0] || null;
+      if (nextTask?.id !== selectedTask?.id) {
+        setNotes(nextTask?.resolution_notes || "");
+        setPhoto(null);
+        setCheckedSteps({});
+      }
+      setSelectedTask(nextTask);
     } catch (requestError) {
       setError(errorMessage(requestError, "Unable to load assigned maintenance tasks."));
     } finally {
@@ -76,13 +81,18 @@ export default function StaffMaintenance() {
   };
 
   const toggleDuty = async () => {
+    if (dutySaving) return;
+    const previous = dutyStatus;
     const next = !dutyStatus;
+    setDutySaving(true);
     setDutyStatusValue(next);
     try {
       await setDutyState(next);
     } catch (requestError) {
-      setDutyStatusValue(!next);
+      setDutyStatusValue(previous);
       setError(errorMessage(requestError, "Unable to update duty status."));
+    } finally {
+      setDutySaving(false);
     }
   };
 
@@ -112,13 +122,14 @@ export default function StaffMaintenance() {
   return (
     <DashboardLayout sidebarItems={getGateSidebarItems("/gate/maintenance")} userRole="Maintenance Dept." userName={userName}>
       <div className="flex flex-col h-[calc(100vh-4rem)]">
+        {error && <div role="alert" className="m-4 mb-0 p-3 bg-red-50 text-red-700 rounded-xl flex items-center justify-between gap-4"><span>{error}</span><button type="button" onClick={() => loadTasks(filter)} className="font-bold text-sm">Retry</button></div>}
         <div className="bg-white px-6 py-4 border-b border-gray-100 flex items-center justify-between shrink-0 shadow-sm z-10 relative">
           <h1 className="text-xl font-extrabold text-[#0f2336] flex items-center gap-3">Task Queue
             <span className="text-xs font-bold bg-gray-100 text-gray-500 px-2 py-1 rounded-md">{tasks.length} Pending</span>
           </h1>
           <div className="flex items-center gap-3">
             <span className="text-sm font-bold text-gray-600">Duty Status</span>
-            <button type="button" aria-label="Toggle duty status" onClick={toggleDuty} className={`w-12 h-6 rounded-full transition-colors relative flex items-center ${dutyStatus ? "bg-blue-600" : "bg-gray-300"}`}>
+            <button type="button" aria-label="Toggle duty status" disabled={dutySaving} onClick={toggleDuty} className={`w-12 h-6 rounded-full disabled:opacity-50 transition-colors relative flex items-center ${dutyStatus ? "bg-blue-600" : "bg-gray-300"}`}>
               <div className={`w-5 h-5 bg-white rounded-full absolute shadow-sm transition-transform ${dutyStatus ? "translate-x-6" : "translate-x-1"}`} />
             </button>
           </div>
@@ -133,13 +144,13 @@ export default function StaffMaintenance() {
             </div>
             <div className="flex-1 overflow-y-auto p-4 space-y-3">
               {loading && <div className="text-sm text-gray-500 p-4">Loading assigned tasks…</div>}
-              {!loading && tasks.length === 0 && <div className="text-sm text-gray-500 p-4">No assigned tasks. You are all caught up!</div>}
+              {!loading && !error && tasks.length === 0 && <div className="text-sm text-gray-500 p-4">No assigned tasks. You are all caught up!</div>}
               {tasks.map((task) => {
                 const type = taskType(task);
                 return <button type="button" key={task.id} onClick={() => selectTask(task)} className={`w-full text-left p-4 rounded-2xl border-2 transition-all ${selectedTask?.id === task.id ? (type === "Urgent" ? "border-orange-500 bg-orange-50/30" : "border-[#0f2336] bg-blue-50/30") : "border-transparent bg-gray-50 hover:bg-gray-100"}`}>
                   <div className="flex justify-between mb-2"><span className={`text-[10px] font-bold px-2 py-0.5 rounded uppercase ${type === "Urgent" ? "bg-orange-500 text-white" : "bg-amber-400 text-[#0f2336]"}`}>{type}</span><span className="text-xs font-mono font-bold text-gray-400">TK-{task.complaint_id}</span></div>
                   <h3 className="font-bold text-sm mb-2 text-[#0f2336]">{task.title}</h3>
-                  <div className="text-xs text-gray-500 space-y-1"><span className="flex gap-1"><MapPin size={12}/>{task.location || "Location not specified"}</span><span className="flex gap-1"><Clock size={12}/>{new Date(task.created_at).toLocaleString()}</span></div>
+                  <div className="text-xs text-gray-500 space-y-1"><span className="flex gap-1"><MapPin size={12}/>{task.location || "Location not specified"}</span><span className="flex gap-1"><Clock size={12}/>{new Date(task.created_at).toLocaleString("en-IN", { timeZone: "Asia/Kolkata" })}</span></div>
                 </button>;
               })}
             </div>
@@ -156,8 +167,8 @@ export default function StaffMaintenance() {
               <div className="bg-white p-6 rounded-3xl border border-gray-100 shadow-sm"><h3 className="font-bold text-[#0f2336] text-sm flex gap-2 mb-3"><AlertTriangle size={16} className="text-blue-500"/>Description</h3><p className="text-sm text-gray-600 leading-relaxed">{selectedTask.description}</p></div>
               <div className="bg-white p-6 rounded-3xl border border-gray-100 shadow-sm"><h3 className="font-bold text-[#0f2336] text-sm flex gap-2 mb-4"><CheckCircle2 size={16} className="text-emerald-500"/>Required Steps</h3><div className="space-y-3">{selectedTask.instructions.map((step, index) => <label key={step} className="flex gap-3 p-3 rounded-xl border bg-gray-50 cursor-pointer"><input type="checkbox" checked={Boolean(checkedSteps[index])} onChange={(event) => setCheckedSteps((current) => ({...current, [index]: event.target.checked}))}/><span className="text-sm text-gray-700 font-medium">{step}</span></label>)}</div></div>
               <div className="bg-white p-6 rounded-3xl border border-gray-100 shadow-sm"><h3 className="font-bold text-[#0f2336] text-sm mb-3">Technician Notes</h3><textarea value={notes} onChange={(event) => setNotes(event.target.value)} className="w-full h-32 p-4 bg-gray-50 border border-gray-200 rounded-2xl text-sm" placeholder="Add diagnosis, parts used, and repair details…"/></div>
-              <div className="bg-white p-6 rounded-3xl border border-gray-100 shadow-sm"><h3 className="font-bold text-[#0f2336] text-sm flex gap-2 mb-2"><Camera size={16} className="text-purple-500"/>Proof of Work</h3><p className="text-xs text-gray-500 mb-4">Upload at least one photo before closing the task.</p><input ref={fileRef} type="file" accept="image/jpeg,image/png,image/webp" className="hidden" onChange={(event) => setPhoto(event.target.files?.[0] || null)}/><button type="button" onClick={() => fileRef.current?.click()} className={`w-full border-2 border-dashed ${photo ? "border-emerald-400 bg-emerald-50/30" : "border-gray-300 bg-gray-50/50"} rounded-2xl p-8 flex flex-col items-center`}><ImageIcon size={20}/><span className="text-sm font-bold mt-3">{photo?.name || "Tap to take photo or upload"}</span></button>{error && <p className="mt-4 text-sm font-semibold text-red-600">{error}</p>}<button disabled={saving} onClick={handleCompleteTask} className="w-full mt-6 py-4 bg-[#0f2336] disabled:opacity-50 text-white text-sm font-bold rounded-2xl flex justify-center gap-2"><CheckCircle2 size={18}/>{saving ? "Completing…" : "Mark Task Complete"}</button></div>
-            </div> : !loading && <div className="flex items-center justify-center h-full text-gray-400 font-semibold">No tasks available. You are all caught up!</div>}
+              <div className="bg-white p-6 rounded-3xl border border-gray-100 shadow-sm"><h3 className="font-bold text-[#0f2336] text-sm flex gap-2 mb-2"><Camera size={16} className="text-purple-500"/>Proof of Work</h3><p className="text-xs text-gray-500 mb-4">Upload at least one photo before closing the task.</p><input ref={fileRef} type="file" accept="image/jpeg,image/png,image/webp" className="hidden" onChange={(event) => setPhoto(event.target.files?.[0] || null)}/><button type="button" onClick={() => fileRef.current?.click()} className={`w-full border-2 border-dashed ${photo ? "border-emerald-400 bg-emerald-50/30" : "border-gray-300 bg-gray-50/50"} rounded-2xl p-8 flex flex-col items-center`}><ImageIcon size={20}/><span className="text-sm font-bold mt-3">{photo?.name || "Tap to take photo or upload"}</span></button><button disabled={saving} onClick={handleCompleteTask} className="w-full mt-6 py-4 bg-[#0f2336] disabled:opacity-50 text-white text-sm font-bold rounded-2xl flex justify-center gap-2"><CheckCircle2 size={18}/>{saving ? "Completing…" : "Mark Task Complete"}</button></div>
+            </div> : !loading && !error && <div className="flex items-center justify-center h-full text-gray-400 font-semibold">No tasks available. You are all caught up!</div>}
           </div>
         </div>
       </div>

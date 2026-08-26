@@ -25,3 +25,14 @@ Entry Control is available to authenticated support staff whose staff designatio
 - **Live feed:** Shows recent access activity in Asia/Kolkata.
 
 Gate mutations are protected by backend Security-staff permissions, row/state validation, and resident ownership rules.
+
+## Maintenance
+
+Maintenance shows unresolved work orders assigned to the authenticated support staff member.
+
+- **Task queue:** Filters assigned work by urgency, plumbing, or electrical category and shows society-local timestamps.
+- **Duty status:** Persists whether the staff member is currently available for assignments.
+- **Completion:** Requires every assigned step, technician notes, and a validated proof-of-work image before resolving the work order and linked complaint.
+- **Realtime refresh:** Updates assignments while keeping draft data scoped to the same task only.
+
+Completion records status history, resolution evidence, complaint state, and resident notification in one backend transaction.
