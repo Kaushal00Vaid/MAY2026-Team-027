@@ -3,10 +3,18 @@ import { ArrowRight, CheckCircle2, Loader2, X } from "lucide-react";
 import DashboardLayout from "@/components/layout/DashboardLayout";
 import { useRealtimeRefresh } from "@/features/realtime/useRealtimeRefresh";
 import { getResidentSidebarItems } from "@/components/resident/ResidentSidebarConfig";
-import { amenitiesError, cancelBooking, createBooking, getAvailability, listAmenities, listBookings, localDate } from "@/features/amenities/api";
+import { amenitiesError, cancelBooking, createBooking, getAvailability, istDateTime, istTime, listAmenities, listBookings, localDate } from "@/features/amenities/api";
 
 const fallbackImage = "https://images.unsplash.com/photo-1540497077202-7c8a3999166f?q=80&w=1470&auto=format&fit=crop";
-const dayStart = (offset = 0) => { const value = new Date(); value.setDate(value.getDate() + offset); value.setHours(0, 0, 0, 0); return value; };
+const IST = "Asia/Kolkata";
+const dayStart = (offset = 0) => {
+  const parts = Object.fromEntries(new Intl.DateTimeFormat("en-CA", {
+    timeZone: IST, year: "numeric", month: "2-digit", day: "2-digit",
+  }).formatToParts(new Date()).filter(({ type }) => type !== "literal").map(({ type, value }) => [type, value]));
+  const value = new Date(`${parts.year}-${parts.month}-${parts.day}T00:00:00+05:30`);
+  value.setUTCDate(value.getUTCDate() + offset);
+  return value;
+};
 
 export default function ResidentAmenities() {
   const [amenities, setAmenities] = useState([]); const [selectedId, setSelectedId] = useState(null);
@@ -21,9 +29,9 @@ export default function ResidentAmenities() {
   useEffect(() => { if (!toast) return undefined; const timer = setTimeout(() => setToast(""), 3500); return () => clearTimeout(timer); }, [toast]);
   const selected = amenities.find((item) => item.id === selectedId);
   const days = useMemo(() => { const result = []; for (let i = 0; i < 7; i += 1) { const date = dayStart((weekOffset * 7) + i); result.push(date); } return result; }, [weekOffset]);
-  const times = useMemo(() => [...new Set((availability?.slots || []).map((slot) => new Date(slot.starts_at).toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" })))].slice(0, 6), [availability]);
-  const slotAt = (day, time) => availability?.slots.find((slot) => localDate(slot.starts_at) === localDate(day) && new Date(slot.starts_at).toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" }) === time);
-  const confirm = async () => { if (!selectedSlot || saving) return; setSaving(true); setError(""); try { const { data } = await createBooking({ amenity_id: selectedId, starts_at: selectedSlot.starts_at, purpose }, crypto.randomUUID()); setSelectedSlot(null); setToast(`${data.amenity_name} booked successfully.`); await load(); } catch (e) { setError(amenitiesError(e, "Unable to confirm booking.")); } finally { setSaving(false); } };
+  const times = useMemo(() => [...new Set((availability?.slots || []).map((slot) => istTime(slot.starts_at)))].slice(0, 6), [availability]);
+  const slotAt = (day, time) => availability?.slots.find((slot) => localDate(slot.starts_at) === localDate(day) && istTime(slot.starts_at) === time);
+  const confirm = async () => { if (!selectedSlot || saving) return; setSaving(true); setError(""); try { const { data } = await createBooking({ amenity_id: selectedId, starts_at: selectedSlot.starts_at, purpose }, crypto.randomUUID()); setSelectedSlot(null); setToast(`${data.amenity_name} booked successfully for ${istDateTime(selectedSlot.starts_at)}.`); await load(); } catch (e) { setError(amenitiesError(e, "Unable to confirm booking.")); } finally { setSaving(false); } };
   const cancel = async (id) => { setSaving(true); setError(""); try { await cancelBooking(id); setToast("Booking cancelled."); await load(); } catch (e) { setError(amenitiesError(e, "Unable to cancel booking.")); } finally { setSaving(false); } };
 
   return <DashboardLayout sidebarItems={getResidentSidebarItems("/resident/amenities")} userRole="Resident Portal"><div className="p-6 md:p-8 max-w-7xl mx-auto animate-in fade-in duration-500">
