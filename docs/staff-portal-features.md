@@ -46,3 +46,14 @@ Grounds & Operations is available to authenticated support staff and operational
 - **Inventory snapshot:** Shows active inventory items, with a clear empty state when none are configured.
 
 Task state changes and inventory data are protected by operations role checks and persisted through the operations endpoints.
+
+## Inventory
+
+Inventory is available to authenticated support staff and lets them manage society supplies.
+
+- **Inventory list:** Supports search, low-stock status, society-local update timestamps, and an empty state.
+- **Add item:** Adds a uniquely named item with a unit, opening quantity, reorder threshold, and optional active vendor.
+- **Stock movement:** Records an immutable received, consumed, or positive adjustment entry with a required reason. The backend prevents stock from becoming negative.
+- **Export:** Downloads the current active inventory as CSV.
+
+Inventory actions use operations authorization, server-side validation, database transactions, and stock-movement history.
