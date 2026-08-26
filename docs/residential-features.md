@@ -60,3 +60,14 @@ Resident Analytics is the read-only summary embedded in the resident Dashboard. 
 - **Notices:** Shows active notices targeted to the resident, including the notice creator when available.
 
 The data is served by `GET /api/v1/analytics/resident`; administrative and staff roles cannot access this endpoint.
+
+## Amenities
+
+Amenities is available to authenticated flat owners and rental residents.
+
+- **Facility list:** Shows active amenities, capacity, operating details, and the selected facility's availability.
+- **Availability:** Shows a seven-day society-local calendar with open and occupied slots.
+- **Booking:** Residents select a future slot and purpose; the backend enforces overlap, household quota, operating hours, and idempotency rules.
+- **My Bookings:** Shows the resident's bookings and allows cancellation of eligible confirmed bookings.
+
+The page uses the protected amenities and booking endpoints. Booking dates and times are displayed in Asia/Kolkata regardless of browser timezone.
