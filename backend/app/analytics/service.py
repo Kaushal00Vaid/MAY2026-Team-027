@@ -591,7 +591,10 @@ def get_staff_analytics(db: Session) -> StaffAnalyticsResponse:
         AccessLog.occurred_at >= start_of_today,
         AccessLog.occurred_at < end_of_today,
     ).count()
-    pending_approvals = db.query(Visitor).filter(Visitor.status == 'pending').count()
+    pending_approvals = db.query(Visitor).filter(
+        Visitor.status == "pending",
+        Visitor.expires_at > now,
+    ).count()
     gate_activity = GateActivityAnalytics(
         total_entries_today=total_entries_today,
         pending_approvals=pending_approvals

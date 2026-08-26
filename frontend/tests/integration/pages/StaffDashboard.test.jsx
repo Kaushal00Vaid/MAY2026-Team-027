@@ -61,8 +61,31 @@ describe("StaffDashboard", () => {
     getStaffAnalytics.mockReset().mockRejectedValueOnce(new Error("network")).mockResolvedValueOnce({ data: analytics });
     render(<StaffDashboard />);
     expect((await screen.findByRole("alert")).textContent).toContain("Unable to load dashboard data");
+    expect(screen.queryByRole("button", { name: /Gate Activity/i })).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "Retry" }));
     expect(await screen.findByText("Independence Day")).toBeTruthy();
     expect(getStaffAnalytics).toHaveBeenCalledTimes(2);
+  });
+
+  it("formats event times in the society timezone", async () => {
+    const formatter = vi.spyOn(Date.prototype, "toLocaleDateString");
+    render(<StaffDashboard />);
+    await screen.findByText("Independence Day");
+
+    expect(formatter).toHaveBeenCalledWith("en-IN", expect.objectContaining({
+      timeZone: "Asia/Kolkata",
+    }));
+    formatter.mockRestore();
+  });
+
+  it("does not render a participant avatar when an event has no RSVPs", async () => {
+    getStaffAnalytics.mockResolvedValueOnce({
+      data: { ...analytics, events: [{ ...analytics.events[0], rsvp_count: 0 }] },
+    });
+    render(<StaffDashboard />);
+    await screen.findByText("Independence Day");
+
+    expect(screen.queryByLabelText("Confirmed guest")).toBeNull();
+    expect(screen.getByText("0 Confirmed Guests")).toBeTruthy();
   });
 });

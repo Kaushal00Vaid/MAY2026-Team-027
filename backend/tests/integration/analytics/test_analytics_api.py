@@ -20,6 +20,7 @@ from app.community.models import CommunityEvent, Notice
 from app.db.models.user import User
 from app.db.database import get_db
 from app.main import app
+from app.security.models import Visitor
 
 
 
@@ -224,6 +225,35 @@ class TestStaffAnalytics:
         resp = staff_client.get("/api/v1/analytics/staff")
         assert resp.status_code == 200
         assert isinstance(resp.json(), dict)
+
+    def test_pending_approvals_exclude_expired_requests(self, staff_client):
+        before = staff_client.get("/api/v1/analytics/staff")
+        assert before.status_code == 200
+        initial_count = before.json()["gate_activity"]["pending_approvals"]
+        session = next(app.dependency_overrides[get_db]())
+        current_time = datetime.now(timezone.utc)
+        session.add_all([
+            Visitor(
+                resident_id=9_000_001,
+                visitor_name="Active dashboard visitor",
+                purpose="Delivery",
+                status="pending",
+                expires_at=current_time + timedelta(minutes=10),
+            ),
+            Visitor(
+                resident_id=9_000_001,
+                visitor_name="Expired dashboard visitor",
+                purpose="Delivery",
+                status="pending",
+                expires_at=current_time - timedelta(minutes=10),
+            ),
+        ])
+        session.commit()
+
+        response = staff_client.get("/api/v1/analytics/staff")
+
+        assert response.status_code == 200
+        assert response.json()["gate_activity"]["pending_approvals"] == initial_count + 1
 
 
 class TestAdvancedAnalytics:
