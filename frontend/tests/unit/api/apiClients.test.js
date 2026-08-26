@@ -160,6 +160,14 @@ describe("community, operations, security, and realtime API clients", () => {
     expect(http.get).toHaveBeenCalledWith("/api/v1/security/access-logs", { params: { limit: 20 } });
   });
 
+  it("loads every visitor page for operational queues", async () => {
+    http.get.mockResolvedValueOnce({ data: { items: Array.from({ length: 100 }, (_, id) => ({ id })), total: 101 } }).mockResolvedValueOnce({ data: { items: [{ id: 101 }], total: 101 } });
+    const items = await security.listAllVisitors({ status: "pending" });
+    expect(items).toHaveLength(101);
+    expect(http.get).toHaveBeenNthCalledWith(1, "/api/v1/security/visitors", { params: { status: "pending", page: 1, page_size: 100 } });
+    expect(http.get).toHaveBeenNthCalledWith(2, "/api/v1/security/visitors", { params: { status: "pending", page: 2, page_size: 100 } });
+  });
+
   it("maps websocket-ticket and notification operations", () => {
     realtime.createWebSocketTicket(); realtime.getNotifications({ unread_only: true });
     realtime.markNotificationRead(5); realtime.markAllNotificationsRead();

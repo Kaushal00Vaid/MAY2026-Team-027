@@ -13,13 +13,13 @@ function Destination({ label }) {
   return <p>{label}:{location.state?.from?.pathname || "none"}</p>;
 }
 
-function renderRoute() {
+function renderRoute(protectedProps = {}) {
   return render(
     <MemoryRouter initialEntries={["/admin"]}>
       <Routes>
         <Route path="/signin" element={<Destination label="signin"/>}/>
         <Route path="/unauthorized" element={<Destination label="unauthorized"/>}/>
-        <Route path="/admin" element={<ProtectedRoute allowedRoles={["admin"]}><p>admin content</p></ProtectedRoute>}/>
+        <Route path="/admin" element={<ProtectedRoute allowedRoles={["admin"]} {...protectedProps}><p>admin content</p></ProtectedRoute>}/>
       </Routes>
     </MemoryRouter>,
   );
@@ -49,6 +49,16 @@ describe("ProtectedRoute", () => {
   it("renders protected content for an allowed role", () => {
     authState = { isLoading: false, isAuthenticated: true, user: { roles: ["admin"] } };
     renderRoute();
+    expect(screen.getByText("admin content")).toBeTruthy();
+  });
+
+  it("enforces and normalizes an allowed staff type", () => {
+    authState = { isLoading: false, isAuthenticated: true, user: { roles: ["admin"], staff_type: "Maintenance" } };
+    const view = renderRoute({ allowedStaffTypes: ["security"] });
+    expect(screen.getByText("unauthorized:none")).toBeTruthy();
+    view.unmount();
+    authState = { isLoading: false, isAuthenticated: true, user: { roles: ["admin"], staff_type: " Security " } };
+    renderRoute({ allowedStaffTypes: ["security"] });
     expect(screen.getByText("admin content")).toBeTruthy();
   });
 });
