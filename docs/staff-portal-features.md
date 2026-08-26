@@ -36,3 +36,13 @@ Maintenance shows unresolved work orders assigned to the authenticated support s
 - **Realtime refresh:** Updates assignments while keeping draft data scoped to the same task only.
 
 Completion records status history, resolution evidence, complaint state, and resident notification in one backend transaction.
+
+## Grounds & Operations
+
+Grounds & Operations is available to authenticated support staff and operational administrators.
+
+- **Zone map:** Highlights displayed society zones when they have active operational tasks.
+- **Daily tasks:** Shows the signed-in staff member’s tasks and supports permitted pending → in-progress → completed transitions; completion requires notes.
+- **Inventory snapshot:** Shows active inventory items, with a clear empty state when none are configured.
+
+Task state changes and inventory data are protected by operations role checks and persisted through the operations endpoints.
