@@ -223,7 +223,7 @@ def get_admin_analytics(db: Session, months: int = 6) -> AdminAnalyticsResponse:
     
     sla_alerts = []
     for c in overdue_complaints:
-        diff_mins = int((now - c.sla_deadline).total_seconds() / 60) if c.sla_deadline else 0
+        diff_mins = int((now - _as_utc(c.sla_deadline)).total_seconds() / 60) if c.sla_deadline else 0
         sla_alerts.append(SlaAlert(
             ticket_id=f"#TK-{c.id}",
             title=c.title or "Complaint",

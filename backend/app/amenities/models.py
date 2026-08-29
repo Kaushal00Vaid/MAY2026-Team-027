@@ -67,7 +67,7 @@ class AmenityBooking(Base):
             where=text("status = 'confirmed'"),
             using="gist",
             name="excl_confirmed_amenity_booking_overlap",
-        ),
+        ).ddl_if(dialect="postgresql"),
     )
 
     id = Column(BigInteger, primary_key=True, autoincrement=True)

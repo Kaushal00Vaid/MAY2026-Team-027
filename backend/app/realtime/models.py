@@ -1,4 +1,4 @@
-from sqlalchemy import BigInteger, Boolean, Column, DateTime, ForeignKey, Index, String, Text
+from sqlalchemy import BigInteger, Boolean, Column, DateTime, ForeignKey, Index, JSON, String, Text
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.sql import func
 
@@ -14,7 +14,7 @@ class Notification(Base):
     message = Column(Text, nullable=False)
     resource_type = Column(String(50), nullable=True)
     resource_id = Column(String(80), nullable=True)
-    payload = Column(JSONB, nullable=False, server_default="{}")
+    payload = Column(JSON().with_variant(JSONB, "postgresql"), nullable=False, server_default="{}")
     is_read = Column(Boolean, nullable=False, server_default="false")
     read_at = Column(DateTime(timezone=True), nullable=True)
     created_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())

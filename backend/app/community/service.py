@@ -1,5 +1,4 @@
 from datetime import datetime, timezone
-
 from fastapi import HTTPException
 from sqlalchemy import and_, func, or_, select
 from sqlalchemy.exc import IntegrityError
@@ -28,6 +27,11 @@ from app.realtime.service import add_notifications
 
 def _now() -> datetime:
     return datetime.now(timezone.utc)
+
+
+def _as_utc(value: datetime) -> datetime:
+    """SQLite drops tzinfo; persisted application timestamps are stored in UTC."""
+    return value if value.tzinfo else value.replace(tzinfo=timezone.utc)
 
 
 def _notice_dict(notice: Notice, is_read: bool = False) -> dict:
@@ -71,7 +75,7 @@ def _notice_filters(user: User) -> list:
 
 def create_notice(db: Session, user: User, data: NoticeCreate) -> dict:
     ensure_operational(user)
-    if data.expires_at and data.expires_at <= _now():
+    if data.expires_at and _as_utc(data.expires_at) <= _now():
         raise HTTPException(status_code=422, detail="Notice expiry must be in the future.")
     recipients_query = (
         select(User)
@@ -154,7 +158,7 @@ def list_events(db: Session, user: User) -> list[dict]:
 def rsvp_event(db: Session, user: User, event_id: int, status: str) -> dict:
     ensure_community_member(user)
     event = db.scalar(select(CommunityEvent).where(CommunityEvent.id == event_id, CommunityEvent.is_active.is_(True)).with_for_update())
-    if not event or event.ends_at <= _now():
+    if not event or _as_utc(event.ends_at) <= _now():
         raise HTTPException(status_code=404, detail="Upcoming event not found.")
     rsvp = db.scalar(select(EventRsvp).where(EventRsvp.event_id == event_id, EventRsvp.user_id == user.user_id))
     if status == "going" and event.capacity:
@@ -181,7 +185,7 @@ def list_volunteers(db: Session, user: User) -> list[dict]:
 def signup_volunteer(db: Session, user: User, opportunity_id: int) -> dict:
     ensure_community_member(user)
     item = db.scalar(select(VolunteerOpportunity).where(VolunteerOpportunity.id == opportunity_id, VolunteerOpportunity.is_active.is_(True)).with_for_update())
-    if not item or (item.closes_at and item.closes_at <= _now()):
+    if not item or (item.closes_at and _as_utc(item.closes_at) <= _now()):
         raise HTTPException(status_code=404, detail="Volunteer opportunity not found.")
     existing = db.scalar(select(VolunteerSignup).where(VolunteerSignup.opportunity_id == opportunity_id, VolunteerSignup.user_id == user.user_id))
     count = db.scalar(select(func.count(VolunteerSignup.id)).where(VolunteerSignup.opportunity_id == opportunity_id)) or 0
@@ -203,7 +207,7 @@ def withdraw_volunteer(db: Session, user: User, opportunity_id: int) -> dict:
         )
         .with_for_update()
     )
-    if not item or (item.closes_at and item.closes_at <= _now()):
+    if not item or (item.closes_at and _as_utc(item.closes_at) <= _now()):
         raise HTTPException(status_code=404, detail="Volunteer opportunity not found.")
     signup = db.scalar(select(VolunteerSignup).where(VolunteerSignup.opportunity_id == opportunity_id, VolunteerSignup.user_id == user.user_id))
     if signup:
@@ -218,7 +222,14 @@ def withdraw_volunteer(db: Session, user: User, opportunity_id: int) -> dict:
 
 def active_poll(db: Session, user: User) -> dict | None:
     ensure_community_member(user)
-    poll = db.scalar(select(Poll).where(Poll.is_active.is_(True), Poll.starts_at <= _now(), Poll.ends_at > _now()).order_by(Poll.ends_at).limit(1))
+    now = _now()
+    polls = db.scalars(
+        select(Poll).where(Poll.is_active.is_(True)).order_by(Poll.ends_at)
+    ).all()
+    poll = next(
+        (item for item in polls if _as_utc(item.starts_at) <= now < _as_utc(item.ends_at)),
+        None,
+    )
     if not poll:
         return None
     options = list(db.scalars(select(PollOption).where(PollOption.poll_id == poll.id).order_by(PollOption.display_order, PollOption.id)).all())
@@ -233,15 +244,9 @@ def create_poll(db: Session, user: User, data: PollCreate) -> dict:
     now = _now()
     if data.ends_at <= now:
         raise HTTPException(status_code=422, detail="Poll end time must be in the future.")
-    existing = db.scalar(
-        select(Poll).where(
-            Poll.is_active.is_(True),
-            Poll.starts_at <= now,
-            Poll.ends_at > now,
-        ).with_for_update()
-    )
-    if existing:
-        existing.is_active = False
+    for existing in db.scalars(select(Poll).where(Poll.is_active.is_(True)).with_for_update()):
+        if _as_utc(existing.starts_at) <= now < _as_utc(existing.ends_at):
+            existing.is_active = False
     poll = Poll(
         question=data.question,
         description=data.description,
@@ -262,7 +267,7 @@ def create_poll(db: Session, user: User, data: PollCreate) -> dict:
 def vote(db: Session, user: User, poll_id: int, option_id: int) -> dict:
     ensure_community_member(user)
     poll = db.scalar(select(Poll).where(Poll.id == poll_id).with_for_update())
-    if not poll or not poll.is_active or poll.starts_at > _now() or poll.ends_at <= _now():
+    if not poll or not poll.is_active or _as_utc(poll.starts_at) > _now() or _as_utc(poll.ends_at) <= _now():
         raise HTTPException(status_code=409, detail="This poll is not accepting votes.")
     if db.scalar(select(PollVote.id).where(PollVote.poll_id == poll_id, PollVote.user_id == user.user_id)):
         raise HTTPException(status_code=409, detail="Poll votes are final and cannot be changed.")

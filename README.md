@@ -116,14 +116,21 @@ MAY2026-Team-027/
 | Python     | 3.12+             | `python --version` or `py --version` |
 | Node.js    | 20.19+ or 22.12+  | `node --version`                     |
 | npm        | 9+                | `npm --version`                      |
-| PostgreSQL | 14+               | `psql --version`                     |
+| SQLite     | Bundled with Python | `python -c "import sqlite3; print(sqlite3.sqlite_version)"` |
+| PostgreSQL | 14+ (optional)   | `psql --version`                     |
 | Git        | Current stable    | `git --version`                      |
 
 The commands below assume the repository has been cloned and the terminal is at
 the repository root. `uv` is optional; the documented commands use standard
 Python and `pip` so they work on a clean installation.
 
-### 1. Create the PostgreSQL database
+### 1. Choose a database
+
+SQLite is the default for local development. It starts as a file in `backend/`
+and does not need a database server. PostgreSQL remains supported for shared,
+staging, and production environments.
+
+### Optional: create a PostgreSQL database
 
 Start PostgreSQL, then create a database and user. Existing PostgreSQL credentials
 may be used instead.
@@ -180,7 +187,11 @@ the environment file with `copy .env.example .env`.
 Edit `backend/.env` and set at least:
 
 ```env
-DATABASE_URL=postgresql://societysync:change-this-password@localhost:5432/societysync
+# Default local database (no server required)
+DATABASE_URL=sqlite:///./societysync_local.db
+
+# PostgreSQL alternative
+# DATABASE_URL=postgresql://societysync:change-this-password@localhost:5432/societysync
 JWT_SECRET=replace-with-a-long-random-secret
 FRONTEND_URL=http://localhost:5173
 ENVIRONMENT=development
@@ -196,16 +207,20 @@ AIPIPE_GEMINI_MODEL=gemini-2.5-flash-lite
 Keep `.env` private. Never place `AIPIPE_API_KEY`, database passwords, or JWT
 secrets in frontend variables or commit them to Git.
 
-Apply migrations and optionally load the demo data while the backend virtual
-environment is active:
+For SQLite, the API creates the local schema when it starts. Load demo data
+while the backend virtual environment is active:
+
+```bash
+python seed.py
+```
+
+For PostgreSQL, apply migrations before running the API or scheduler, then seed
+only if demo data is wanted:
 
 ```bash
 python -m alembic upgrade head
 python seed.py
 ```
-
-`python seed.py` is optional and intended for local/demo environments. Migrations
-must be applied before starting the API or scheduler.
 
 ### 3. Set up the frontend
 

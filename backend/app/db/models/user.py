@@ -34,9 +34,9 @@ class User(Base):
     emergency_contact = Column(String(20), nullable=True)
 
     # Status
-    is_active = Column(Boolean, nullable=False, server_default="true")
-    is_phone_verified = Column(Boolean, nullable=False, server_default="false")
-    is_profile_complete = Column(Boolean, nullable=False, server_default="false")
+    is_active = Column(Boolean, nullable=False, default=True, server_default="true")
+    is_phone_verified = Column(Boolean, nullable=False, default=False, server_default="false")
+    is_profile_complete = Column(Boolean, nullable=False, default=False, server_default="false")
 
     # Google OAuth
     google_id = Column(String(255), unique=True, index=True, nullable=True)

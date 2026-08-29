@@ -20,6 +20,10 @@ from app.security.permissions import (
     is_resident,
 )
 
+def _as_utc(value: datetime) -> datetime:
+    """SQLite removes tzinfo; application datetimes are persisted in UTC."""
+    return value if value.tzinfo else value.replace(tzinfo=timezone.utc)
+
 
 def now():
     return datetime.now(timezone.utc)
@@ -223,7 +227,7 @@ def decide(db, user, visitor_id, decision, version, note=None):
         raise HTTPException(
             status_code=409, detail="Visitor request changed; refresh and retry."
         )
-    if item.status != "pending" or item.expires_at <= now():
+    if item.status != "pending" or _as_utc(item.expires_at) <= now():
         raise HTTPException(
             status_code=409, detail="Visitor request is no longer pending."
         )
@@ -307,7 +311,7 @@ def pass_dict(item, pin=None):
         else "used"
         if item.used_at
         else "expired"
-        if item.valid_until <= now()
+        if _as_utc(item.valid_until) <= now()
         else "active"
     )
     return {
@@ -402,7 +406,7 @@ def verify_pin(db, user, pin):
         not item
         or item.revoked_at
         or item.used_at
-        or not (item.valid_from <= now() < item.valid_until)
+        or not (_as_utc(item.valid_from) <= now() < _as_utc(item.valid_until))
     ):
         raise HTTPException(
             status_code=404, detail="PIN is invalid, expired, revoked, or already used."

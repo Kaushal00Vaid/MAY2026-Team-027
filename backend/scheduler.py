@@ -1,23 +1,57 @@
 import logging
 import time
+import threading
+from collections import defaultdict
 from datetime import datetime, timedelta, timezone
 from typing import Callable
 from zoneinfo import ZoneInfo
 
 from apscheduler.events import EVENT_JOB_ERROR, EVENT_JOB_MISSED
 from apscheduler.schedulers.blocking import BlockingScheduler
-from sqlalchemy import text
+from sqlalchemy import func, select, text
 from sqlalchemy.orm import Session
 
 from app.amenities.models import AmenityBooking
+from app.community.models import Notice, NoticeDelivery
 from app.config import settings
 from app.db.database import SessionLocal
+from app.db.models.role import Role, RoleName, UserRole
+from app.db.models.user import User
 from app.finance.models import Invoice, InvoiceReminder
 from app.realtime.service import add_notifications
 from app.security.models import GuestPass, Visitor
 
 logger = logging.getLogger("societysync.scheduler")
 JobOperation = Callable[[Session, datetime], dict[str, int]]
+
+_JOB_LOCKS: dict[str, threading.Lock] = defaultdict(threading.Lock)
+_JOB_LOCKS_GUARD = threading.Lock()
+
+def _get_job_lock(job_name: str) -> threading.Lock:
+    with _JOB_LOCKS_GUARD:
+        return _JOB_LOCKS[job_name]
+
+
+def _uses_postgresql_advisory_lock(db: Session) -> bool:
+    """Keep cross-process PostgreSQL locking; use a process lock for SQLite."""
+    try:
+        return db.get_bind().dialect.name == "postgresql"
+    except AttributeError:
+        # Lightweight test doubles model the historical PostgreSQL behavior.
+        return True
+
+
+def _uses_sqlite(db: Session) -> bool:
+    """Identify SQLite sessions without imposing a dialect interface on test doubles."""
+    try:
+        return db.get_bind().dialect.name == "sqlite"
+    except AttributeError:
+        return False
+
+
+def _as_utc(value: datetime) -> datetime:
+    """SQLite returns timezone-naive values; app timestamps are persisted in UTC."""
+    return value if value.tzinfo else value.replace(tzinfo=timezone.utc)
 
 
 def _execute_locked(
@@ -29,52 +63,63 @@ def _execute_locked(
     retry_delay: float | None = None,
     sleeper=time.sleep,
 ) -> dict[str, int]:
-    """Run a job transaction with a PostgreSQL advisory lock and bounded retries."""
     factory = session_factory or SessionLocal
     max_attempts = attempts or settings.SCHEDULER_MAX_ATTEMPTS
     delay = (
         settings.SCHEDULER_RETRY_DELAY_SECONDS if retry_delay is None else retry_delay
     )
 
-    for attempt in range(1, max_attempts + 1):
-        db: Session = factory()
-        try:
-            acquired = db.scalar(
-                text("SELECT pg_try_advisory_xact_lock(hashtext(:job_name))"),
-                {"job_name": f"societysync:{job_name}"},
-            )
-            if not acquired:
-                db.rollback()
-                logger.warning("job_skipped_locked job=%s", job_name)
-                return {"skipped": 1}
+    job_lock = _get_job_lock(job_name)
+    acquired = job_lock.acquire(blocking=False)
+    if not acquired:
+        logger.warning("job_skipped_locked job=%s", job_name)
+        return {"skipped": 1}
 
-            started = time.monotonic()
-            result = operation(db, datetime.now(timezone.utc))
-            db.commit()
-            logger.info(
-                "job_succeeded job=%s attempt=%s duration_ms=%s result=%s",
-                job_name,
-                attempt,
-                round((time.monotonic() - started) * 1000),
-                result,
-            )
-            return result
-        except Exception:
-            db.rollback()
-            if attempt == max_attempts:
-                logger.exception("job_failed job=%s attempts=%s", job_name, attempt)
-                raise
-            logger.warning(
-                "job_retry job=%s attempt=%s", job_name, attempt, exc_info=True
-            )
-            sleeper(delay * (2 ** (attempt - 1)))
-        finally:
-            db.close()
+    try:
+        for attempt in range(1, max_attempts + 1):
+            db: Session = factory()
+            try:
+                if _uses_postgresql_advisory_lock(db):
+                    locked = db.scalar(
+                        text("SELECT pg_try_advisory_xact_lock(hashtext(:job_name))"),
+                        {"job_name": f"societysync:{job_name}"},
+                    )
+                    if not locked:
+                        db.rollback()
+                        logger.warning("job_skipped_locked job=%s", job_name)
+                        return {"skipped": 1}
+                started = time.monotonic()
+                result = operation(db, datetime.now(timezone.utc))
+                db.commit()
+                logger.info(
+                    "job_succeeded job=%s attempt=%s duration_ms=%s result=%s",
+                    job_name,
+                    attempt,
+                    round((time.monotonic() - started) * 1000),
+                    result,
+                )
+                return result
+            except Exception:
+                db.rollback()
+                if attempt == max_attempts:
+                    logger.exception("job_failed job=%s attempts=%s", job_name, attempt)
+                    raise
+                logger.warning(
+                    "job_retry job=%s attempt=%s", job_name, attempt, exc_info=True
+                )
+                sleeper(delay * (2 ** (attempt - 1)))
+            finally:
+                db.close()
+    finally:
+        job_lock.release()
 
     raise RuntimeError(f"Scheduled job {job_name} exhausted without a result")
 
 
 def _fanout_notices(db: Session, now: datetime) -> dict[str, int]:
+    if _uses_sqlite(db):
+        return _fanout_notices_sqlite(db, now)
+
     result = db.execute(
         text(
             """
@@ -103,6 +148,63 @@ def _fanout_notices(db: Session, now: datetime) -> dict[str, int]:
         {"delivered_at": now},
     )
     return {"deliveries_created": result.rowcount or 0}
+
+
+def _fanout_notices_sqlite(db: Session, now: datetime) -> dict[str, int]:
+    """Fan out notices without PostgreSQL's INSERT...SELECT primary-key semantics.
+
+    Older local SQLite files declared delivery IDs as BIGINT, which SQLite does
+    not auto-increment. Explicit IDs keep those databases usable while fresh
+    SQLite schemas use the same portable model data.
+    """
+    notices = db.scalars(select(Notice).where(Notice.is_active.is_(True))).all()
+    recipients = db.scalars(
+        select(User)
+        .join(UserRole, UserRole.user_id == User.user_id)
+        .join(Role, Role.role_id == UserRole.role_id)
+        .where(
+            User.is_active.is_(True),
+            Role.role_name.in_([RoleName.flat_owner, RoleName.resident_rental]),
+        )
+    ).all()
+    existing = set(
+        db.execute(select(NoticeDelivery.notice_id, NoticeDelivery.user_id)).all()
+    )
+    next_id = db.scalar(select(func.coalesce(func.max(NoticeDelivery.id), 0))) or 0
+    created = 0
+
+    for notice in notices:
+        if notice.expires_at and _as_utc(notice.expires_at) <= now:
+            continue
+        for recipient in recipients:
+            targeted = (
+                notice.target_type == "all"
+                or (
+                    notice.target_type == "block"
+                    and (notice.target_value or "").strip().casefold()
+                    == (recipient.building_block or "").strip().casefold()
+                )
+                or (
+                    notice.target_type == "flat"
+                    and (notice.target_value or "").strip().casefold()
+                    == (recipient.flat_number or "").strip().casefold()
+                )
+            )
+            key = (notice.id, recipient.user_id)
+            if not targeted or key in existing:
+                continue
+            next_id += 1
+            db.add(
+                NoticeDelivery(
+                    id=next_id,
+                    notice_id=notice.id,
+                    user_id=recipient.user_id,
+                    delivered_at=now,
+                )
+            )
+            existing.add(key)
+            created += 1
+    return {"deliveries_created": created}
 
 
 def _update_overdue_invoices(db: Session, now: datetime) -> dict[str, int]:
@@ -189,6 +291,31 @@ def _send_invoice_reminders(db: Session, now: datetime) -> dict[str, int]:
 
 
 def _expire_visitors_and_passes(db: Session, now: datetime) -> dict[str, int]:
+    if _uses_sqlite(db):
+        visitors = db.scalars(
+            select(Visitor).where(Visitor.status == "pending")
+        ).all()
+        passes = db.scalars(
+            select(GuestPass).where(
+                GuestPass.used_at.is_(None), GuestPass.revoked_at.is_(None)
+            )
+        ).all()
+        expired_visitors = [
+            item for item in visitors if _as_utc(item.expires_at) < now
+        ]
+        expired_passes = [
+            item for item in passes if _as_utc(item.valid_until) < now
+        ]
+        for item in expired_visitors:
+            item.status = "expired"
+            item.version += 1
+        for item in expired_passes:
+            item.revoked_at = now
+        return {
+            "visitors_expired": len(expired_visitors),
+            "passes_revoked": len(expired_passes),
+        }
+
     visitor_count = (
         db.query(Visitor)
         .filter(
@@ -213,6 +340,15 @@ def _expire_visitors_and_passes(db: Session, now: datetime) -> dict[str, int]:
 
 
 def _complete_amenity_bookings(db: Session, now: datetime) -> dict[str, int]:
+    if _uses_sqlite(db):
+        bookings = db.scalars(
+            select(AmenityBooking).where(AmenityBooking.status == "confirmed")
+        ).all()
+        completed = [item for item in bookings if _as_utc(item.ends_at) < now]
+        for item in completed:
+            item.status = "completed"
+        return {"bookings_completed": len(completed)}
+
     count = (
         db.query(AmenityBooking)
         .filter(

@@ -115,6 +115,7 @@ describe("AdminAnalytics", () => {
     getAdminAdvancedAnalytics.mockResolvedValueOnce({ data: { ...analytics, pareto: [] } });
     render(<AdminAnalytics />);
     expect(await screen.findByText("No complaint data is available.")).toBeTruthy();
+    expect(screen.getByText("80%")).toBeTruthy();
     expect(screen.queryByText("No Complaints")).toBeNull();
     expect(screen.queryByRole("link", { name: "User Roles" })).toBeNull();
     expect(screen.getByTestId("role").textContent).toBe("Residential Admin");
