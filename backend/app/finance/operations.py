@@ -569,14 +569,121 @@ def receipt_pdf(db, user, payment_id):
 
 def statement_pdf(db, user):
     summary = resident_summary(db, user)
-    lines = [
-        f"Resident: {user.first_name} {user.last_name} ({user.flat_number})",
-        f"Outstanding: INR {summary['outstanding_paise'] / 100:,.2f}",
-    ] + [
-        f"{e['date'].date()} {e['description']} INR {e['amount_paise'] / 100:,.2f} {e['direction']}"
-        for e in summary["ledger"][:30]
+    def pdf_money(paise):
+        return f"INR {paise / 100:,.2f}"
+
+    buffer = BytesIO()
+    document = SimpleDocTemplate(
+        buffer,
+        pagesize=A4,
+        rightMargin=18 * mm,
+        leftMargin=18 * mm,
+        topMargin=12 * mm,
+        bottomMargin=18 * mm,
+        title="SocietySync Resident Statement",
+        author="SocietySync",
+    )
+    styles = getSampleStyleSheet()
+    styles.add(ParagraphStyle(
+        name="StatementTitle", parent=styles["Title"], fontName="Helvetica-Bold",
+        fontSize=23, leading=27, textColor=colors.white, alignment=TA_CENTER,
+    ))
+    styles.add(ParagraphStyle(
+        name="StatementMeta", parent=styles["BodyText"], fontSize=9, leading=13,
+        textColor=colors.HexColor("#cbd5e1"), alignment=TA_CENTER,
+    ))
+    styles.add(ParagraphStyle(
+        name="StatementSection", parent=styles["Heading2"], fontName="Helvetica-Bold",
+        fontSize=13, textColor=colors.HexColor("#0f2336"), spaceBefore=5 * mm,
+        spaceAfter=2.5 * mm,
+    ))
+    styles.add(ParagraphStyle(
+        name="StatementSmall", parent=styles["BodyText"], fontSize=8, leading=10,
+        textColor=colors.HexColor("#334155"),
+    ))
+    styles.add(ParagraphStyle(
+        name="StatementBalance", parent=styles["BodyText"], fontName="Helvetica-Bold",
+        fontSize=17, leading=21, textColor=colors.HexColor("#0f2336"), alignment=TA_CENTER,
+    ))
+    header = Table(
+        [[Paragraph("SOCIETYSYNC  /  RESIDENT FINANCE", styles["StatementMeta"])],
+         [Paragraph("Resident Financial Statement", styles["StatementTitle"])],
+         [Paragraph(
+             f"Generated {datetime.now(IST):%d %B %Y, %H:%M IST}",
+             styles["StatementMeta"],
+         )]],
+        colWidths=[159 * mm], rowHeights=[9 * mm, 15 * mm, 10 * mm],
+    )
+    header.setStyle(TableStyle([
+        ("BACKGROUND", (0, 0), (-1, -1), colors.HexColor("#0f2336")),
+        ("BOX", (0, 0), (-1, -1), 1.5, colors.HexColor("#d87943")),
+        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+        ("LEFTPADDING", (0, 0), (-1, -1), 12),
+        ("RIGHTPADDING", (0, 0), (-1, -1), 12),
+    ]))
+    balance = Table(
+        [[Paragraph("CURRENT OUTSTANDING", styles["StatementSmall"])],
+         [Paragraph(pdf_money(summary["outstanding_paise"]), styles["StatementBalance"])],
+         [Paragraph(
+             f"Late fees: {pdf_money(summary['late_fee_paise'])}",
+             styles["StatementSmall"],
+         )]],
+        colWidths=[159 * mm], rowHeights=[7 * mm, 12 * mm, 7 * mm],
+    )
+    balance.setStyle(TableStyle([
+        ("BACKGROUND", (0, 0), (-1, -1), colors.HexColor("#f8fafc")),
+        ("LINEABOVE", (0, 0), (-1, 0), 3, colors.HexColor("#d87943")),
+        ("BOX", (0, 0), (-1, -1), 0.5, colors.HexColor("#dbe3ec")),
+        ("ALIGN", (0, 0), (-1, -1), "CENTER"),
+        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+    ]))
+    resident_label = " ".join(part for part in (user.first_name, user.last_name) if part)
+    if user.flat_number:
+        resident_label = f"{resident_label}  |  Unit {user.flat_number}"
+    ledger_rows = [["Date", "Reference", "Description", "Type", "Amount"]]
+    ledger_rows.extend([
+        [
+            entry["date"].astimezone(IST).strftime("%d %b %Y"),
+            escape(str(entry["reference"])),
+            Paragraph(escape(entry["description"][:90]), styles["StatementSmall"]),
+            entry["direction"].title(),
+            pdf_money(entry["amount_paise"]),
+        ]
+        for entry in summary["ledger"][:100]
+    ])
+    if len(ledger_rows) == 1:
+        ledger_rows.append(["-", "-", "No ledger activity available", "-", "-"])
+    ledger = Table(
+        ledger_rows,
+        colWidths=[24 * mm, 25 * mm, 66 * mm, 19 * mm, 25 * mm],
+        repeatRows=1,
+    )
+    ledger.setStyle(TableStyle([
+        ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#0f2336")),
+        ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+        ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+        ("FONTSIZE", (0, 0), (-1, -1), 7.5),
+        ("ALIGN", (3, 1), (-1, -1), "RIGHT"),
+        ("VALIGN", (0, 0), (-1, -1), "TOP"),
+        ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, colors.HexColor("#f8fafc")]),
+        ("GRID", (0, 0), (-1, -1), 0.25, colors.HexColor("#cbd5e1")),
+        ("TOPPADDING", (0, 0), (-1, -1), 5),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
+    ]))
+    story = [
+        header,
+        Spacer(1, 5 * mm),
+        Paragraph(resident_label, styles["StatementSection"]),
+        balance,
+        Paragraph("Ledger activity", styles["StatementSection"]),
+        ledger,
+        Spacer(1, 7 * mm),
+        HRFlowable(width="100%", thickness=1, color=colors.HexColor("#dbe3ec")),
+        Spacer(1, 3 * mm),
+        Paragraph("This system-generated statement summarizes the current SocietySync financial records for your unit.", styles["StatementSmall"]),
     ]
-    return simple_pdf("SocietySync Resident Statement", lines)
+    document.build(story)
+    return buffer.getvalue()
 
 
 def audit_pdf(db, user, year: int | None = None):

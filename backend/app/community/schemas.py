@@ -77,6 +77,28 @@ class PollVoteCreate(BaseModel):
     option_id: int = Field(..., gt=0)
 
 
+class PollCreate(BaseModel):
+    question: str = Field(..., min_length=1, max_length=500)
+    description: str | None = Field(None, max_length=10_000)
+    ends_at: datetime
+    options: list[str] = Field(..., min_length=2, max_length=10)
+
+    @model_validator(mode="after")
+    def validate_poll(self):
+        self.question = self.question.strip()
+        self.description = self.description.strip() if self.description else None
+        self.options = [option.strip() for option in self.options]
+        if not self.question:
+            raise ValueError("Poll question cannot be blank.")
+        if self.ends_at.tzinfo is None:
+            raise ValueError("Poll end time must include a time zone.")
+        if not all(self.options):
+            raise ValueError("Poll options cannot be blank.")
+        if len({option.casefold() for option in self.options}) != len(self.options):
+            raise ValueError("Poll options must be different.")
+        return self
+
+
 class PollOptionResponse(BaseModel):
     id: int
     label: str
