@@ -5,7 +5,7 @@ from app.community import service
 from app.community.schemas import (
     EventResponse, EventRsvpUpdate, NoticeCreate, NoticeResponse,
     PaginatedDirectory, PaginatedDiscussions, PaginatedNotices,
-    PollResponse, PollVoteCreate, VolunteerResponse,
+    PollCreate, PollResponse, PollVoteCreate, VolunteerResponse,
 )
 from app.db.database import get_db
 from app.db.models.user import User
@@ -58,6 +58,11 @@ def volunteer_withdraw(opportunity_id: int, db: Session = Depends(get_db), user:
 @router.get("/polls/active", response_model=PollResponse | None)
 def poll(db: Session = Depends(get_db), user: User = Depends(get_current_user)):
     return service.active_poll(db, user)
+
+
+@router.post("/polls", response_model=PollResponse, status_code=status.HTTP_201_CREATED)
+def create_poll(data: PollCreate, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    return service.create_poll(db, user, data)
 
 
 @router.post("/polls/{poll_id}/votes", response_model=PollResponse, status_code=status.HTTP_201_CREATED)

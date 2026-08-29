@@ -4,11 +4,8 @@ import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/re
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import AdminCommunity from "@/pages/AdminCommunity";
 
-const api = vi.hoisted(() => ({ createNotice: vi.fn(), listDirectory: vi.fn(), listDiscussions: vi.fn() }));
+const api = vi.hoisted(() => ({ createNotice: vi.fn(), createPoll: vi.fn(), listDirectory: vi.fn(), listDiscussions: vi.fn() }));
 const runtime = vi.hoisted(() => ({ refresh: null, roles: ["admin"] }));
-const navigate = vi.hoisted(() => vi.fn());
-
-vi.mock("react-router-dom", () => ({ useNavigate: () => navigate }));
 vi.mock("@/hooks/useAuth", () => ({ useAuth: () => ({ user: { first_name: "Asha", last_name: "Admin", roles: runtime.roles } }) }));
 vi.mock("@/features/realtime/useRealtimeRefresh", () => ({ useRealtimeRefresh: (_scopes, refresh) => { runtime.refresh = refresh; } }));
 vi.mock("@/features/community/api", () => ({ ...api, communityError: (_error, fallback) => fallback }));
@@ -25,10 +22,11 @@ const resident = { user_id: 9, name: "Maya Rao", unit: "B-202", role: "Owner", s
 
 describe("AdminCommunity", () => {
   beforeEach(() => {
-    runtime.roles = ["admin"]; runtime.refresh = null; navigate.mockReset();
+    runtime.roles = ["admin"]; runtime.refresh = null;
     api.listDiscussions.mockReset().mockResolvedValue({ data: { items: [discussion], total: 1, page: 1, page_size: 10 } });
     api.listDirectory.mockReset().mockResolvedValue({ data: { items: [resident], total: 1, page: 1, page_size: 10 } });
     api.createNotice.mockReset().mockResolvedValue({ data: { id: 1 } });
+    api.createPoll.mockReset().mockResolvedValue({ data: { id: 1 } });
   });
   afterEach(cleanup);
 
@@ -72,13 +70,19 @@ describe("AdminCommunity", () => {
     expect(screen.getByDisplayValue("Water shutdown")).toBeTruthy();
   });
 
-  it("hides super-admin actions from admins", async () => {
+  it("provides poll creation without a misleading resident action", async () => {
     render(<AdminCommunity />);
     await screen.findByText("Maya Rao");
     expect(screen.queryByRole("link", { name: "User Roles" })).toBeNull();
     expect(screen.queryByRole("button", { name: "Add Resident" })).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Create Poll" }));
+    fireEvent.change(screen.getByLabelText("Poll question"), { target: { value: "Choose an event" } });
+    fireEvent.change(screen.getByLabelText("Closes at"), { target: { value: "2026-12-01T18:00" } });
+    fireEvent.change(screen.getByLabelText("Poll option 1"), { target: { value: "Yoga" } });
+    fireEvent.change(screen.getByLabelText("Poll option 2"), { target: { value: "Games" } });
+    fireEvent.click(screen.getByRole("button", { name: "Publish Poll" }));
+    await waitFor(() => expect(api.createPoll).toHaveBeenCalledWith(expect.objectContaining({ question: "Choose an event", options: ["Yoga", "Games"] })));
     expect(screen.getByTestId("role").textContent).toBe("Residential Admin");
-    expect(screen.queryByText(/manage resident directory/i)).toBeNull();
   });
 
   it("closes discussion details when realtime refresh removes the thread", async () => {

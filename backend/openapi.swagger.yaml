@@ -70,8 +70,6 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/HTTPValidationError'
-        '409':
-          $ref: '#/components/responses/ConflictError'
         '429':
           $ref: '#/components/responses/RateLimitError'
         '500':
@@ -4499,6 +4497,44 @@ paths:
 
 
         **Implemented in:** `backend/app/community/router.py`'
+  /api/v1/community/polls:
+    post:
+      tags:
+      - Community
+      summary: Create Poll
+      operationId: create_poll_api_v1_community_polls_post
+      security:
+      - HTTPBearer: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PollCreate'
+      responses:
+        '201':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PollResponse'
+        '401':
+          $ref: '#/components/responses/AuthenticationError'
+        '403':
+          $ref: '#/components/responses/AuthorizationError'
+        '409':
+          $ref: '#/components/responses/ConflictError'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+        '429':
+          $ref: '#/components/responses/RateLimitError'
+        '500':
+          $ref: '#/components/responses/ServerError'
+      x-user-stories:
+      - US-5.5.3
+      x-sprint: Sprint 2
+      x-implementation: backend/app/community/router.py
+      description: 'Create an active community poll. Available to Super Admin, Admin, and Committee Member roles. Publishing a new poll closes the previous active poll.'
   /api/v1/community/polls/active:
     get:
       tags:
@@ -8126,6 +8162,36 @@ components:
       required:
       - pin
       title: PinVerify
+    PollCreate:
+      properties:
+        question:
+          type: string
+          maxLength: 500
+          minLength: 1
+          title: Question
+        description:
+          anyOf:
+          - type: string
+            maxLength: 10000
+          - type: 'null'
+          title: Description
+        ends_at:
+          type: string
+          format: date-time
+          title: Ends At
+        options:
+          items:
+            type: string
+          type: array
+          minItems: 2
+          maxItems: 10
+          title: Options
+      type: object
+      required:
+      - question
+      - ends_at
+      - options
+      title: PollCreate
     PollOptionResponse:
       properties:
         id:

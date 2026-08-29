@@ -315,6 +315,41 @@ class TestVolunteers:
 
 
 class TestPolls:
+    def _poll_payload(self, **overrides):
+        payload = {
+            "question": "Which community activity should be added?",
+            "description": "Choose one option.",
+            "ends_at": (datetime.now(timezone.utc) + timedelta(days=2)).isoformat(),
+            "options": ["Yoga class", "Book club"],
+        }
+        payload.update(overrides)
+        return payload
+
+    def test_create_poll_as_admin_returns_201(self, admin_client):
+        response = admin_client.post(
+            "/api/v1/community/polls", json=self._poll_payload()
+        )
+        assert response.status_code == 201
+        data = response.json()
+        assert data["question"] == "Which community activity should be added?"
+        assert [option["label"] for option in data["options"]] == ["Yoga class", "Book club"]
+
+    def test_create_poll_as_resident_returns_403(self, resident_client):
+        response = resident_client.post(
+            "/api/v1/community/polls", json=self._poll_payload()
+        )
+        assert response.status_code == 403
+
+    def test_create_poll_rejects_past_end_time_and_duplicate_options(self, admin_client):
+        response = admin_client.post(
+            "/api/v1/community/polls",
+            json=self._poll_payload(
+                ends_at=(datetime.now(timezone.utc) - timedelta(minutes=1)).isoformat(),
+                options=["Yoga", "yoga"],
+            ),
+        )
+        assert response.status_code == 422
+
     def test_get_active_poll_returns_200_or_null(self, resident_client):
         """TC-COM-24: GET /api/v1/community/polls/active → 200 (poll or null)."""
         resp = resident_client.get("/api/v1/community/polls/active")

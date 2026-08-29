@@ -20,7 +20,7 @@ from app.community.models import (
     VolunteerSignup,
 )
 from app.community.permissions import ensure_community_member, ensure_operational, is_operational
-from app.community.schemas import NoticeCreate
+from app.community.schemas import NoticeCreate, PollCreate
 from app.db.models.role import Role, RoleName, UserRole
 from app.db.models.user import User
 from app.realtime.service import add_notifications
@@ -226,6 +226,37 @@ def active_poll(db: Session, user: User) -> dict | None:
     total = sum(counts.values())
     selected = db.scalar(select(PollVote.option_id).where(PollVote.poll_id == poll.id, PollVote.user_id == user.user_id))
     return {"id": poll.id, "question": poll.question, "description": poll.description, "ends_at": poll.ends_at, "total_votes": total, "selected_option_id": selected, "options": [{"id": option.id, "label": option.label, "votes": counts.get(option.id, 0), "percentage": round(counts.get(option.id, 0) * 100 / total) if total else 0} for option in options]}
+
+
+def create_poll(db: Session, user: User, data: PollCreate) -> dict:
+    ensure_operational(user)
+    now = _now()
+    if data.ends_at <= now:
+        raise HTTPException(status_code=422, detail="Poll end time must be in the future.")
+    existing = db.scalar(
+        select(Poll).where(
+            Poll.is_active.is_(True),
+            Poll.starts_at <= now,
+            Poll.ends_at > now,
+        ).with_for_update()
+    )
+    if existing:
+        existing.is_active = False
+    poll = Poll(
+        question=data.question,
+        description=data.description,
+        starts_at=now,
+        ends_at=data.ends_at,
+        created_by=user.user_id,
+    )
+    db.add(poll)
+    db.flush()
+    db.add_all(
+        PollOption(poll_id=poll.id, label=label, display_order=index)
+        for index, label in enumerate(data.options, 1)
+    )
+    db.commit()
+    return active_poll(db, user)
 
 
 def vote(db: Session, user: User, poll_id: int, option_id: int) -> dict:

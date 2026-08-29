@@ -6,6 +6,7 @@ import StaffOperations from "@/pages/StaffOperations";
 
 const listTasks = vi.fn();
 const listInventory = vi.fn();
+const listStaff = vi.fn();
 
 vi.mock("@/components/layout/DashboardLayout", () => ({
   default: ({ children }) => <div>{children}</div>,
@@ -13,12 +14,16 @@ vi.mock("@/components/layout/DashboardLayout", () => ({
 vi.mock("@/components/gate/GateSidebarConfig", () => ({
   getGateSidebarItems: () => [],
 }));
+vi.mock("@/hooks/useAuth", () => ({
+  useAuth: () => ({ user: { roles: ["support_staff"] } }),
+}));
 vi.mock("@/features/realtime/useRealtimeRefresh", () => ({
   useRealtimeRefresh: () => {},
 }));
 vi.mock("@/features/operations/api", () => ({
   listTasks: (...args) => listTasks(...args),
   listInventory: (...args) => listInventory(...args),
+  listStaff: (...args) => listStaff(...args),
   createTask: vi.fn(),
   updateTask: vi.fn(),
   operationsError: (_error, fallback) => fallback,
@@ -46,12 +51,14 @@ describe("StaffOperations", () => {
   });
   afterEach(cleanup);
 
-  it("derives every displayed zone status from active tasks", async () => {
+  it("derives displayed zones from real task locations", async () => {
     render(<StaffOperations />);
 
     expect(await screen.findByText("Inspect Block A")).toBeTruthy();
+    expect(screen.getByText("Block A")).toBeTruthy();
+    expect(screen.getByText("Clubhouse")).toBeTruthy();
     expect(screen.getAllByText("Attention")).toHaveLength(2);
-    expect(screen.getAllByText("Clear")).toHaveLength(2);
+    expect(screen.queryByText("Rose Garden")).toBeNull();
   });
 
   it("shows an explicit empty state for inventory", async () => {

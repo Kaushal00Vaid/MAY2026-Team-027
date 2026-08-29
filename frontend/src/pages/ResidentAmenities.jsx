@@ -29,7 +29,7 @@ export default function ResidentAmenities() {
   useEffect(() => { if (!toast) return undefined; const timer = setTimeout(() => setToast(""), 3500); return () => clearTimeout(timer); }, [toast]);
   const selected = amenities.find((item) => item.id === selectedId);
   const days = useMemo(() => { const result = []; for (let i = 0; i < 7; i += 1) { const date = dayStart((weekOffset * 7) + i); result.push(date); } return result; }, [weekOffset]);
-  const times = useMemo(() => [...new Set((availability?.slots || []).map((slot) => istTime(slot.starts_at)))].slice(0, 6), [availability]);
+  const times = useMemo(() => [...new Set((availability?.slots || []).map((slot) => istTime(slot.starts_at)))], [availability]);
   const slotAt = (day, time) => availability?.slots.find((slot) => localDate(slot.starts_at) === localDate(day) && istTime(slot.starts_at) === time);
   const confirm = async () => { if (!selectedSlot || saving) return; setSaving(true); setError(""); try { const { data } = await createBooking({ amenity_id: selectedId, starts_at: selectedSlot.starts_at, purpose }, crypto.randomUUID()); setSelectedSlot(null); setToast(`${data.amenity_name} booked successfully for ${istDateTime(selectedSlot.starts_at)}.`); await load(); } catch (e) { setError(amenitiesError(e, "Unable to confirm booking.")); } finally { setSaving(false); } };
   const cancel = async (id) => { setSaving(true); setError(""); try { await cancelBooking(id); setToast("Booking cancelled."); await load(); } catch (e) { setError(amenitiesError(e, "Unable to cancel booking.")); } finally { setSaving(false); } };
