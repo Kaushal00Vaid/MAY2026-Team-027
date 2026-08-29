@@ -143,7 +143,7 @@ export function AuthProvider({ children }) {
     if (roles.some((role) => ["super_admin", "admin", "committee_member"].includes(role))) {
       return "/admin";
     }
-    if (roles.includes("support_staff")) return "/gate";
+    if (roles.includes("support_staff")) return "/gate/dashboard";
     if (roles.some((role) => ["flat_owner", "resident_rental"].includes(role))) {
       return "/resident";
     }
