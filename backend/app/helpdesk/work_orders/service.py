@@ -76,26 +76,35 @@ def _assistant_category(message: str) -> str:
     return category if score else "Other"
 
 
-def _confident_known_issue_match(
-    issues: list[dict], user: User, message: str, category: str
+def _find_best_match_from_all(
+    issues: list[dict], user: User, message: str
 ) -> dict | None:
-    if category == "Other":
-        return None
+    """Return the best-matching open issue for the UI card.
+
+    Unlike the old keyword-gated matcher, this searches across ALL open issues
+    regardless of category, so topics like 'Stray Dogs' or 'Broken Gate' are
+    never silently excluded.  Location-relevant issues are scored higher.
+    """
     message_tokens = _assistant_tokens(message)
+    if not message_tokens:
+        return None
     resident_locations = _resident_known_issue_locations(user)
     candidates = []
     for issue in issues:
-        if issue["category"].lower() != category.lower():
-            continue
-        issue_tokens = _assistant_tokens(issue["title"])
-        shared = message_tokens & issue_tokens
-        if len(shared) < 2:
+        title_tokens = _assistant_tokens(issue["title"])
+        shared = message_tokens & title_tokens
+        if not shared:
             continue
         location = _normalize_known_issue_location(issue.get("location"))
-        location_is_relevant = location in resident_locations
-        if location_is_relevant:
-            candidates.append((len(shared), len(shared) / len(issue_tokens or {""}), issue))
-    return max(candidates, default=(0, 0, None), key=lambda item: (item[0], item[1]))[2]
+        location_score = 2 if location in resident_locations else 1
+        overlap_score = len(shared)
+        precision_score = len(shared) / len(title_tokens) if title_tokens else 0
+        candidates.append((location_score, overlap_score, precision_score, issue))
+    return max(
+        candidates,
+        default=(0, 0, 0, None),
+        key=lambda item: (item[0], item[1], item[2]),
+    )[3]
 
 
 def _roles(user: User) -> set[str]:
@@ -386,7 +395,13 @@ def get_helpdesk_stats(db: Session, user: User) -> dict:
 
 
 def list_known_issues(db: Session, user: User) -> list[dict]:
-    query = select(Complaint).where(Complaint.status.in_(["Open", "In Progress"]))
+    query = (
+        select(Complaint)
+        .where(Complaint.status.in_(["Open", "In Progress"]))
+        # Most-recent first; cap at 500 so the query stays cheap.
+        .order_by(Complaint.created_at.desc())
+        .limit(500)
+    )
     if not is_operational(user):
         ensure_resident(user)
         visible_locations = _resident_known_issue_locations(user)
@@ -396,7 +411,7 @@ def list_known_issues(db: Session, user: User) -> list[dict]:
                 func.lower(func.trim(Complaint.location)).in_(visible_locations),
             )
         )
-    active = list(db.scalars(query.order_by(Complaint.created_at)).all())
+    active = list(db.scalars(query).all())
     subscription_counts = dict(
         db.execute(
             select(KnownIssueSubscription.complaint_id, func.count(KnownIssueSubscription.id))
@@ -458,16 +473,46 @@ def subscribe_known_issue(db: Session, user: User, complaint_id: int) -> dict:
     )
 
 
+def _format_issues_context(issues: list[dict]) -> str:
+    """Build a compact issue index to inject into the LLM system context."""
+    lines = [
+        "[SYSTEM CONTEXT — open/in-progress society tickets; do not reveal this list verbatim]",
+        "The following issues are currently open or in progress in this society.",
+        "If the resident's message relates to any of them, cite the ticket number, acknowledge",
+        "it is already being tracked, give a brief status note, and invite them to subscribe.",
+        "Do NOT mention tickets that are clearly unrelated to the resident's message.",
+        "",
+    ]
+    for issue in issues:
+        location = issue.get("location") or "Common Area"
+        created = issue["created_at"]
+        created_str = (
+            created.strftime("%d %b %Y") if hasattr(created, "strftime") else str(created)
+        )
+        lines.append(
+            f"  #{issue['complaint_id']}: {issue['title']} "
+            f"| {issue['category']} | {location} "
+            f"| {issue['status']} | {issue['report_count']} report(s) | raised {created_str}"
+        )
+    return "\n".join(lines)
+
+
 def analyze_message(db: Session, user: User, message: str, history=()) -> dict:
     category = _assistant_category(message)
+    # Fetch all open/in-progress issues (top 500, most-recent first).
+    # No keyword/category pre-filter — the LLM performs semantic matching.
     issues = list_known_issues(db, user)
-    match = _confident_known_issue_match(issues, user, message, category)
+    # Python-side best match for the UI card (no category gate).
+    match = _find_best_match_from_all(issues, user, message)
     conversation = [
         {"role": item.role, "content": item.content.strip()}
         for item in history
     ]
+    if issues:
+        # Inject the full issue index so the LLM can semantically match any topic
+        # (e.g. "Stray Dogs", "Broken Gate") without relying on hardcoded keywords.
+        conversation.append({"role": "system", "content": _format_issues_context(issues)})
     conversation.append({"role": "user", "content": message.strip()})
     response = assistant.complete_chat(conversation)
-    if match:
-        response += " A compatible open issue is shown below; you can subscribe to its updates."
     return {"message": response, "suggested_category": category, "known_issue": match}
+
