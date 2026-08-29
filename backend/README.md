@@ -10,7 +10,7 @@ FastAPI-based REST API server for the SocietySync platform. Provides authenticat
 |-----------|---------------|
 | Framework | FastAPI 0.138 |
 | ORM | SQLAlchemy 2.0 |
-| Database | PostgreSQL 14+ |
+| Database | SQLite (local) / PostgreSQL 14+ (shared and production) |
 | Validation | Pydantic v2 |
 | Migrations | Alembic |
 | Auth | python-jose (JWT), argon2-cffi (passwords), Twilio (OTP) |
@@ -24,7 +24,8 @@ FastAPI-based REST API server for the SocietySync platform. Provides authenticat
 ## Prerequisites
 
 - Python **3.12+**
-- PostgreSQL **14+** (running locally or remotely)
+- SQLite (bundled with Python) for local development, or PostgreSQL **14+**
+  for shared and production environments
 - `uv` — [install here](https://github.com/astral-sh/uv) _(optional but recommended)_
 
 ---
@@ -60,7 +61,11 @@ cp .env.example .env
 Edit `.env` with your values:
 
 ```env
-DATABASE_URL=postgresql://user:password@localhost:5432/societysync
+# Local default — no database server required
+DATABASE_URL=sqlite:///./societysync_local.db
+
+# PostgreSQL alternative
+# DATABASE_URL=postgresql://user:password@localhost:5432/societysync
 SECRET_KEY=your-very-long-random-secret-key
 ALGORITHM=HS256
 ACCESS_TOKEN_EXPIRE_MINUTES=30
@@ -77,19 +82,22 @@ GOOGLE_CLIENT_SECRET=your-google-client-secret
 FRONTEND_URL=http://localhost:5173
 ```
 
-### 4. Run database migrations
+### 4. Initialize the database
 
-```bash
-alembic upgrade head
-```
-
-### 5. (Optional) Seed the database
+SQLite creates its schema automatically at API startup. Seed demo data with:
 
 ```bash
 python seed.py
 ```
 
-### 6. Start the server
+For PostgreSQL, run migrations first:
+
+```bash
+alembic upgrade head
+python seed.py
+```
+
+### 5. Start the server
 
 ```bash
 uvicorn app.main:app --reload --port 8000
@@ -238,7 +246,7 @@ backend/
 # Unit tests — isolated rules, schemas, analytics helpers, and scheduler behavior
 uv run python -m pytest tests/unit/ -v
 
-# Integration tests — requires PostgreSQL running with .env configured
+# Integration tests — works with SQLite or PostgreSQL selected by DATABASE_URL
 uv run python -m pytest tests/integration/ -v
 
 # All tests

@@ -4,7 +4,6 @@ import hmac
 import json
 import secrets
 from datetime import datetime, timedelta, timezone
-from zoneinfo import ZoneInfo
 
 from fastapi import HTTPException
 from sqlalchemy import func, or_, select
@@ -21,13 +20,9 @@ from app.security.permissions import (
     is_resident,
 )
 
-IST = ZoneInfo("Asia/Kolkata")
-
-
-def _as_ist(value: datetime) -> datetime:
-    """Localize a timezone-naive datetime to IST.
-    SQLite strips timezone info on read-back; treat naive datetimes as IST."""
-    return value if value.tzinfo else value.replace(tzinfo=IST)
+def _as_utc(value: datetime) -> datetime:
+    """SQLite removes tzinfo; application datetimes are persisted in UTC."""
+    return value if value.tzinfo else value.replace(tzinfo=timezone.utc)
 
 
 def now():
@@ -232,7 +227,7 @@ def decide(db, user, visitor_id, decision, version, note=None):
         raise HTTPException(
             status_code=409, detail="Visitor request changed; refresh and retry."
         )
-    if item.status != "pending" or _as_ist(item.expires_at) <= now():
+    if item.status != "pending" or _as_utc(item.expires_at) <= now():
         raise HTTPException(
             status_code=409, detail="Visitor request is no longer pending."
         )
@@ -316,7 +311,7 @@ def pass_dict(item, pin=None):
         else "used"
         if item.used_at
         else "expired"
-        if _as_ist(item.valid_until) <= now()
+        if _as_utc(item.valid_until) <= now()
         else "active"
     )
     return {
@@ -411,7 +406,7 @@ def verify_pin(db, user, pin):
         not item
         or item.revoked_at
         or item.used_at
-        or not (_as_ist(item.valid_from) <= now() < _as_ist(item.valid_until))
+        or not (_as_utc(item.valid_from) <= now() < _as_utc(item.valid_until))
     ):
         raise HTTPException(
             status_code=404, detail="PIN is invalid, expired, revoked, or already used."

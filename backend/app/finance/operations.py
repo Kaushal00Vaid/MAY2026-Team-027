@@ -25,6 +25,7 @@ from sqlalchemy.orm import Session, selectinload
 
 from app.db.models.role import RoleName, UserRole
 from app.db.models.user import User
+from app.db.database import advisory_xact_lock
 from app.realtime.service import add_notifications
 from app.finance.models import (
     BulkInvoiceRun,
@@ -178,14 +179,8 @@ def bulk_invoices(db: Session, user: User, data, key: str):
     ensure_ops(user)
     # Transaction-scoped PostgreSQL locks make concurrent retries deterministic,
     # including requests that use different keys for the same billing period.
-    db.execute(select(func.pg_advisory_xact_lock(func.hashtext(f"finance-key:{key}"))))
-    db.execute(
-        select(
-            func.pg_advisory_xact_lock(
-                func.hashtext(f"finance-run:{data.period}:{data.purpose}")
-            )
-        )
-    )
+    advisory_xact_lock(db, f"finance-key:{key}")
+    advisory_xact_lock(db, f"finance-run:{data.period}:{data.purpose}")
     active_users = list(
         db.scalars(
             select(User)
@@ -312,7 +307,7 @@ def bulk_invoices(db: Session, user: User, data, key: str):
 
 def pay(db: Session, user: User, data, key: str):
     ensure_resident(user)
-    db.execute(select(func.pg_advisory_xact_lock(func.hashtext(f"finance-key:{key}"))))
+    advisory_xact_lock(db, f"finance-key:{key}")
     old = db.scalar(select(Payment).where(Payment.idempotency_key == key))
     if old:
         if old.invoice_id != data.invoice_id or old.method != data.method:

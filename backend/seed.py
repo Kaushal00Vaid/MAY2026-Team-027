@@ -7,66 +7,23 @@ Usage:
     uv run python seed.py
 
 This script is idempotent — safe to run multiple times on both SQLite3 and PostgreSQL.
-Assumes database schema has already been created (e.g., via `alembic upgrade head`).
+It bootstraps SQLite's local schema; PostgreSQL schema should be migrated first.
 """
 
-import datetime
 import os
 import sys
 
 from dotenv import load_dotenv
-from sqlalchemy import event, func, inspect, text
-from sqlalchemy.engine import Engine
-from sqlalchemy.orm import Session
+from sqlalchemy import text
 
 load_dotenv()
 
 # Ensure the backend directory is on sys.path
 sys.path.insert(0, os.path.dirname(__file__))
 
-from app.db.database import SessionLocal, engine  # noqa: E402
+from app.db.database import Base, SessionLocal, engine  # noqa: E402
 from app.db.models import User, Role, UserRole, RoleName  # noqa: E402
 from app.auth.password import hash_password  # noqa: E402
-
-
-# ─── SQLite Compatibility Listeners ───────────────────────────────────────────
-@event.listens_for(Engine, "connect")
-def register_sqlite_functions(dbapi_connection, connection_record):
-    """Register PostgreSQL-compatible SQL functions (like now()) in SQLite."""
-    if hasattr(dbapi_connection, "create_function"):
-        dbapi_connection.create_function(
-            "now",
-            0,
-            lambda: datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%d %H:%M:%S"),
-        )
-
-
-@event.listens_for(Session, "before_flush")
-def auto_assign_sqlite_primary_keys(session, flush_context, instances):
-    """
-    Auto-assign missing integer primary keys for SQLite inserts across all seed modules.
-    Required because SQLite only autoincrements exact 'INTEGER PRIMARY KEY' DDL columns.
-    """
-    if session.bind and session.bind.dialect.name == "sqlite":
-        assigned_max = {}
-        for obj in list(session.new):
-            mapper = inspect(obj.__class__)
-            for pk_col in mapper.primary_key:
-                try:
-                    is_int = issubclass(pk_col.type.python_type, int)
-                except (AttributeError, NotImplementedError, TypeError):
-                    is_int = False
-
-                if is_int:
-                    prop = mapper.get_property_by_column(pk_col)
-                    attr_name = prop.key
-                    if getattr(obj, attr_name) is None:
-                        col_key = (mapper.mapped_table.name, pk_col.name)
-                        if col_key not in assigned_max:
-                            max_val = session.query(func.max(pk_col)).scalar() or 0
-                            assigned_max[col_key] = max_val
-                        assigned_max[col_key] += 1
-                        setattr(obj, attr_name, assigned_max[col_key])
 
 
 # ─── Configuration ────────────────────────────────────────────────────────────
@@ -158,6 +115,8 @@ def seed_super_admin(db, role_map: dict[RoleName, Role]) -> User:
 
 def main():
     dialect_name = engine.dialect.name
+    if dialect_name == "sqlite":
+        Base.metadata.create_all(bind=engine)
     print("\n🌱 SocietySync — Database Seed")
     print("=" * 40)
     print(f"📊 Active Database Engine: {dialect_name.upper()}")

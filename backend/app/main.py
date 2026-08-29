@@ -22,6 +22,8 @@ from app.security.router import router as security_router
 from app.community.router import router as community_router
 from app.analytics.router import router as analytics_router
 from app.realtime.router import router as realtime_router
+from app.db.database import Base, engine
+import app.db.models  # noqa: F401  # Register all model tables for SQLite bootstrap.
 
 
 def create_app() -> FastAPI:
@@ -32,6 +34,12 @@ def create_app() -> FastAPI:
         docs_url="/docs" if settings.ENVIRONMENT == "development" else None,
         redoc_url="/redoc" if settings.ENVIRONMENT == "development" else None,
     )
+
+    if engine.dialect.name == "sqlite":
+        @app.on_event("startup")
+        def initialize_local_sqlite() -> None:
+            """SQLite is self-contained, so create its development schema on startup."""
+            Base.metadata.create_all(bind=engine)
 
     # Rate limiter
     app.state.limiter = limiter

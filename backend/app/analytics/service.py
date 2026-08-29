@@ -97,13 +97,6 @@ def _as_utc(value: datetime) -> datetime:
     return value if value.tzinfo else value.replace(tzinfo=timezone.utc)
 
 
-def _as_ist(value: datetime) -> datetime:
-    """Localize a timezone-naive datetime to IST.
-    SQLite strips timezone info on read-back; datetimes originating from
-    India should be treated as IST, not UTC."""
-    return value if value.tzinfo else value.replace(tzinfo=IST)
-
-
 def _local_day_window(now: datetime, local_timezone=IST):
     local_now = _as_utc(now).astimezone(local_timezone)
     local_start = local_now.replace(hour=0, minute=0, second=0, microsecond=0)
@@ -230,7 +223,7 @@ def get_admin_analytics(db: Session, months: int = 6) -> AdminAnalyticsResponse:
     
     sla_alerts = []
     for c in overdue_complaints:
-        diff_mins = int((now - _as_ist(c.sla_deadline)).total_seconds() / 60) if c.sla_deadline else 0
+        diff_mins = int((now - _as_utc(c.sla_deadline)).total_seconds() / 60) if c.sla_deadline else 0
         sla_alerts.append(SlaAlert(
             ticket_id=f"#TK-{c.id}",
             title=c.title or "Complaint",
@@ -483,14 +476,14 @@ def get_advanced_analytics(db: Session, amenity_id: int | None = None) -> Advanc
         sla = "Within SLA"
         if completed_tasks:
             average_hours = sum(
-                (_as_ist(task.resolved_at) - _as_ist(task.created_at)).total_seconds() / 3600
+                (_as_utc(task.resolved_at) - _as_utc(task.created_at)).total_seconds() / 3600
                 for task in completed_tasks
             ) / len(completed_tasks)
             res = f"{average_hours:.1f}"
         overdue_tasks = [
             task for task in tasks
             if task.complaint and task.complaint.sla_deadline
-            and not task.resolved_at and _as_ist(task.complaint.sla_deadline) < now
+            and not task.resolved_at and _as_utc(task.complaint.sla_deadline) < now
         ]
         if len(overdue_tasks) >= 2:
             sla = "Escalated"

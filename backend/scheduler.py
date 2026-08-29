@@ -1,5 +1,7 @@
 import logging
 import time
+import threading
+from collections import defaultdict
 from datetime import datetime, timedelta, timezone
 from typing import Callable
 from zoneinfo import ZoneInfo
@@ -19,18 +21,22 @@ from app.security.models import GuestPass, Visitor
 logger = logging.getLogger("societysync.scheduler")
 JobOperation = Callable[[Session, datetime], dict[str, int]]
 
-# =========================
-# SQLite3 compatible _execute_locked
-# =========================
-import threading
-from collections import defaultdict
-
 _JOB_LOCKS: dict[str, threading.Lock] = defaultdict(threading.Lock)
 _JOB_LOCKS_GUARD = threading.Lock()
 
 def _get_job_lock(job_name: str) -> threading.Lock:
     with _JOB_LOCKS_GUARD:
         return _JOB_LOCKS[job_name]
+
+
+def _uses_postgresql_advisory_lock(db: Session) -> bool:
+    """Keep cross-process PostgreSQL locking; use a process lock for SQLite."""
+    try:
+        return db.get_bind().dialect.name == "postgresql"
+    except AttributeError:
+        # Lightweight test doubles model the historical PostgreSQL behavior.
+        return True
+
 
 def _execute_locked(
     job_name: str,
@@ -57,6 +63,15 @@ def _execute_locked(
         for attempt in range(1, max_attempts + 1):
             db: Session = factory()
             try:
+                if _uses_postgresql_advisory_lock(db):
+                    locked = db.scalar(
+                        text("SELECT pg_try_advisory_xact_lock(hashtext(:job_name))"),
+                        {"job_name": f"societysync:{job_name}"},
+                    )
+                    if not locked:
+                        db.rollback()
+                        logger.warning("job_skipped_locked job=%s", job_name)
+                        return {"skipped": 1}
                 started = time.monotonic()
                 result = operation(db, datetime.now(timezone.utc))
                 db.commit()
@@ -83,61 +98,6 @@ def _execute_locked(
         job_lock.release()
 
     raise RuntimeError(f"Scheduled job {job_name} exhausted without a result")
-# =========================
-# PostgreSQL compatible _execute_locked
-# =========================
-# def _execute_locked(
-#     job_name: str,
-#     operation: JobOperation,
-#     *,
-#     session_factory=None,
-#     attempts: int | None = None,
-#     retry_delay: float | None = None,
-#     sleeper=time.sleep,
-# ) -> dict[str, int]:
-#     """Run a job transaction with a PostgreSQL advisory lock and bounded retries."""
-#     factory = session_factory or SessionLocal
-#     max_attempts = attempts or settings.SCHEDULER_MAX_ATTEMPTS
-#     delay = (
-#         settings.SCHEDULER_RETRY_DELAY_SECONDS if retry_delay is None else retry_delay
-#     )
-
-#     for attempt in range(1, max_attempts + 1):
-#         db: Session = factory()
-#         try:
-#             acquired = db.scalar(
-#                 text("SELECT pg_try_advisory_xact_lock(hashtext(:job_name))"),
-#                 {"job_name": f"societysync:{job_name}"},
-#             )
-#             if not acquired:
-#                 db.rollback()
-#                 logger.warning("job_skipped_locked job=%s", job_name)
-#                 return {"skipped": 1}
-
-#             started = time.monotonic()
-#             result = operation(db, datetime.now(timezone.utc))
-#             db.commit()
-#             logger.info(
-#                 "job_succeeded job=%s attempt=%s duration_ms=%s result=%s",
-#                 job_name,
-#                 attempt,
-#                 round((time.monotonic() - started) * 1000),
-#                 result,
-#             )
-#             return result
-#         except Exception:
-#             db.rollback()
-#             if attempt == max_attempts:
-#                 logger.exception("job_failed job=%s attempts=%s", job_name, attempt)
-#                 raise
-#             logger.warning(
-#                 "job_retry job=%s attempt=%s", job_name, attempt, exc_info=True
-#             )
-#             sleeper(delay * (2 ** (attempt - 1)))
-#         finally:
-#             db.close()
-
-#     raise RuntimeError(f"Scheduled job {job_name} exhausted without a result")
 
 
 def _fanout_notices(db: Session, now: datetime) -> dict[str, int]:

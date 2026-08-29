@@ -1,13 +1,13 @@
-import datetime
 import os
+from datetime import datetime, timezone
 from dotenv import load_dotenv
-from sqlalchemy import create_engine, event, func, inspect
-from sqlalchemy.engine import Engine
-from sqlalchemy.orm import declarative_base, sessionmaker, Session
+from sqlalchemy import BigInteger, create_engine, event, func, select
+from sqlalchemy.ext.compiler import compiles
+from sqlalchemy.orm import declarative_base, sessionmaker
 
 load_dotenv()
 
-DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./sql_app.db")
+DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./societysync_local.db")
 
 engine_kwargs = {}
 if DATABASE_URL.startswith("sqlite"):
@@ -16,57 +16,41 @@ if DATABASE_URL.startswith("sqlite"):
 engine = create_engine(DATABASE_URL, **engine_kwargs)
 
 
-# ─── SQLite Compatibility Listeners ───────────────────────────────────────────
-@event.listens_for(Engine, "connect")
-def register_sqlite_compatibility(dbapi_connection, connection_record):
-    """
-    1. Register 'now()' function in SQLite for PostgreSQL default compatibility.
-    2. Enable Foreign Key constraints and WAL mode in SQLite.
-    """
-    if hasattr(dbapi_connection, "create_function"):
-        dbapi_connection.create_function(
-            "now",
-            0,
-            lambda: datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%d %H:%M:%S"),
-        )
-
-    if hasattr(dbapi_connection, "execute"):
-        cursor = dbapi_connection.cursor()
-        cursor.execute("PRAGMA foreign_keys=ON;")
-        cursor.close()
+@compiles(BigInteger, "sqlite")
+def _compile_big_integer_for_sqlite(_type, _compiler, **_kwargs):
+    """SQLite only auto-generates IDs for columns compiled as INTEGER."""
+    return "INTEGER"
 
 
-@event.listens_for(Session, "before_flush")
-def auto_assign_sqlite_primary_keys(session, flush_context, instances):
-    """
-    Auto-assign missing integer primary keys for SQLite inserts.
-    Fixes 'NOT NULL constraint failed' on BIGINT primary key columns in SQLite.
-    """
-    if session.bind and session.bind.dialect.name == "sqlite":
-        assigned_max = {}
-        for obj in list(session.new):
-            mapper = inspect(obj.__class__)
-            for pk_col in mapper.primary_key:
-                try:
-                    is_int = issubclass(pk_col.type.python_type, int)
-                except (AttributeError, NotImplementedError, TypeError):
-                    is_int = False
-
-                if is_int:
-                    prop = mapper.get_property_by_column(pk_col)
-                    attr_name = prop.key
-                    if getattr(obj, attr_name) is None:
-                        col_key = (mapper.mapped_table.name, pk_col.name)
-                        if col_key not in assigned_max:
-                            max_val = session.query(func.max(pk_col)).scalar() or 0
-                            assigned_max[col_key] = max_val
-                        assigned_max[col_key] += 1
-                        setattr(obj, attr_name, assigned_max[col_key])
+@event.listens_for(engine, "connect")
+def register_sqlite_compatibility(dbapi_connection, _connection_record):
+    """Enable SQLite foreign keys and a bounded wait for concurrent writers."""
+    if engine.dialect.name != "sqlite":
+        return
+    cursor = dbapi_connection.cursor()
+    dbapi_connection.create_function(
+        "now", 0, lambda: datetime.now(timezone.utc).replace(tzinfo=None).isoformat(sep=" ")
+    )
+    cursor.execute("PRAGMA foreign_keys=ON")
+    cursor.execute("PRAGMA busy_timeout=5000")
+    cursor.close()
 
 
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 Base = declarative_base()
+
+
+def is_postgresql(bind) -> bool:
+    """Return whether a Session, Connection, or Engine is PostgreSQL-backed."""
+    candidate = bind.get_bind() if hasattr(bind, "get_bind") else bind
+    return getattr(getattr(candidate, "dialect", None), "name", None) == "postgresql"
+
+
+def advisory_xact_lock(db, key: str) -> None:
+    """Use PostgreSQL advisory locks when available; SQLite serializes writers itself."""
+    if is_postgresql(db):
+        db.execute(select(func.pg_advisory_xact_lock(func.hashtext(key))))
 
 
 def get_db():

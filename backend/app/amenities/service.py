@@ -13,16 +13,16 @@ from app.amenities.permissions import (
     ensure_resident,
     is_operational,
 )
+from app.db.database import advisory_xact_lock, is_postgresql
 from app.db.models.user import User
 from app.realtime.service import add_notifications, user_ids_for_roles
 
 IST = ZoneInfo("Asia/Kolkata")
 
 
-def _as_ist(value: datetime) -> datetime:
-    """Localize a timezone-naive datetime to IST.
-    SQLite strips timezone info on read-back; treat naive datetimes as IST."""
-    return value if value.tzinfo else value.replace(tzinfo=IST)
+def _as_utc(value: datetime) -> datetime:
+    """SQLite drops tzinfo; persisted application timestamps are stored in UTC."""
+    return value if value.tzinfo else value.replace(tzinfo=timezone.utc)
 
 
 def _amenity_dict(item: Amenity) -> dict:
@@ -208,7 +208,7 @@ def availability(
                 (
                     item
                     for item in bookings
-                    if _as_ist(item.starts_at) < end and _as_ist(item.ends_at) > cursor
+                    if _as_utc(item.starts_at) < end and _as_utc(item.ends_at) > cursor
                 ),
                 None,
             )
@@ -253,7 +253,7 @@ def availability(
 
 def create_booking(db: Session, user: User, data, key: str) -> dict:
     ensure_resident(user)
-    db.execute(select(func.pg_advisory_xact_lock(func.hashtext(f"amenity-key:{key}"))))
+    advisory_xact_lock(db, f"amenity-key:{key}")
     old = db.scalar(select(AmenityBooking).where(AmenityBooking.idempotency_key == key))
     if old:
         if (
@@ -291,15 +291,7 @@ def create_booking(db: Session, user: User, data, key: str) -> dict:
         )
     week_start, week_end = _week_bounds(local.date())
     flat_key = user.flat_number or str(user.user_id)
-    db.execute(
-        select(
-            func.pg_advisory_xact_lock(
-                func.hashtext(
-                    f"amenity-quota:{amenity.id}:{flat_key}:{week_start.date()}"
-                )
-            )
-        )
-    )
+    advisory_xact_lock(db, f"amenity-quota:{amenity.id}:{flat_key}:{week_start.date()}")
     used = (
         db.scalar(
             select(func.count(AmenityBooking.id)).where(
@@ -316,6 +308,15 @@ def create_booking(db: Session, user: User, data, key: str) -> dict:
         raise HTTPException(
             status_code=409, detail="Weekly household booking limit reached."
         )
+    if not is_postgresql(db) and db.scalar(
+        select(AmenityBooking.id).where(
+            AmenityBooking.amenity_id == amenity.id,
+            AmenityBooking.status == "confirmed",
+            AmenityBooking.starts_at < start + timedelta(minutes=amenity.slot_minutes),
+            AmenityBooking.ends_at > start,
+        )
+    ):
+        raise HTTPException(status_code=409, detail="This slot was just booked. Choose another slot.")
     item = AmenityBooking(
         amenity_id=amenity.id,
         resident_id=user.user_id,
@@ -404,7 +405,7 @@ def cancel_booking(db: Session, user: User, booking_id: int) -> dict:
         raise HTTPException(
             status_code=409, detail="Only confirmed bookings can be cancelled."
         )
-    if _as_ist(item.starts_at) <= datetime.now(timezone.utc):
+    if _as_utc(item.starts_at) <= datetime.now(timezone.utc):
         raise HTTPException(
             status_code=409, detail="A started booking cannot be cancelled."
         )

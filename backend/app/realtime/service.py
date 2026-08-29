@@ -2,15 +2,6 @@ import hashlib
 import secrets
 from datetime import datetime, timedelta, timezone
 from typing import Iterable
-from zoneinfo import ZoneInfo
-
-IST = ZoneInfo("Asia/Kolkata")
-
-
-def _as_ist(value: datetime) -> datetime:
-    """Localize a timezone-naive datetime to IST.
-    SQLite strips timezone info on read-back; treat naive datetimes as IST."""
-    return value if value.tzinfo else value.replace(tzinfo=IST)
 
 from fastapi import HTTPException
 from sqlalchemy import delete, func, select, update
@@ -21,6 +12,11 @@ from app.db.models.user import User
 from app.realtime.models import Notification, WebSocketTicket
 
 TICKET_LIFETIME_SECONDS = 60
+
+
+def _as_utc(value: datetime) -> datetime:
+    """SQLite removes tzinfo; application datetimes are persisted in UTC."""
+    return value if value.tzinfo else value.replace(tzinfo=timezone.utc)
 
 
 def utcnow() -> datetime:
@@ -48,7 +44,7 @@ def consume_ticket(db: Session, raw: str) -> tuple[int, int] | None:
         return None
     ticket = db.scalar(select(WebSocketTicket).where(WebSocketTicket.token_hash == _hash_ticket(raw)).with_for_update())
     current = utcnow()
-    if not ticket or ticket.used_at is not None or _as_ist(ticket.expires_at) <= current:
+    if not ticket or ticket.used_at is not None or _as_utc(ticket.expires_at) <= current:
         db.rollback()
         return None
     user = db.get(User, ticket.user_id)

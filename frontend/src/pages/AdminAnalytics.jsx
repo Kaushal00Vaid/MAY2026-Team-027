@@ -98,6 +98,7 @@ export default function AdminAnalytics() {
   const isSuperAdmin = userRoles.includes("super_admin");
   const sidebarItems = isSuperAdmin ? [...baseSidebarItems, { label: "User Roles", icon: UserCog, href: "/admin/users" }] : baseSidebarItems;
   const userRole = isSuperAdmin ? "Super Admin" : userRoles.includes("committee_member") ? "Committee Member" : "Residential Admin";
+  const financialRatio = Math.max(0, Math.min(100, Number(data?.financial?.ratio) || 0));
 
   if (loading) {
     return (
@@ -203,14 +204,14 @@ export default function AdminAnalytics() {
             <h3 className="text-lg font-bold text-[#0f2336] self-start w-full text-left mb-4">Financial Efficiency</h3>
             
             <div className="w-full h-[220px] relative">
-              {data.pareto.length ? <ResponsiveContainer width="100%" height="100%">
+              <ResponsiveContainer width="100%" height="100%">
                 <RadialBarChart 
                   cx="50%" 
                   cy="50%" 
                   innerRadius="70%" 
                   outerRadius="100%" 
                   barSize={16} 
-                  data={[{ name: 'ratio', value: data.financial.ratio, fill: '#0f2336' }]}
+                  data={[{ name: 'ratio', value: financialRatio, fill: '#0f2336' }]}
                   startAngle={90}
                   endAngle={-270}
                 >
@@ -223,9 +224,9 @@ export default function AdminAnalytics() {
                     cornerRadius={10}
                   />
                 </RadialBarChart>
-              </ResponsiveContainer> : <div className="h-full flex items-center justify-center text-sm text-gray-500">No complaint data is available.</div>}
+              </ResponsiveContainer>
               <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
-                <div className="text-4xl font-extrabold text-[#0f2336]">{data.financial.ratio}%</div>
+                <div className="text-4xl font-extrabold text-[#0f2336]">{financialRatio}%</div>
                 <div className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mt-1">Collection Ratio</div>
               </div>
             </div>
@@ -252,7 +253,7 @@ export default function AdminAnalytics() {
           <div className="lg:col-span-1 bg-white p-6 rounded-3xl border border-gray-100 shadow-sm flex flex-col">
             <h3 className="text-lg font-bold text-[#0f2336] mb-6">Predictive Maintenance (Pareto)</h3>
             <div className="flex-1 w-full h-[250px]">
-              <ResponsiveContainer width="100%" height="100%">
+              {data.pareto.length ? <ResponsiveContainer width="100%" height="100%">
                 <BarChart data={data.pareto} margin={{ top: 10, right: 0, left: -20, bottom: 0 }}>
                   <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f3f4f6" />
                   <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: '#6b7280' }} dy={10} interval={0} />
@@ -264,7 +265,7 @@ export default function AdminAnalytics() {
                     ))}
                   </Bar>
                 </BarChart>
-              </ResponsiveContainer>
+              </ResponsiveContainer> : <div className="h-full flex items-center justify-center text-sm text-gray-500">No complaint data is available.</div>}
             </div>
           </div>
 
