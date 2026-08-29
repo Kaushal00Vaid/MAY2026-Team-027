@@ -15,7 +15,12 @@ depends_on = None
 
 
 def upgrade():
-    op.execute("CREATE EXTENSION IF NOT EXISTS btree_gist")
+    bind = op.get_bind()
+    
+    # Only run PostgreSQL-specific extensions on PostgreSQL
+    if bind.dialect.name == "postgresql":
+        op.execute("CREATE EXTENSION IF NOT EXISTS btree_gist")
+
     op.create_table(
         "amenities",
         sa.Column("id", sa.BigInteger(), primary_key=True, autoincrement=True),
@@ -52,6 +57,33 @@ def upgrade():
         sa.ForeignKeyConstraint(["created_by"], ["users.user_id"], ondelete="SET NULL"),
     )
     op.create_index("ix_amenities_is_active", "amenities", ["is_active"])
+
+    table_args = [
+        sa.CheckConstraint("ends_at > starts_at", name="ck_booking_time_range"),
+        sa.CheckConstraint(
+            "status IN ('confirmed','cancelled','completed')", name="ck_booking_status"
+        ),
+        sa.ForeignKeyConstraint(["amenity_id"], ["amenities.id"], ondelete="RESTRICT"),
+        sa.ForeignKeyConstraint(
+            ["resident_id"], ["users.user_id"], ondelete="RESTRICT"
+        ),
+        sa.ForeignKeyConstraint(
+            ["cancelled_by"], ["users.user_id"], ondelete="SET NULL"
+        ),
+        sa.UniqueConstraint("idempotency_key", name="uq_booking_idempotency_key"),
+    ]
+
+    if bind.dialect.name == "postgresql":
+        table_args.append(
+            ExcludeConstraint(
+                ("amenity_id", "="),
+                (sa.text("tstzrange(starts_at, ends_at, '[)')"), "&&"),
+                where=sa.text("status = 'confirmed'"),
+                using="gist",
+                name="excl_confirmed_amenity_booking_overlap",
+            )
+        )
+
     op.create_table(
         "amenity_bookings",
         sa.Column("id", sa.BigInteger(), primary_key=True, autoincrement=True),
@@ -70,25 +102,7 @@ def upgrade():
             server_default=sa.text("now()"),
             nullable=False,
         ),
-        sa.CheckConstraint("ends_at > starts_at", name="ck_booking_time_range"),
-        sa.CheckConstraint(
-            "status IN ('confirmed','cancelled','completed')", name="ck_booking_status"
-        ),
-        sa.ForeignKeyConstraint(["amenity_id"], ["amenities.id"], ondelete="RESTRICT"),
-        sa.ForeignKeyConstraint(
-            ["resident_id"], ["users.user_id"], ondelete="RESTRICT"
-        ),
-        sa.ForeignKeyConstraint(
-            ["cancelled_by"], ["users.user_id"], ondelete="SET NULL"
-        ),
-        sa.UniqueConstraint("idempotency_key", name="uq_booking_idempotency_key"),
-        ExcludeConstraint(
-            ("amenity_id", "="),
-            (sa.text("tstzrange(starts_at, ends_at, '[)')"), "&&"),
-            where=sa.text("status = 'confirmed'"),
-            using="gist",
-            name="excl_confirmed_amenity_booking_overlap",
-        ),
+        *table_args 
     )
     op.create_index(
         "ix_amenity_bookings_amenity_id", "amenity_bookings", ["amenity_id"]

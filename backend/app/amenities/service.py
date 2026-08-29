@@ -19,6 +19,12 @@ from app.realtime.service import add_notifications, user_ids_for_roles
 IST = ZoneInfo("Asia/Kolkata")
 
 
+def _as_ist(value: datetime) -> datetime:
+    """Localize a timezone-naive datetime to IST.
+    SQLite strips timezone info on read-back; treat naive datetimes as IST."""
+    return value if value.tzinfo else value.replace(tzinfo=IST)
+
+
 def _amenity_dict(item: Amenity) -> dict:
     return {
         key: getattr(item, key)
@@ -202,7 +208,7 @@ def availability(
                 (
                     item
                     for item in bookings
-                    if item.starts_at < end and item.ends_at > cursor
+                    if _as_ist(item.starts_at) < end and _as_ist(item.ends_at) > cursor
                 ),
                 None,
             )
@@ -398,7 +404,7 @@ def cancel_booking(db: Session, user: User, booking_id: int) -> dict:
         raise HTTPException(
             status_code=409, detail="Only confirmed bookings can be cancelled."
         )
-    if item.starts_at <= datetime.now(timezone.utc):
+    if _as_ist(item.starts_at) <= datetime.now(timezone.utc):
         raise HTTPException(
             status_code=409, detail="A started booking cannot be cancelled."
         )

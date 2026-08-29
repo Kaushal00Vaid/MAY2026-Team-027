@@ -2,6 +2,15 @@ import hashlib
 import secrets
 from datetime import datetime, timedelta, timezone
 from typing import Iterable
+from zoneinfo import ZoneInfo
+
+IST = ZoneInfo("Asia/Kolkata")
+
+
+def _as_ist(value: datetime) -> datetime:
+    """Localize a timezone-naive datetime to IST.
+    SQLite strips timezone info on read-back; treat naive datetimes as IST."""
+    return value if value.tzinfo else value.replace(tzinfo=IST)
 
 from fastapi import HTTPException
 from sqlalchemy import delete, func, select, update
@@ -39,7 +48,7 @@ def consume_ticket(db: Session, raw: str) -> tuple[int, int] | None:
         return None
     ticket = db.scalar(select(WebSocketTicket).where(WebSocketTicket.token_hash == _hash_ticket(raw)).with_for_update())
     current = utcnow()
-    if not ticket or ticket.used_at is not None or ticket.expires_at <= current:
+    if not ticket or ticket.used_at is not None or _as_ist(ticket.expires_at) <= current:
         db.rollback()
         return None
     user = db.get(User, ticket.user_id)
