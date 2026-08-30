@@ -253,6 +253,7 @@ def create_poll(db: Session, user: User, data: PollCreate) -> dict:
         starts_at=now,
         ends_at=data.ends_at,
         created_by=user.user_id,
+        is_active=True,
     )
     db.add(poll)
     db.flush()
