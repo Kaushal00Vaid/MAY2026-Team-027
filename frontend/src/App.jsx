@@ -36,6 +36,7 @@ const GoogleAuthSuccess = lazy(() => import("@/pages/GoogleAuthSuccess"));
 const AccountPage = lazy(() => import("@/pages/AccountPage"));
 const HelpCenter = lazy(() => import("@/pages/HelpCenter"));
 const NotFoundPage = lazy(() => import("@/pages/NotFoundPage"));
+const UnauthorizedPage = lazy(() => import("@/pages/UnauthorizedPage"));
 
 // Role constants
 const ADMIN_ROLES = ["super_admin", "admin", "committee_member"];
@@ -60,17 +61,7 @@ function App() {
           <Route path="/auth/google/success" element={<GoogleAuthSuccess />} />
 
           {/* Unauthorized fallback */}
-          <Route
-            path="/unauthorized"
-            element={
-              <div className="min-h-screen flex items-center justify-center text-center p-8">
-                <div>
-                  <h1 className="text-2xl font-bold text-[#0f1a2b] mb-2">Access Denied</h1>
-                  <p className="text-muted-foreground">You don't have permission to view this page.</p>
-                </div>
-              </div>
-            }
-          />
+          <Route path="/unauthorized" element={<UnauthorizedPage />} />
           <Route path="/unauthorised" element={<Navigate to="/unauthorized" replace />} />
           <Route path="/account" element={<ProtectedRoute><AccountPage /></ProtectedRoute>} />
           <Route path="/help" element={<ProtectedRoute><HelpCenter /></ProtectedRoute>} />
